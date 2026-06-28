@@ -1,112 +1,26 @@
 <script setup lang="ts">
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
-import { computed, onMounted, ref, watch } from 'vue'
-import {
-  createAcademicJob,
-  createCrossSynthesisJob,
-  createDeepAnalysisJob,
-  createSearchJob,
-  createSentimentJob,
-  errorMessage,
-  fetchArticles,
-  fetchAcademic,
-  fetchCountryCompare,
-  fetchCrossSynthesis,
-  fetchLocalEvents,
-  fetchSearchJob,
-  fetchSentiment,
-  fetchTopic,
-  fetchTopics,
-  isNetworkError,
-  rerunSearchJob,
-} from './api/dossierApi'
+import { onMounted, ref, watch } from 'vue'
+import { fetchCountryCompare } from './api/dossierApi'
+import { useEventWorkbench } from './composables/useEventWorkbench'
+import { useJobRunner } from './composables/useJobRunner'
+import { readableError, useTopicData } from './composables/useTopicData'
 import type {
   AcademicFoundationalPaper,
-  AcademicLayer,
   AcademicPaper,
   Article,
   CountryCompare,
   CountryCompareCountry,
-  CrossSynthesis,
-  DeepAnalysisResult,
-  EntityGroup,
   EvidenceArticle,
   Keyword,
   LocalEvent,
-  LocalEventsPayload,
-  SearchJob,
   SearchResponse,
-  SentimentLayer,
   SentimentPost,
-  TopicDetail,
-  TopicSummary,
 } from './types/dossier'
 
-const topics = ref<TopicSummary[]>([])
-const selectedTopicId = ref<number | null>(null)
-const detail = ref<TopicDetail | null>(null)
-const localData = ref<LocalEventsPayload | null>(null)
-const articles = ref<Article[]>([])
-const totalArticles = ref(0)
-const loading = ref(true)
-const articleLoading = ref(false)
-const localLoading = ref(false)
 const countryCompareLoading = ref(false)
-const searching = ref(false)
-const deepAnalyzing = ref(false)
-const crossSynthesisAnalyzing = ref(false)
-const academicAnalyzing = ref(false)
-const sentimentAnalyzing = ref(false)
-const crossSynthesisLoading = ref(false)
-const academicLoading = ref(false)
-const sentimentLoading = ref(false)
-const error = ref('')
-const query = ref('')
-const eventSearch = ref('美伊战争')
-const selectedEventIndex = ref(0)
-const activeWorkspaceTab = ref<'media' | 'academic' | 'sentiment' | 'cross' | 'llm'>('media')
-const expandedTimelineIndex = ref<number | null>(null)
-const searchMessage = ref('')
-const searchSteps = ref<{ key: string; label: string; status: string }[]>([])
-const searchWarnings = ref<string[]>([])
 const countryCompare = ref<CountryCompare | null>(null)
 const countryCompareError = ref('')
 const countryCompareEventKey = ref('')
-const showArticles = ref(false)
-const activeJobId = ref('')
-const activeDeepJobId = ref('')
-const activeCrossSynthesisJobId = ref('')
-const activeAcademicJobId = ref('')
-const activeSentimentJobId = ref('')
-const terminalJob = ref<SearchJob | null>(null)
-const deepJob = ref<SearchJob | null>(null)
-const deepMessage = ref('')
-const deepSteps = ref<{ key: string; label: string; status: string }[]>([])
-const crossSynthesisLayer = ref<CrossSynthesis | null>(null)
-const crossSynthesisJob = ref<SearchJob | null>(null)
-const crossSynthesisMessage = ref('')
-const crossSynthesisError = ref('')
-const crossSynthesisSteps = ref<{ key: string; label: string; status: string }[]>([])
-const academicLayer = ref<AcademicLayer | null>(null)
-const academicJob = ref<SearchJob | null>(null)
-const academicMessage = ref('')
-const academicError = ref('')
-const academicSteps = ref<{ key: string; label: string; status: string }[]>([])
-const sentimentLayer = ref<SentimentLayer | null>(null)
-const sentimentJob = ref<SearchJob | null>(null)
-const sentimentMessage = ref('')
-const sentimentError = ref('')
-const sentimentSteps = ref<{ key: string; label: string; status: string }[]>([])
-const sourceTierFilter = ref('all')
-const sourceMatrixSort = ref('tier')
-const articleCategoryFilter = ref('all')
-const collectDiagnostics = ref<SearchResponse['collect'] | null>(null)
-const pageSize = 80
-const deepEnrichLimit = 30
-const academicTopN = 30
-const sentimentLimit = 25
-const llmAnalysisMarker = '<!-- analysis-source: llm -->'
 const workspaceTabs = [
   { key: 'media', label: '媒体' },
   { key: 'academic', label: '学界' },
@@ -115,228 +29,146 @@ const workspaceTabs = [
   { key: 'llm', label: 'LLM 深度分析' },
 ] as const
 
-const stepStatusLabels: Record<string, string> = {
-  pending: '等待中',
-  running: '进行中',
-  done: '已完成',
-  warning: '已完成，有提示',
-  empty: '没有新数据',
-  skipped: '已跳过',
-  failed: '失败',
-  interrupted: '已中断',
-}
+const {
+  topics,
+  selectedTopicId,
+  detail,
+  localData,
+  articles,
+  totalArticles,
+  loading,
+  articleLoading,
+  localLoading,
+  error,
+  selectedTopic,
+  loadTopics,
+  loadTopic,
+  loadArticles,
+  loadLocalEvents,
+} = useTopicData()
 
-const selectedTopic = computed(() =>
-  topics.value.find((topic) => topic.id === selectedTopicId.value) || detail.value,
-)
-
-const storedAnalysisText = computed(() => detail.value?.analysis?.content_md || '')
-const hasLlmAnalysis = computed(() => storedAnalysisText.value.includes(llmAnalysisMarker))
-const analysisModeLabel = computed(() =>
-  hasLlmAnalysis.value ? 'LLM 深度分析' : '本地规则模式',
-)
-
-const majorEvents = computed<LocalEvent[]>(() => {
-  if (!hasLlmAnalysis.value && localData.value?.events.length) return localData.value.events
-  return (detail.value?.timeline || []).map((item) => ({
-    date: item.date,
-    title_zh: item.title_zh,
-    summary_zh: item.summary_zh,
-    article_ids: item.article_ids,
-    score: 0,
-    source_count: 0,
-    article_count: item.article_ids.length,
-    stance: hasLlmAnalysis.value ? 'LLM 综合' : '综合判断',
-  }))
-})
-
-const selectedEvent = computed(() => majorEvents.value[selectedEventIndex.value] || null)
-const selectedEventKey = computed(() =>
-  selectedEvent.value
-    ? `${selectedTopicId.value || 'topic'}:${selectedEventIndex.value}:${selectedEvent.value.article_ids.join(',')}`
-    : '',
-)
-const visibleCountryCompare = computed(() =>
-  countryCompareEventKey.value && countryCompareEventKey.value === selectedEventKey.value ? countryCompare.value : null,
-)
-const countryCards = computed(() => visibleCountryCompare.value?.countries || [])
-const firstReporterTimeline = computed(() => visibleCountryCompare.value?.first_reporters || [])
-const hasCountryCompare = computed(() => Boolean(visibleCountryCompare.value))
-const framing = computed(() =>
-  hasLlmAnalysis.value ? detail.value?.framing || [] : localData.value?.framing || detail.value?.framing || [],
-)
-const analysisText = computed(() =>
-  hasLlmAnalysis.value
-    ? detail.value?.analysis?.content_md || ''
-    : localData.value?.analysis_md || detail.value?.analysis?.content_md || '',
-)
-const displayAnalysisText = computed(() => analysisText.value.replace(llmAnalysisMarker, '').trim())
-const safeAnalysisHtml = computed(() => {
-  if (!displayAnalysisText.value) return ''
-  const html = marked.parse(displayAnalysisText.value, { async: false, breaks: true, gfm: true }) as string
-  return DOMPurify.sanitize(html)
-})
-const safeAcademicSummaryHtml = computed(() => {
-  const text = academicLayer.value?.summary_md?.trim()
-  if (!text) return ''
-  const html = marked.parse(text, { async: false, breaks: true, gfm: true }) as string
-  return DOMPurify.sanitize(html)
-})
-const safeSentimentSummaryHtml = computed(() => {
-  const text = sentimentLayer.value?.summary_md?.trim()
-  if (!text) return ''
-  const html = marked.parse(text, { async: false, breaks: true, gfm: true }) as string
-  return DOMPurify.sanitize(html)
-})
-const safeCrossSynthesisHtml = computed(() => {
-  const text = crossSynthesisLayer.value?.content_md?.trim()
-  if (!text) return ''
-  const html = marked.parse(text, { async: false, breaks: true, gfm: true }) as string
-  return DOMPurify.sanitize(html)
-})
-const crossVoicesUsed = computed(() => crossSynthesisLayer.value?.voices_used || [])
-const crossChainItems = computed(() => {
-  const chain = crossSynthesisLayer.value?.chain || {}
-  return ['media', 'academic', 'sentiment'].map((voice) => ({
-    key: voice,
-    label: voiceLabel(voice),
-    status: chain[voice]?.status || 'pending',
-    error: chain[voice]?.error || '',
-  }))
-})
-const hasCrossSynthesis = computed(() => Boolean(crossSynthesisLayer.value?.content_md?.trim()))
-const academicPapers = computed(() => academicLayer.value?.papers || [])
-const academicSchools = computed(() => academicLayer.value?.schools || [])
-const academicFoundationalPapers = computed(() => academicLayer.value?.foundational_papers || [])
-const academicCitationEdges = computed(() => academicLayer.value?.graph?.edges || [])
-const hasAcademicLayer = computed(() => Boolean(academicLayer.value))
-const sentimentPosts = computed(() => sentimentLayer.value?.posts || [])
-const hasSentimentLayer = computed(() => Boolean(sentimentLayer.value))
-const sentimentPostItems = computed(() => sentimentPosts.value.filter((post) => (post.kind || 'post') !== 'comment'))
-const sentimentCommentItems = computed(() => sentimentPosts.value.filter((post) => post.kind === 'comment'))
-const sentimentCommentsByParent = computed(() => {
-  const groups = new Map<string, SentimentPost[]>()
-  for (const comment of sentimentCommentItems.value) {
-    const parent = String(comment.parent_post_id || '')
-    if (!parent) continue
-    if (!groups.has(parent)) groups.set(parent, [])
-    groups.get(parent)?.push(comment)
-  }
-  return groups
-})
-const sentimentPlatformGroups = computed(() => {
-  const groups = new Map<string, SentimentPost[]>()
-  for (const post of sentimentPostItems.value) {
-    const platform = post.platform || 'unknown'
-    if (!groups.has(platform)) groups.set(platform, [])
-    groups.get(platform)?.push(post)
-  }
-  return [...groups.entries()]
-    .map(([platform, posts]) => ({ platform, label: sentimentPlatformLabel(platform), posts }))
-    .sort((a, b) => sentimentPlatformRank(a.platform) - sentimentPlatformRank(b.platform))
-})
-const sentimentPlatformLabels = computed(() =>
-  (sentimentLayer.value?.platforms?.length ? sentimentLayer.value.platforms : sentimentPlatformGroups.value.map((group) => group.platform))
-    .map(sentimentPlatformLabel)
-    .join(' / '),
-)
-const stancePeriods = computed(() => localData.value?.stance_evolution || [])
-const criteria = computed(() => localData.value?.criteria || [])
-const keywords = computed(() => localData.value?.keywords || [])
-const entities = computed(() => localData.value?.entities || [])
-const entityGroups = computed<EntityGroup[]>(() => localData.value?.entity_groups || [])
-const authorityTierKeys = new Set(['wire', 'official', 'professional', 'mainstream'])
-const sourceTierOptions = computed(() => {
-  const matrix = selectedEvent.value?.source_matrix || []
-  const seen = new Map<string, string>()
-  for (const source of matrix) {
-    seen.set(source.tier || 'other', source.tier_label || '其他来源')
-  }
-  const hasAuthority = [...seen.keys()].some((key) => authorityTierKeys.has(key))
-  return [
-    { key: 'all', label: '全部来源' },
-    ...(hasAuthority ? [{ key: 'authority', label: '权威来源' }] : []),
-    ...[...seen.entries()].map(([key, label]) => ({ key, label })),
-  ]
+const {
+  query,
+  selectedEventIndex,
+  activeWorkspaceTab,
+  expandedTimelineIndex,
+  sourceTierFilter,
+  sourceMatrixSort,
+  articleCategoryFilter,
+  hasLlmAnalysis,
+  analysisModeLabel,
+  majorEvents,
+  selectedEvent,
+  selectedEventKey,
+  visibleCountryCompare,
+  countryCards,
+  firstReporterTimeline,
+  hasCountryCompare,
+  framing,
+  displayAnalysisText,
+  safeAnalysisHtml,
+  stancePeriods,
+  criteria,
+  keywords,
+  entities,
+  entityGroups,
+  sourceTierOptions,
+  visibleSourceMatrix,
+  articleCategoryGroups,
+  visibleArticleGroups,
+  articleCategoryOptions,
+  filteredArticles,
+  stanceGroups,
+  toggleTimelineEvent,
+  resetSelectedEvent,
+  showAuthoritySources,
+  showEarliestSources,
+  showMostCoveredSources,
+} = useEventWorkbench({
+  detail,
+  localData,
+  articles,
+  selectedTopicId,
+  countryCompare,
+  countryCompareEventKey,
+  resetCountryCompare,
 })
 
-const visibleSourceMatrix = computed(() => {
-  const matrix = [...(selectedEvent.value?.source_matrix || [])]
-  const filtered =
-    sourceTierFilter.value === 'all'
-      ? matrix
-      : sourceTierFilter.value === 'authority'
-        ? matrix.filter((source) => authorityTierKeys.has(source.tier || 'other'))
-      : matrix.filter((source) => (source.tier || 'other') === sourceTierFilter.value)
-
-  return filtered.sort((a, b) => {
-    if (sourceMatrixSort.value === 'first') {
-      return dateValue(a.first_published_at) - dateValue(b.first_published_at)
-    }
-    if (sourceMatrixSort.value === 'count') {
-      return b.article_count - a.article_count || dateValue(a.first_published_at) - dateValue(b.first_published_at)
-    }
-    if (sourceMatrixSort.value === 'stance') {
-      return a.dominant_stance.localeCompare(b.dominant_stance, 'zh-CN') || b.article_count - a.article_count
-    }
-    return tierRank(a.tier) - tierRank(b.tier) || b.article_count - a.article_count
-  })
-})
-
-const articleCategoryGroups = computed(() => {
-  const groups = new Map<string, Article[]>()
-  for (const article of filteredArticles.value) {
-    const key = article.category || '行动进展'
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)?.push(article)
-  }
-  return [...groups.entries()]
-    .map(([category, items]) => ({ category, items }))
-    .sort((a, b) => b.items.length - a.items.length || a.category.localeCompare(b.category, 'zh-CN'))
-})
-
-const visibleArticleGroups = computed(() => {
-  if (articleCategoryFilter.value === 'all') return articleCategoryGroups.value
-  return articleCategoryGroups.value.filter((group) => group.category === articleCategoryFilter.value)
-})
-
-const articleCategoryOptions = computed(() => [
-  { key: 'all', label: '全部分类' },
-  ...articleCategoryGroups.value.map((group) => ({
-    key: group.category,
-    label: `${group.category} ${group.items.length}`,
-  })),
-])
-
-const filteredArticles = computed(() => {
-  const needle = query.value.trim().toLowerCase()
-  if (!needle) return articles.value
-  return articles.value.filter((article) =>
-    [
-      article.title,
-      article.title_zh,
-      article.source,
-      article.snippet,
-      article.snippet_zh,
-      article.stance,
-      article.stance_summary,
-    ]
-      .join(' ')
-      .toLowerCase()
-      .includes(needle),
-  )
-})
-
-const stanceGroups = computed(() => {
-  const counts = new Map<string, number>()
-  for (const article of articles.value) {
-    const key = article.stance || (article.enriched ? '未标注' : '本地待判定')
-    counts.set(key, (counts.get(key) || 0) + 1)
-  }
-  return [...counts.entries()]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 6)
+const {
+  searching,
+  deepAnalyzing,
+  crossSynthesisAnalyzing,
+  academicAnalyzing,
+  sentimentAnalyzing,
+  crossSynthesisLoading,
+  academicLoading,
+  sentimentLoading,
+  eventSearch,
+  searchMessage,
+  searchSteps,
+  searchWarnings,
+  activeJobId,
+  activeDeepJobId,
+  activeCrossSynthesisJobId,
+  activeAcademicJobId,
+  activeSentimentJobId,
+  terminalJob,
+  deepMessage,
+  deepSteps,
+  crossSynthesisMessage,
+  crossSynthesisError,
+  crossSynthesisSteps,
+  academicMessage,
+  academicError,
+  academicSteps,
+  sentimentLayer,
+  sentimentMessage,
+  sentimentError,
+  sentimentSteps,
+  collectDiagnostics,
+  safeAcademicSummaryHtml,
+  safeSentimentSummaryHtml,
+  safeCrossSynthesisHtml,
+  crossVoicesUsed,
+  crossChainItems,
+  hasCrossSynthesis,
+  academicPapers,
+  academicSchools,
+  academicFoundationalPapers,
+  academicCitationEdges,
+  hasAcademicLayer,
+  sentimentPosts,
+  hasSentimentLayer,
+  sentimentPostItems,
+  sentimentCommentItems,
+  sentimentCommentsByParent,
+  sentimentPlatformGroups,
+  sentimentPlatformLabels,
+  loadAcademicLayer,
+  loadSentimentLayer,
+  loadCrossSynthesisLayer,
+  resetCrossSynthesisState,
+  resetAcademicState,
+  resetSentimentState,
+  runEventSearch,
+  rerunTerminalJob,
+  runDeepAnalysis,
+  runAcademicAnalysis,
+  runSentimentAnalysis,
+  runCrossSynthesis,
+  canRerunJob,
+  stepStatusText,
+  sentimentPlatformLabel,
+  voiceLabel,
+} = useJobRunner({
+  selectedTopicId,
+  localData,
+  selectedEventIndex,
+  error,
+  loadTopics,
+  loadTopic,
+  loadArticles,
+  loadLocalEvents,
 })
 
 onMounted(async () => {
@@ -350,8 +182,7 @@ watch(selectedTopicId, async (id) => {
     resetCrossSynthesisState()
     resetAcademicState()
     resetSentimentState()
-    selectedEventIndex.value = 0
-    expandedTimelineIndex.value = null
+    resetSelectedEvent()
     await Promise.all([
       loadTopic(id),
       loadArticles(id),
@@ -362,98 +193,6 @@ watch(selectedTopicId, async (id) => {
     ])
   }
 })
-
-watch(majorEvents, () => {
-  if (selectedEventIndex.value >= majorEvents.value.length) {
-    selectedEventIndex.value = 0
-  }
-  if (expandedTimelineIndex.value !== null && expandedTimelineIndex.value >= majorEvents.value.length) {
-    expandedTimelineIndex.value = null
-  }
-})
-
-watch(selectedEventIndex, () => {
-  sourceTierFilter.value = 'all'
-  sourceMatrixSort.value = 'tier'
-  resetCountryCompare()
-})
-
-async function loadTopics(preferTopicId?: number) {
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await fetchTopics()
-    topics.value = data
-    selectedTopicId.value = preferTopicId || selectedTopicId.value || data[0]?.id || null
-  } catch (err) {
-    error.value = readableError(err)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function loadTopic(id: number) {
-  detail.value = await fetchTopic(id)
-}
-
-async function loadArticles(id: number) {
-  articleLoading.value = true
-  try {
-    const data = await fetchArticles(id, pageSize)
-    articles.value = data.items
-    totalArticles.value = data.total
-  } finally {
-    articleLoading.value = false
-  }
-}
-
-async function loadLocalEvents(id: number) {
-  localLoading.value = true
-  try {
-    localData.value = await fetchLocalEvents(id)
-  } finally {
-    localLoading.value = false
-  }
-}
-
-async function loadAcademicLayer(id: number) {
-  academicLoading.value = true
-  academicError.value = ''
-  try {
-    academicLayer.value = await fetchAcademic(id)
-  } catch (err) {
-    academicError.value = readableError(err)
-    academicLayer.value = null
-  } finally {
-    academicLoading.value = false
-  }
-}
-
-async function loadSentimentLayer(id: number) {
-  sentimentLoading.value = true
-  sentimentError.value = ''
-  try {
-    sentimentLayer.value = await fetchSentiment(id)
-  } catch (err) {
-    sentimentError.value = readableError(err)
-    sentimentLayer.value = null
-  } finally {
-    sentimentLoading.value = false
-  }
-}
-
-async function loadCrossSynthesisLayer(id: number) {
-  crossSynthesisLoading.value = true
-  crossSynthesisError.value = ''
-  try {
-    crossSynthesisLayer.value = await fetchCrossSynthesis(id)
-  } catch (err) {
-    crossSynthesisError.value = readableError(err)
-    crossSynthesisLayer.value = null
-  } finally {
-    crossSynthesisLoading.value = false
-  }
-}
 
 async function loadCountryCompareForSelectedEvent() {
   const topicId = selectedTopicId.value
@@ -475,456 +214,6 @@ function resetCountryCompare() {
   countryCompare.value = null
   countryCompareError.value = ''
   countryCompareEventKey.value = ''
-}
-
-function resetCrossSynthesisState() {
-  crossSynthesisLayer.value = null
-  crossSynthesisJob.value = null
-  crossSynthesisMessage.value = ''
-  crossSynthesisError.value = ''
-  crossSynthesisSteps.value = []
-  activeCrossSynthesisJobId.value = ''
-}
-
-function resetAcademicState() {
-  academicLayer.value = null
-  academicJob.value = null
-  academicMessage.value = ''
-  academicError.value = ''
-  academicSteps.value = []
-  activeAcademicJobId.value = ''
-}
-
-function resetSentimentState() {
-  sentimentLayer.value = null
-  sentimentJob.value = null
-  sentimentMessage.value = ''
-  sentimentError.value = ''
-  sentimentSteps.value = []
-  activeSentimentJobId.value = ''
-}
-
-function toggleTimelineEvent(index: number) {
-  selectedEventIndex.value = index
-  expandedTimelineIndex.value = expandedTimelineIndex.value === index ? null : index
-}
-
-async function runEventSearch() {
-  const term = eventSearch.value.trim()
-  if (!term) return
-  searching.value = true
-  error.value = ''
-  searchMessage.value = ''
-  searchWarnings.value = []
-  terminalJob.value = null
-  collectDiagnostics.value = null
-  searchSteps.value = [
-    { key: 'topic', label: '创建/复用专题', status: 'running' },
-    { key: 'collect', label: '采集新闻', status: 'pending' },
-    { key: 'analyze', label: '本地分析', status: 'pending' },
-  ]
-  try {
-    const job = await createSearchJob(term)
-    activeJobId.value = job.id
-    searchSteps.value = job.steps || searchSteps.value
-    searchMessage.value = `任务已提交：${job.id.slice(0, 8)}`
-    const res = await waitForSearchJob(job.id)
-    await finishSearchJob(res)
-  } catch (err) {
-    error.value = readableError(err)
-    searchSteps.value = searchSteps.value.map((step) =>
-      step.status === 'running' ? { ...step, status: 'failed' } : step,
-    )
-  } finally {
-    searching.value = false
-    activeJobId.value = ''
-  }
-}
-
-async function rerunTerminalJob() {
-  const job = terminalJob.value
-  if (!job || !canRerunJob(job) || searching.value) return
-  searching.value = true
-  error.value = ''
-  searchMessage.value = `正在重新提交任务 ${job.id.slice(0, 8)}...`
-  searchWarnings.value = []
-  collectDiagnostics.value = null
-  try {
-    const newJob = await rerunSearchJob(job.id)
-    activeJobId.value = newJob.id
-    terminalJob.value = null
-    searchSteps.value = newJob.steps || []
-    searchMessage.value = `已重新提交：${newJob.id.slice(0, 8)}`
-    const res = await waitForSearchJob(newJob.id)
-    await finishSearchJob(res)
-  } catch (err) {
-    error.value = readableError(err)
-    searchSteps.value = searchSteps.value.map((step) =>
-      step.status === 'running' ? { ...step, status: 'failed' } : step,
-    )
-  } finally {
-    searching.value = false
-    activeJobId.value = ''
-  }
-}
-
-async function runDeepAnalysis() {
-  const topicId = selectedTopicId.value
-  if (!topicId || deepAnalyzing.value) return
-  deepAnalyzing.value = true
-  error.value = ''
-  deepMessage.value = ''
-  deepJob.value = null
-  deepSteps.value = [
-    { key: 'enrich', label: 'LLM 富化报道', status: 'running' },
-    { key: 'synthesize', label: 'LLM 综合分析', status: 'pending' },
-    { key: 'persist', label: '写入专题档案', status: 'pending' },
-  ]
-  try {
-    const job = await createDeepAnalysisJob(topicId, deepEnrichLimit)
-    activeDeepJobId.value = job.id
-    deepSteps.value = job.steps || deepSteps.value
-    deepMessage.value = `深度分析任务已提交：${job.id.slice(0, 8)}`
-    const resultJob = await waitForDeepAnalysisJob(job.id)
-    await finishDeepAnalysisJob(resultJob)
-  } catch (err) {
-    error.value = readableError(err)
-    deepSteps.value = deepSteps.value.map((step) =>
-      step.status === 'running' ? { ...step, status: 'failed' } : step,
-    )
-  } finally {
-    deepAnalyzing.value = false
-    activeDeepJobId.value = ''
-  }
-}
-
-async function runAcademicAnalysis() {
-  const topicId = selectedTopicId.value
-  if (!topicId || academicAnalyzing.value) return
-  academicAnalyzing.value = true
-  academicError.value = ''
-  academicMessage.value = ''
-  academicJob.value = null
-  academicSteps.value = [
-    { key: 'fetch', label: '拉取 OpenAlex 论文', status: 'running' },
-    { key: 'graph', label: '构建引用图与学派', status: 'pending' },
-    { key: 'synthesize', label: '综合学界共识', status: 'pending' },
-    { key: 'persist', label: '写入学界层', status: 'pending' },
-  ]
-  try {
-    const job = await createAcademicJob(topicId, academicTopN)
-    activeAcademicJobId.value = job.id
-    academicSteps.value = job.steps || academicSteps.value
-    academicMessage.value = `学界任务已提交：${job.id.slice(0, 8)}`
-    const resultJob = await waitForAcademicJob(job.id)
-    await finishAcademicJob(resultJob)
-  } catch (err) {
-    academicError.value = readableError(err)
-    academicSteps.value = academicSteps.value.map((step) =>
-      step.status === 'running' ? { ...step, status: 'failed' } : step,
-    )
-  } finally {
-    academicAnalyzing.value = false
-    activeAcademicJobId.value = ''
-  }
-}
-
-async function runSentimentAnalysis() {
-  const topicId = selectedTopicId.value
-  if (!topicId || sentimentAnalyzing.value) return
-  sentimentAnalyzing.value = true
-  sentimentError.value = ''
-  sentimentMessage.value = ''
-  sentimentJob.value = null
-  sentimentSteps.value = [
-    { key: 'fetch', label: '拉取 Reddit 民间讨论', status: 'running' },
-    { key: 'summarize', label: '批判性总结民间情绪', status: 'pending' },
-    { key: 'persist', label: '写入民间情绪层', status: 'pending' },
-  ]
-  try {
-    const job = await createSentimentJob(topicId, sentimentLimit)
-    activeSentimentJobId.value = job.id
-    sentimentSteps.value = job.steps || sentimentSteps.value
-    sentimentMessage.value = `民间情绪任务已提交：${job.id.slice(0, 8)}`
-    const resultJob = await waitForSentimentJob(job.id)
-    await finishSentimentJob(resultJob)
-  } catch (err) {
-    sentimentError.value = readableError(err)
-    sentimentSteps.value = sentimentSteps.value.map((step) =>
-      step.status === 'running' ? { ...step, status: 'failed' } : step,
-    )
-  } finally {
-    sentimentAnalyzing.value = false
-    activeSentimentJobId.value = ''
-  }
-}
-
-async function runCrossSynthesis() {
-  const topicId = selectedTopicId.value
-  if (!topicId || crossSynthesisAnalyzing.value) return
-  crossSynthesisAnalyzing.value = true
-  crossSynthesisError.value = ''
-  crossSynthesisMessage.value = ''
-  crossSynthesisJob.value = null
-  crossSynthesisSteps.value = [
-    { key: 'gather', label: '汇总媒体/学界/民间声部', status: 'running' },
-    { key: 'synthesize', label: '综合三方对照', status: 'pending' },
-    { key: 'persist', label: '写入三方对照', status: 'pending' },
-  ]
-  try {
-    const job = await createCrossSynthesisJob(topicId)
-    activeCrossSynthesisJobId.value = job.id
-    crossSynthesisSteps.value = job.steps || crossSynthesisSteps.value
-    crossSynthesisMessage.value = `三方对照任务已提交：${job.id.slice(0, 8)}`
-    const resultJob = await waitForCrossSynthesisJob(job.id)
-    await finishCrossSynthesisJob(resultJob)
-  } catch (err) {
-    crossSynthesisError.value = readableError(err)
-    crossSynthesisSteps.value = crossSynthesisSteps.value.map((step) =>
-      step.status === 'running' ? { ...step, status: 'failed' } : step,
-    )
-  } finally {
-    crossSynthesisAnalyzing.value = false
-    activeCrossSynthesisJobId.value = ''
-  }
-}
-
-async function finishSearchJob(job: SearchJob) {
-  terminalJob.value = job
-  if (!job.result) {
-    throw new Error(job.error || '搜索任务未返回结果')
-  }
-  const result = job.result
-  const topicId = result.topic.id
-  localData.value = {
-    events: result.events,
-    framing: result.framing,
-    analysis_md: result.analysis_md,
-    stance_evolution: result.stance_evolution,
-    keywords: result.keywords,
-    entities: result.entities,
-    entity_groups: result.entity_groups,
-    criteria: result.criteria,
-  }
-  selectedEventIndex.value = 0
-  searchSteps.value = result.steps || []
-  searchWarnings.value = result.collect.errors || []
-  collectDiagnostics.value = result.collect
-  searchMessage.value = `采集 ${result.collect.raw} 条，保留 ${result.collect.kept} 条，新增 ${result.collect.new_articles} 篇。`
-  await loadTopics(topicId)
-  await Promise.all([loadTopic(topicId), loadArticles(topicId)])
-}
-
-async function finishDeepAnalysisJob(job: SearchJob) {
-  deepJob.value = job
-  if (!job.result) {
-    throw new Error(job.error || '深度分析任务未返回结果')
-  }
-  if (!isDeepAnalysisResult(job.result)) {
-    throw new Error('深度分析任务返回了未知结果')
-  }
-  if (job.status !== 'done') {
-    throw new Error(job.error || `深度分析任务${stepStatusText(job.status)}`)
-  }
-  const result = job.result
-  localData.value = null
-  selectedEventIndex.value = 0
-  deepSteps.value = job.steps || []
-  deepMessage.value =
-    `LLM 深度分析完成：富化 ${result.enrich.processed} 篇，` +
-    `综合 ${result.synthesize.input_articles} 篇，生成 ${result.synthesize.timeline} 个节点。`
-  await loadTopics(result.topic_id)
-  await Promise.all([loadTopic(result.topic_id), loadArticles(result.topic_id), loadLocalEvents(result.topic_id)])
-}
-
-async function finishAcademicJob(job: SearchJob) {
-  academicJob.value = job
-  if (job.status !== 'done') {
-    throw new Error(job.error || `学界任务${stepStatusText(job.status)}`)
-  }
-  if (job.result && !isAcademicLayer(job.result)) {
-    throw new Error('学界任务返回了未知结果')
-  }
-  academicSteps.value = job.steps || []
-  const topicId = selectedTopicId.value
-  if (topicId) {
-    await loadAcademicLayer(topicId)
-  } else if (isAcademicLayer(job.result)) {
-    academicLayer.value = job.result
-  }
-  const papers = academicLayer.value?.papers.length ?? 0
-  const edges = academicLayer.value?.graph?.edges.length ?? 0
-  academicMessage.value = `学界视角已更新：${papers} 篇论文，${edges} 条内部引用。`
-}
-
-async function finishSentimentJob(job: SearchJob) {
-  sentimentJob.value = job
-  if (job.status !== 'done' && job.status !== 'empty') {
-    throw new Error(job.error || `民间情绪任务${stepStatusText(job.status)}`)
-  }
-  if (job.result && !isSentimentLayer(job.result)) {
-    throw new Error('民间情绪任务返回了未知结果')
-  }
-  sentimentSteps.value = job.steps || []
-  const topicId = selectedTopicId.value
-  if (topicId) {
-    await loadSentimentLayer(topicId)
-  } else if (isSentimentLayer(job.result)) {
-    sentimentLayer.value = job.result
-  }
-  const posts = sentimentLayer.value?.posts.length ?? 0
-  sentimentMessage.value =
-    posts > 0
-      ? `民间情绪已更新：${posts} 条 Reddit 讨论。`
-      : '民间情绪任务完成，但没有抓到可用帖子。'
-}
-
-async function finishCrossSynthesisJob(job: SearchJob) {
-  crossSynthesisJob.value = job
-  if (job.status !== 'done') {
-    throw new Error(job.error || `三方对照任务${stepStatusText(job.status)}`)
-  }
-  if (job.result && !isCrossSynthesis(job.result)) {
-    throw new Error('三方对照任务返回了未知结果')
-  }
-  crossSynthesisSteps.value = job.steps || []
-  const topicId = selectedTopicId.value
-  if (topicId) {
-    await loadCrossSynthesisLayer(topicId)
-  } else if (isCrossSynthesis(job.result)) {
-    crossSynthesisLayer.value = job.result
-  }
-  const voices = crossVoicesUsed.value.length
-  crossSynthesisMessage.value =
-    voices > 0
-      ? `三方对照已更新：使用 ${voices} 个声部。`
-      : '三方对照已更新，但当前没有可用声部数据。'
-}
-
-async function waitForSearchJob(jobId: string) {
-  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-  for (;;) {
-    const job = await fetchSearchJob(jobId)
-    searchSteps.value = job.steps || searchSteps.value
-    if (job.status === 'running' || job.status === 'queued') {
-      searchMessage.value = `任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-    }
-    if (terminal.has(job.status)) {
-      return job
-    }
-    await delay(1200)
-  }
-}
-
-async function waitForDeepAnalysisJob(jobId: string) {
-  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-  for (;;) {
-    const job = await fetchSearchJob(jobId)
-    deepSteps.value = job.steps || deepSteps.value
-    if (job.status === 'running' || job.status === 'queued') {
-      deepMessage.value = `深度分析 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-    }
-    if (terminal.has(job.status)) {
-      return job
-    }
-    await delay(1500)
-  }
-}
-
-async function waitForAcademicJob(jobId: string) {
-  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-  for (;;) {
-    const job = await fetchSearchJob(jobId)
-    academicSteps.value = job.steps || academicSteps.value
-    if (job.status === 'running' || job.status === 'queued') {
-      academicMessage.value = `学界任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-    }
-    if (terminal.has(job.status)) {
-      return job
-    }
-    await delay(1800)
-  }
-}
-
-async function waitForSentimentJob(jobId: string) {
-  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-  for (;;) {
-    const job = await fetchSearchJob(jobId)
-    sentimentSteps.value = job.steps || sentimentSteps.value
-    if (job.status === 'running' || job.status === 'queued') {
-      sentimentMessage.value = `民间情绪任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-    }
-    if (terminal.has(job.status)) {
-      return job
-    }
-    await delay(1800)
-  }
-}
-
-async function waitForCrossSynthesisJob(jobId: string) {
-  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-  for (;;) {
-    const job = await fetchSearchJob(jobId)
-    crossSynthesisSteps.value = job.steps || crossSynthesisSteps.value
-    if (job.status === 'running' || job.status === 'queued') {
-      crossSynthesisMessage.value = `三方对照任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-    }
-    if (terminal.has(job.status)) {
-      return job
-    }
-    await delay(1800)
-  }
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-function canRerunJob(job: SearchJob | null) {
-  return job?.status === 'interrupted' || job?.status === 'failed'
-}
-
-function isDeepAnalysisResult(result: SearchJob['result']): result is DeepAnalysisResult {
-  return Boolean(result && 'topic_id' in result && 'synthesize' in result && 'enrich' in result)
-}
-
-function isAcademicLayer(result: SearchJob['result']): result is AcademicLayer {
-  return Boolean(result && 'papers' in result && 'graph' in result && 'schools' in result && 'summary_md' in result)
-}
-
-function isSentimentLayer(result: SearchJob['result']): result is SentimentLayer {
-  return Boolean(result && 'posts' in result && 'warning' in result && 'platform' in result)
-}
-
-function isCrossSynthesis(result: SearchJob['result']): result is CrossSynthesis {
-  return Boolean(result && 'content_md' in result && 'voices_used' in result && 'generated_at' in result)
-}
-
-function dateValue(value: string | null) {
-  if (!value) return Number.MAX_SAFE_INTEGER
-  const time = new Date(value).getTime()
-  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time
-}
-
-function tierRank(tier: string) {
-  const order = ['wire', 'official', 'professional', 'mainstream', 'aggregator', 'other']
-  const index = order.indexOf(tier || 'other')
-  return index >= 0 ? index : order.length
-}
-
-function showAuthoritySources() {
-  sourceTierFilter.value = 'authority'
-  sourceMatrixSort.value = 'tier'
-}
-
-function showEarliestSources() {
-  sourceTierFilter.value = 'all'
-  sourceMatrixSort.value = 'first'
-}
-
-function showMostCoveredSources() {
-  sourceTierFilter.value = 'all'
-  sourceMatrixSort.value = 'count'
 }
 
 function fmtDate(value: string | null, withTime = false) {
@@ -954,10 +243,6 @@ function importanceText(event: LocalEvent) {
 
 function coverageText(event: LocalEvent) {
   return event.coverage_label || `${event.source_count} 个来源`
-}
-
-function stepStatusText(status: string) {
-  return stepStatusLabels[status] || status
 }
 
 function titleFor(article: Article) {
@@ -1016,39 +301,9 @@ function sentimentCommentsForPost(post: SentimentPost) {
   return sentimentCommentsByParent.value.get(String(post.id || '')) || []
 }
 
-function sentimentPlatformLabel(platform: string) {
-  const labels: Record<string, string> = {
-    reddit: 'Reddit',
-    bilibili: 'B站',
-    xiaohongshu: '小红书',
-    xueqiu: '雪球',
-    unknown: '未知平台',
-  }
-  return labels[platform] || platform
-}
-
-function sentimentPlatformRank(platform: string) {
-  const ranks: Record<string, number> = {
-    reddit: 1,
-    bilibili: 2,
-    xiaohongshu: 3,
-    xueqiu: 4,
-  }
-  return ranks[platform] || 99
-}
-
 function sentimentCommunityLabel(post: SentimentPost) {
   if (post.platform === 'reddit') return `r/${post.subreddit || 'unknown'}`
   return post.subreddit || sentimentPlatformLabel(post.platform)
-}
-
-function voiceLabel(voice: string) {
-  const labels: Record<string, string> = {
-    media: '媒体',
-    academic: '学界',
-    sentiment: '民间',
-  }
-  return labels[voice] || voice
 }
 
 function collectSummary(collect: SearchResponse['collect'] | null) {
@@ -1081,12 +336,6 @@ function countryCoverageNote(country: CountryCompareCountry) {
   return country.is_party ? '当事方，暂无本地媒体报道' : '暂无本地媒体报道'
 }
 
-function readableError(err: unknown) {
-  if (isNetworkError(err)) {
-    return '无法连接到后端服务'
-  }
-  return errorMessage(err)
-}
 </script>
 
 <template>
@@ -1547,19 +796,25 @@ function readableError(err: unknown) {
             </div>
           </article>
 
-          <section class="criteria-panel">
-            <p class="eyebrow">Selection Criteria</p>
-            <h2>关键节点判定标准</h2>
-            <div v-if="criteria.length" class="criteria-grid">
-              <article v-for="item in criteria" :key="item.key">
-                <strong>{{ item.label }} · {{ percent(item.weight) }}</strong>
-                <p>{{ item.description }}</p>
-              </article>
+          <details class="media-collapse criteria-panel">
+            <summary>
+              <strong>关键节点判定标准</strong>
+              <span>{{ criteria.length || (hasLlmAnalysis ? 1 : 0) }} 项</span>
+            </summary>
+            <div class="collapse-body">
+              <p class="eyebrow">Selection Criteria</p>
+              <h2>关键节点判定标准</h2>
+              <div v-if="criteria.length" class="criteria-grid">
+                <article v-for="item in criteria" :key="item.key">
+                  <strong>{{ item.label }} · {{ percent(item.weight) }}</strong>
+                  <p>{{ item.description }}</p>
+                </article>
+              </div>
+              <p v-else-if="hasLlmAnalysis" class="muted">
+                当前时间线由 LLM 深度分析生成，综合依据来自已富化报道的标题、摘要、来源、时间与单篇立场判断。
+              </p>
             </div>
-            <p v-else-if="hasLlmAnalysis" class="muted">
-              当前时间线由 LLM 深度分析生成，综合依据来自已富化报道的标题、摘要、来源、时间与单篇立场判断。
-            </p>
-          </section>
+          </details>
           </template>
 
           <section v-if="activeWorkspaceTab === 'cross'" class="wide-panel cross-synthesis-panel">
@@ -1609,23 +864,29 @@ function readableError(err: unknown) {
             </template>
           </section>
 
-          <section v-if="activeWorkspaceTab === 'media'" class="wide-panel framing-panel">
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Framing</p>
-                <h2>各方态度</h2>
+          <details v-if="activeWorkspaceTab === 'media'" class="media-collapse wide-panel framing-panel">
+            <summary>
+              <strong>各方态度</strong>
+              <span>{{ framing.length }} 方</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="pane-header compact">
+                <div>
+                  <p class="eyebrow">Framing</p>
+                  <h2>各方态度</h2>
+                </div>
+                <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
               </div>
-              <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
+              <div v-if="framing.length" class="framing-list wide-framing-list">
+                <article v-for="item in framing" :key="`${item.party}-${item.stance}`">
+                  <span>{{ item.stance }}</span>
+                  <strong>{{ item.party }}</strong>
+                  <p>{{ item.summary_zh }}</p>
+                </article>
+              </div>
+              <p v-else class="muted">还没有足够样本形成态度分组。</p>
             </div>
-            <div v-if="framing.length" class="framing-list wide-framing-list">
-              <article v-for="item in framing" :key="`${item.party}-${item.stance}`">
-                <span>{{ item.stance }}</span>
-                <strong>{{ item.party }}</strong>
-                <p>{{ item.summary_zh }}</p>
-              </article>
-            </div>
-            <p v-else class="muted">还没有足够样本形成态度分组。</p>
-          </section>
+          </details>
 
           <section v-if="activeWorkspaceTab === 'academic'" class="wide-panel academic-panel">
             <div class="pane-header compact">
@@ -1900,133 +1161,148 @@ function readableError(err: unknown) {
           </section>
 
           <template v-if="activeWorkspaceTab === 'media'">
-          <div class="section-divider">
-            <div>
-              <p class="eyebrow">News Feed</p>
-              <h2>原始报道流</h2>
-            </div>
-            <button class="ghost-button" @click="showArticles = !showArticles">
-              {{ showArticles ? '收起报道' : `展开报道 (${totalArticles})` }}
-            </button>
-          </div>
-
-          <template v-if="showArticles">
-          <div class="mini-chart" aria-label="立场分布">
-            <div v-for="group in stanceGroups" :key="group.name" class="bar-row">
-              <span>{{ group.name }}</span>
-              <div>
-                <i :style="{ width: `${Math.max(8, (group.count / Math.max(1, articles.length)) * 100)}%` }" />
-              </div>
-              <b>{{ group.count }}</b>
-            </div>
-          </div>
-
-          <div v-if="articleCategoryGroups.length" class="article-tools">
-            <label>
-              <span>报道分类</span>
-              <select v-model="articleCategoryFilter" aria-label="报道功能分类筛选">
-                <option v-for="option in articleCategoryOptions" :key="option.key" :value="option.key">
-                  {{ option.label }}
-                </option>
-              </select>
-            </label>
-          </div>
-
-          <p v-if="articleLoading" class="muted">正在加载报道...</p>
-          <p v-else-if="!filteredArticles.length" class="muted">没有匹配的报道。</p>
-
-          <details
-            v-for="group in visibleArticleGroups"
-            :key="group.category"
-            class="article-group"
-            open
-          >
+          <details class="media-collapse article-feed-collapse">
             <summary>
-              <strong>{{ group.category }}</strong>
-              <span>{{ group.items.length }} 篇报道</span>
+              <strong>原始报道流</strong>
+              <span>{{ totalArticles }} 篇</span>
             </summary>
-            <article v-for="article in group.items" :key="article.id" class="article-row">
-              <div class="article-main">
-                <div class="article-meta">
-                  <span>{{ fmtDate(article.published_at, true) }}</span>
-                  <span>{{ article.source || '未知来源' }}</span>
-                  <span>{{ article.source_lang || '未知语言' }}</span>
-                  <span>{{ article.collector }}</span>
-                  <span>{{ article.category || '行动进展' }}</span>
+            <div class="collapse-body">
+              <div class="section-divider">
+                <div>
+                  <p class="eyebrow">News Feed</p>
+                  <h2>原始报道流</h2>
                 </div>
-                <h3>
-                  <a :href="article.url" target="_blank" rel="noreferrer">{{ titleFor(article) }}</a>
-                </h3>
-                <p>{{ snippetFor(article) }}</p>
               </div>
-              <aside>
-                <strong>{{ percent(article.relevance) }}</strong>
-                <span>{{ article.stance || (article.enriched ? '未标注' : '本地待判定') }}</span>
-              </aside>
-            </article>
+
+              <div class="mini-chart" aria-label="立场分布">
+                <div v-for="group in stanceGroups" :key="group.name" class="bar-row">
+                  <span>{{ group.name }}</span>
+                  <div>
+                    <i :style="{ width: `${Math.max(8, (group.count / Math.max(1, articles.length)) * 100)}%` }" />
+                  </div>
+                  <b>{{ group.count }}</b>
+                </div>
+              </div>
+
+              <div v-if="articleCategoryGroups.length" class="article-tools">
+                <label>
+                  <span>报道分类</span>
+                  <select v-model="articleCategoryFilter" aria-label="报道功能分类筛选">
+                    <option v-for="option in articleCategoryOptions" :key="option.key" :value="option.key">
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <p v-if="articleLoading" class="muted">正在加载报道...</p>
+              <p v-else-if="!filteredArticles.length" class="muted">没有匹配的报道。</p>
+
+              <details
+                v-for="group in visibleArticleGroups"
+                :key="group.category"
+                class="article-group"
+                open
+              >
+                <summary>
+                  <strong>{{ group.category }}</strong>
+                  <span>{{ group.items.length }} 篇报道</span>
+                </summary>
+                <article v-for="article in group.items" :key="article.id" class="article-row">
+                  <div class="article-main">
+                    <div class="article-meta">
+                      <span>{{ fmtDate(article.published_at, true) }}</span>
+                      <span>{{ article.source || '未知来源' }}</span>
+                      <span>{{ article.source_lang || '未知语言' }}</span>
+                      <span>{{ article.collector }}</span>
+                      <span>{{ article.category || '行动进展' }}</span>
+                    </div>
+                    <h3>
+                      <a :href="article.url" target="_blank" rel="noreferrer">{{ titleFor(article) }}</a>
+                    </h3>
+                    <p>{{ snippetFor(article) }}</p>
+                  </div>
+                  <aside>
+                    <strong>{{ percent(article.relevance) }}</strong>
+                    <span>{{ article.stance || (article.enriched ? '未标注' : '本地待判定') }}</span>
+                  </aside>
+                </article>
+              </details>
+            </div>
           </details>
-          </template>
           </template>
         </section>
 
         <aside v-if="activeWorkspaceTab === 'media'" class="insight-pane">
-          <section>
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Entity Cloud</p>
-                <h2>关键人物/名词</h2>
-              </div>
-            </div>
-            <div v-if="entities.length" class="entity-groups">
-              <article v-for="group in entityGroups" :key="group.kind">
-                <strong>{{ group.label }}</strong>
-                <div class="entity-list">
-                  <button
-                    v-for="word in group.items"
-                    :key="word.term"
-                    type="button"
-                    class="entity-chip"
-                    :style="{ opacity: 0.66 + word.weight * 0.34 }"
-                    @click="query = word.term"
-                  >
-                    <span>{{ word.term }}</span>
-                    <small>{{ word.count }}</small>
-                  </button>
+          <details class="media-collapse">
+            <summary>
+              <strong>关键人物/组织</strong>
+              <span>{{ entities.length || keywords.length }} 个</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="pane-header compact">
+                <div>
+                  <p class="eyebrow">Entity Cloud</p>
+                  <h2>关键人物/名词</h2>
                 </div>
-              </article>
+              </div>
+              <div v-if="entities.length" class="entity-groups">
+                <article v-for="group in entityGroups" :key="group.kind">
+                  <strong>{{ group.label }}</strong>
+                  <div class="entity-list">
+                    <button
+                      v-for="word in group.items"
+                      :key="word.term"
+                      type="button"
+                      class="entity-chip"
+                      :style="{ opacity: 0.66 + word.weight * 0.34 }"
+                      @click="query = word.term"
+                    >
+                      <span>{{ word.term }}</span>
+                      <small>{{ word.count }}</small>
+                    </button>
+                  </div>
+                </article>
+              </div>
+              <div v-else-if="keywords.length" class="word-cloud">
+                <span
+                  v-for="word in keywords"
+                  :key="word.term"
+                  :style="{ fontSize: keywordSize(word), opacity: 0.55 + word.weight * 0.45 }"
+                >
+                  {{ word.term }}
+                </span>
+              </div>
+              <p v-else class="muted">暂无关键实体。采集报道后会自动生成。</p>
             </div>
-            <div v-else-if="keywords.length" class="word-cloud">
-              <span
-                v-for="word in keywords"
-                :key="word.term"
-                :style="{ fontSize: keywordSize(word), opacity: 0.55 + word.weight * 0.45 }"
-              >
-                {{ word.term }}
-              </span>
-            </div>
-            <p v-else class="muted">暂无关键实体。采集报道后会自动生成。</p>
-          </section>
+          </details>
 
-          <section>
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Attitude Shift</p>
-                <h2>态度随时间变化</h2>
-              </div>
-            </div>
-            <div v-if="stancePeriods.length" class="stance-evolution">
-              <article v-for="period in stancePeriods" :key="period.period">
-                <time>{{ period.period }}</time>
-                <strong>{{ period.dominant_stance }}</strong>
-                <div class="stance-pills">
-                  <span v-for="(count, label) in period.counts" :key="label">
-                    {{ label }} {{ count }}
-                  </span>
+          <details class="media-collapse">
+            <summary>
+              <strong>态度随时间变化</strong>
+              <span>{{ stancePeriods.length }} 期</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="pane-header compact">
+                <div>
+                  <p class="eyebrow">Attitude Shift</p>
+                  <h2>态度随时间变化</h2>
                 </div>
-              </article>
+              </div>
+              <div v-if="stancePeriods.length" class="stance-evolution">
+                <article v-for="period in stancePeriods" :key="period.period">
+                  <time>{{ period.period }}</time>
+                  <strong>{{ period.dominant_stance }}</strong>
+                  <div class="stance-pills">
+                    <span v-for="(count, label) in period.counts" :key="label">
+                      {{ label }} {{ count }}
+                    </span>
+                  </div>
+                </article>
+              </div>
+              <p v-else class="muted">需要更多带时间的报道才能观察态度变化。</p>
             </div>
-            <p v-else class="muted">需要更多带时间的报道才能观察态度变化。</p>
-          </section>
+          </details>
         </aside>
       </section>
     </template>

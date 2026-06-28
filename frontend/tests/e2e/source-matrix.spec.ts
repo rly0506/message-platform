@@ -102,12 +102,48 @@ const localEvents = {
       evidence_articles: [],
     },
   ],
-  framing: [],
+  framing: [
+    {
+      id: 1,
+      party: '冲突/安全',
+      stance: '基本稳定',
+      summary_zh: '多家媒体集中讨论冲突升级风险。',
+      article_ids: [1, 2],
+    },
+    {
+      id: 2,
+      party: '影响/后果',
+      stance: '近期增强',
+      summary_zh: '金融媒体关注油价与市场影响。',
+      article_ids: [2],
+    },
+  ],
   analysis_md: '本地规则分析',
-  stance_evolution: [],
+  stance_evolution: [
+    {
+      period: '2026-06',
+      dominant_stance: '冲突/安全',
+      counts: { '冲突/安全': 2, '影响/后果': 1 },
+      article_ids: [1, 2, 3],
+    },
+  ],
   keywords: [],
-  entities: [],
-  entity_groups: [],
+  entities: [
+    { term: '伊朗', count: 3, weight: 0.8, kind: 'place', kind_label: '地点' },
+    { term: '白宫', count: 2, weight: 0.6, kind: 'organization', kind_label: '组织' },
+  ],
+  entity_groups: [
+    {
+      kind: 'place',
+      label: '地点',
+      items: [{ term: '伊朗', count: 3, weight: 0.8, kind: 'place', kind_label: '地点' }],
+    },
+    {
+      kind: 'organization',
+      label: '组织',
+      items: [{ term: '白宫', count: 2, weight: 0.6, kind: 'organization', kind_label: '组织' }],
+    },
+  ],
   criteria: [
     { key: 'authority', label: '权威来源', description: '是否由权威来源报道。', weight: 0.22 },
   ],
@@ -206,8 +242,8 @@ test('filters and sorts the event source matrix', async ({ page }) => {
 
   await page.getByLabel('来源层级筛选').selectOption('wire')
   await expect(page.getByText('显示 1 / 3 个来源')).toBeVisible()
-  await expect(page.getByText('Reuters reports US-Iran strike risk')).toBeVisible()
-  await expect(page.getByText('Oil markets react to US-Iran conflict')).toBeHidden()
+  await expect(page.locator('.source-matrix-table').getByText('Reuters reports US-Iran strike risk')).toBeVisible()
+  await expect(page.locator('.source-matrix-table').getByText('Oil markets react to US-Iran conflict')).toBeHidden()
 
   await page.getByRole('button', { name: '权威来源' }).click()
   await expect(page.getByText('显示 3 / 3 个来源')).toBeVisible()
@@ -222,7 +258,7 @@ test('filters and sorts the event source matrix', async ({ page }) => {
 test('groups original articles by report category', async ({ page }) => {
   await page.goto('/')
 
-  await page.getByRole('button', { name: /展开报道/ }).click()
+  await page.locator('details.article-feed-collapse > summary').click()
   await expect(page.locator('.article-group').filter({ hasText: '触发事件' })).toBeVisible()
   await expect(page.locator('.article-group').filter({ hasText: '影响后果' })).toBeVisible()
 
@@ -240,4 +276,42 @@ test('renders source matrix controls on mobile without horizontal overflow', asy
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)
   expect(overflow).toBe(false)
+})
+
+test('keeps secondary media panels collapsed with count summaries by default', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: '事件发展轴' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '美国与伊朗冲突进入关键节点' })).toBeVisible()
+
+  const collapsedPanels = [
+    {
+      name: /关键节点判定标准.*1 项/,
+      hiddenText: '是否由权威来源报道。',
+    },
+    {
+      name: /各方态度.*2 方/,
+      hiddenText: '金融媒体关注油价与市场影响。',
+    },
+    {
+      name: /原始报道流.*3 篇/,
+      hiddenText: 'oil market impact',
+    },
+    {
+      name: /关键人物\/组织.*2 个/,
+      hiddenText: '白宫',
+    },
+    {
+      name: /态度随时间变化.*1 期/,
+      hiddenText: '2026-06',
+    },
+  ]
+
+  for (const panel of collapsedPanels) {
+    const toggle = page.locator('details.media-collapse > summary').filter({ hasText: panel.name })
+    await expect(toggle).toBeVisible()
+    await expect(page.getByText(panel.hiddenText)).toBeHidden()
+    await toggle.click()
+    await expect(page.getByText(panel.hiddenText)).toBeVisible()
+  }
 })
