@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=120)
+    collect: bool = True
+    gdelt: bool = False
+    years: int = Field(default=1, ge=1, le=10)
+    min_relevance: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class DeepAnalysisRequest(BaseModel):
+    enrich_limit: int = Field(default=30, ge=0, le=200)
+
+
+class AcademicAnalysisRequest(BaseModel):
+    top_n: int = Field(default=30, ge=1, le=50)
+
+
+class SentimentAnalysisRequest(BaseModel):
+    limit: int = Field(default=25, ge=1, le=100)
+
+
+class SearchStep(BaseModel):
+    key: str
+    label: str
+    status: str
+
+
+class CollectionRequestStats(BaseModel):
+    id: str
+    collector: str
+    query: str
+    raw_count: int
+    kept_count: int
+    status: str
+    error: str = ""
+
+
+class CollectionTimeSpan(BaseModel):
+    start: str | None = None
+    end: str | None = None
+
+
+class CollectionStats(BaseModel):
+    raw: int = 0
+    kept: int = 0
+    new_articles: int = 0
+    new_links: int = 0
+    source_count: int = 0
+    collector_counts: dict[str, int] = {}
+    time_span: CollectionTimeSpan = CollectionTimeSpan()
+    requests: list[CollectionRequestStats] = []
+    errors: list[str] = []
+
+
+class SearchJobPayload(BaseModel):
+    id: str
+    query: str
+    status: str
+    steps: list[dict[str, str]]
+    created_at: str | None
+    updated_at: str | None
+    result: dict[str, Any] | None
+    error: str

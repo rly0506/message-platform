@@ -1,0 +1,81 @@
+{
+  "curated_feeds": [
+    {
+      "name": "Agence France-Presse",
+      "url": "https://www.afp.com/en/rss.xml",
+      "country": "France",
+      "lang": "en",
+      "tier": "wire"
+    },
+    {
+      "name": "Al Jazeera",
+      "url": "https://www.aljazeera.com/xml/rss/all.xml",
+      "country": "Qatar",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "The New York Times",
+      "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "country": "United States",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "The Guardian",
+      "url": "https://www.theguardian.com/world/rss",
+      "country": "United Kingdom",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "BBC",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "country": "United Kingdom",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "The Washington Post",
+      "url": "https://feeds.washingtonpost.com/rss/world",
+      "country": "United States",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "DW",
+      "url": "https://rss.dw.com/xml/rss-en-all",
+      "country": "Germany",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "France 24",
+      "url": "https://www.france24.com/en/rss",
+      "country": "France",
+      "lang": "en",
+      "tier": "mainstream"
+    },
+    {
+      "name": "The Economist",
+      "url": "https://www.economist.com/international/rss.xml",
+      "country": "United Kingdom",
+      "lang": "en",
+      "tier": "professional"
+    },
+    {
+      "name": "Foreign Affairs",
+      "url": "https://www.foreignaffairs.com/rss.xml",
+      "country": "United States",
+      "lang": "en",
+      "tier": "professional"
+    },
+    {
+      "name": "Foreign Policy",
+      "url": "https://foreignpolicy.com/feed/",
+      "country": "United States",
+      "lang": "en",
+      "tier": "professional"
+    }
+  ]
+}

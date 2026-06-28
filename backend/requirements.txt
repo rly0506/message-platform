@@ -1,0 +1,17 @@
+# Phase 1: collect + store + prefilter
+httpx>=0.27          # GDELT API
+feedparser>=6.0      # RSS / Google News RSS
+sqlmodel>=0.0.22     # SQLite ORM (SQLAlchemy + Pydantic)
+rapidfuzz>=3.9       # fuzzy title dedup
+jieba>=0.42          # optional Chinese segmentation for local entity/keyword extraction
+spacy>=3.8           # optional zh/en NER; install models separately with python -m spacy download
+json-repair>=0.30    # repair malformed LLM JSON (unescaped quotes etc.)
+python-dotenv>=1.0   # .env loader
+PyYAML>=6.0          # OpenCLI YAML output parsing
+typer>=0.12          # CLI
+pytest>=8.2          # backend regression tests
+
+# Phase 1 LLM layer / Phase 2 Web (installed now, used later)
+anthropic>=0.40      # Claude API (enrich + synthesize)
+fastapi>=0.115       # read-only API
+uvicorn>=0.30        # ASGI server

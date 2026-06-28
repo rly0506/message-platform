@@ -1,0 +1,484 @@
+"""Reusable topic collection and local analysis operations."""
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime, timedelta
+from typing import Any
+
+from sqlmodel import Session, select
+
+from app import feed_registry
+from app.collectors import gdelt, rss
+from app.db import Analysis, Article, SourceFraming, TimelineEvent, Topic, TopicArticle
+from app.pipeline import enrich as enrichp
+from app.pipeline import local_analyze, prefilter
+from app.pipeline import synthesize as synthp
+
+
+LLM_ANALYSIS_MARKER = "<!-- analysis-source: llm -->"
+
+
+def query_variants(text: str) -> list[str]:
+    text = text.strip()
+    if not text:
+        return []
+    variants = [text]
+    if any("\u4e00" <= char <= "\u9fff" for char in text):
+        variants.append(f"{text} 最新 影响")
+    else:
+        variants.append(f"{text} latest impact")
+    return list(dict.fromkeys(variants))
+
+
+def get_or_create_topic(session: Session, name: str, queries: list[str] | None = None) -> Topic:
+    existing = session.exec(select(Topic).where(Topic.name == name)).first()
+    if existing:
+        if queries:
+            merged = list(dict.fromkeys([*(existing.queries or []), *queries]))
+            existing.queries = merged
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+        return existing
+
+    topic = Topic(
+        name=name,
+        description=f"由搜索词「{name}」临时创建的事件追踪专题。",
+        queries=queries or query_variants(name),
+    )
+    session.add(topic)
+    session.commit()
+    session.refresh(topic)
+    return topic
+
+
+def collect_topic(
+    session: Session,
+    topic: Topic,
+    gnews: bool = True,
+    gdelt_on: bool = False,
+    years: int = 1,
+    feeds: list[str] | None = None,
+    min_rel: float = 0.0,
+    use_curated_feeds: bool = False,
+) -> dict[str, Any]:
+    raw: list[dict] = []
+    errors: list[str] = []
+    requests: list[dict[str, Any]] = []
+    feeds = feeds or []
+
+    for q in topic.queries:
+        if gnews:
+            request_id = _request_id("gnews", len(requests))
+            try:
+                items = rss.collect_gnews(q)
+                raw += _tag_items(items, request_id)
+                requests.append(_request_stats(request_id, "gnews", q, len(items)))
+            except Exception as exc:
+                error = f"gnews {q!r}: {type(exc).__name__}: {exc}"
+                errors.append(error)
+                requests.append(_request_stats(request_id, "gnews", q, 0, error=error))
+        if gdelt_on:
+            request_id = _request_id("gdelt", len(requests))
+            try:
+                end = datetime.utcnow()
+                start = end - timedelta(days=365 * years)
+                items = gdelt.collect(q, start, end)
+                raw += _tag_items(items, request_id)
+                requests.append(_request_stats(request_id, "gdelt", q, len(items)))
+            except Exception as exc:
+                error = f"gdelt {q!r}: {type(exc).__name__}: {exc}"
+                errors.append(error)
+                requests.append(_request_stats(request_id, "gdelt", q, 0, error=error))
+
+    feed_requests = [{"url": url, "metadata": None} for url in feeds]
+    if use_curated_feeds:
+        feed_requests.extend(
+            {"url": feed["url"], "metadata": feed}
+            for feed in feed_registry.curated_feeds()
+        )
+
+    for feed_request in feed_requests:
+        url = feed_request["url"]
+        metadata = feed_request["metadata"]
+        request_id = _request_id("rss", len(requests))
+        try:
+            items = rss.collect_feed(url, metadata=metadata)
+            raw += _tag_items(items, request_id)
+            requests.append(_request_stats(request_id, "rss", url, len(items)))
+        except Exception as exc:
+            error = f"rss {url!r}: {type(exc).__name__}: {exc}"
+            errors.append(error)
+            requests.append(_request_stats(request_id, "rss", url, 0, error=error))
+
+    known_urls = {prefilter.normalize_url(a.url) for a in session.exec(select(Article)).all()}
+    linked_ids = [
+        ta.article_id
+        for ta in session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic.id)).all()
+    ]
+    known_titles = (
+        [a.title for a in session.exec(select(Article).where(Article.id.in_(linked_ids))).all()]
+        if linked_ids
+        else []
+    )
+    kept = prefilter.dedup_and_score(raw, topic.queries, known_urls, known_titles, min_rel)
+    kept_by_request = Counter(item.get("_request_id", "") for item in kept)
+    for request in requests:
+        request["kept_count"] = kept_by_request.get(request["id"], 0)
+
+    new_articles = 0
+    new_links = 0
+    for item in kept:
+        art = session.exec(select(Article).where(Article.url == item["norm_url"])).first()
+        if not art:
+            art = Article(
+                url=item["norm_url"],
+                title=item.get("title", ""),
+                source=item.get("source", ""),
+                source_lang=item.get("source_lang", ""),
+                source_country=item.get("source_country", ""),
+                published_at=item.get("published_at"),
+                snippet=item.get("snippet", ""),
+                collector=item.get("collector", ""),
+            )
+            session.add(art)
+            session.commit()
+            session.refresh(art)
+            new_articles += 1
+        link = session.get(TopicArticle, (topic.id, art.id))
+        if not link:
+            session.add(TopicArticle(topic_id=topic.id, article_id=art.id, relevance=item["relevance"]))
+            new_links += 1
+    session.commit()
+
+    return {
+        "raw": len(raw),
+        "kept": len(kept),
+        "new_articles": new_articles,
+        "new_links": new_links,
+        "source_count": len({item.get("source", "") for item in kept if item.get("source")}),
+        "collector_counts": dict(Counter(item.get("collector", "unknown") for item in kept)),
+        "time_span": _time_span(kept),
+        "requests": requests,
+        "errors": errors,
+    }
+
+
+def analyze_topic(session: Session, topic: Topic, persist: bool = True) -> dict[str, Any]:
+    rows_db = session.exec(
+        select(TopicArticle, Article)
+        .where(TopicArticle.article_id == Article.id)
+        .where(TopicArticle.topic_id == topic.id)
+        .where(TopicArticle.relevant == True)  # noqa: E712
+    ).all()
+    rows = []
+    for ta, art in rows_db:
+        stance = ta.stance or local_analyze.infer_stance(
+            art.title_zh or art.title,
+            art.snippet_zh or art.snippet,
+        )
+        if not ta.stance:
+            ta.stance = stance
+            ta.stance_summary = f"本地规则根据标题/摘要判定为：{stance}"
+        rows.append(local_analyze.ArticleRow(
+            id=art.id,
+            title=art.title_zh or art.title,
+            source=art.source,
+            published_at=art.published_at,
+            snippet=art.snippet_zh or art.snippet,
+            relevance=ta.relevance,
+            stance=stance,
+        ))
+
+    data = local_analyze.analyze_topic(topic.name, rows)
+    if persist:
+        _persist_analysis(session, topic.id, data)
+    data["article_count"] = len(rows)
+    return data
+
+
+def run_deep_analysis(
+    session: Session,
+    topic: Topic,
+    *,
+    enrich_limit: int = 30,
+    on_step: Any | None = None,
+) -> dict[str, Any]:
+    enrich_stats = enrich_topic_articles(
+        session,
+        topic,
+        limit=enrich_limit,
+        on_step=on_step,
+    )
+    if on_step:
+        on_step("synthesize", "running")
+    data = synthesize_topic(session, topic)
+    if on_step:
+        on_step("synthesize", "done")
+    if on_step:
+        on_step("persist", "running")
+    persist_synthesis(session, topic.id, data)
+    if on_step:
+        on_step("persist", "done")
+    return {
+        "topic_id": topic.id,
+        "topic_name": topic.name,
+        "enrich": enrich_stats,
+        "synthesize": {
+            "input_articles": data.get("input_articles", 0),
+            "timeline": len(data.get("timeline", [])),
+            "framing": len(data.get("framing", [])),
+            "analysis_chars": len(data.get("analysis_md", "")),
+            "calls": 3,
+        },
+        "timeline": data.get("timeline", []),
+        "framing": data.get("framing", []),
+        "analysis_md": data.get("analysis_md", ""),
+    }
+
+
+def enrich_topic_articles(
+    session: Session,
+    topic: Topic,
+    *,
+    limit: int = 30,
+    on_step: Any | None = None,
+) -> dict[str, Any]:
+    pending = session.exec(
+        select(TopicArticle, Article)
+        .where(TopicArticle.article_id == Article.id)
+        .where(TopicArticle.topic_id == topic.id)
+        .where(Article.enriched == False)  # noqa: E712
+    ).all()
+    pending = pending[: max(0, limit)]
+    stats = {
+        "limit": limit,
+        "pending": len(pending),
+        "processed": 0,
+        "relevant": 0,
+        "batches": 0,
+        "calls": 0,
+        "errors": [],
+    }
+    if not pending:
+        if on_step:
+            on_step("enrich", "done", stats)
+        return stats
+
+    for i in range(0, len(pending), enrichp.BATCH):
+        if on_step:
+            on_step("enrich", "running", stats)
+        chunk = pending[i:i + enrichp.BATCH]
+        stats["batches"] += 1
+        stats["calls"] += 1
+        items = [
+            {
+                "id": article.id,
+                "lang": article.source_lang,
+                "title": article.title,
+                "snippet": article.snippet,
+            }
+            for _, article in chunk
+        ]
+        try:
+            results = enrichp.enrich_batch(topic.name, topic.description, items)
+        except Exception as exc:  # pragma: no cover - defensive LLM boundary
+            stats["errors"].append(f"batch {stats['batches']}: {type(exc).__name__}: {exc}")
+            continue
+        for topic_article, article in chunk:
+            row = results.get(article.id)
+            if not row:
+                continue
+            if row.get("title_zh") and not article.title_zh:
+                article.title_zh = row["title_zh"]
+            if row.get("snippet_zh") and not article.snippet_zh:
+                article.snippet_zh = row["snippet_zh"]
+            article.enriched = True
+            topic_article.relevant = bool(row.get("relevant", True))
+            topic_article.relevance = float(row.get("relevance", topic_article.relevance) or 0)
+            topic_article.stance = row.get("stance") or "中立"
+            topic_article.stance_summary = row.get("stance_summary", "")
+            stats["processed"] += 1
+            stats["relevant"] += int(topic_article.relevant)
+        session.commit()
+
+    if on_step:
+        on_step("enrich", "done" if not stats["errors"] else "warning", stats)
+    return stats
+
+
+def synthesize_topic(session: Session, topic: Topic) -> dict[str, Any]:
+    rows_db = session.exec(
+        select(TopicArticle, Article)
+        .where(TopicArticle.article_id == Article.id)
+        .where(TopicArticle.topic_id == topic.id)
+        .where(TopicArticle.relevant == True)  # noqa: E712
+        .where(TopicArticle.stance != "")
+    ).all()
+    if not rows_db:
+        raise RuntimeError("没有已富化且相关的文章，请先运行富化。")
+
+    rows = [
+        {
+            "id": article.id,
+            "date": article.published_at.strftime("%Y-%m-%d") if article.published_at else "????-??-??",
+            "source": article.source,
+            "lang": article.source_lang,
+            "stance": topic_article.stance,
+            "title_zh": article.title_zh or article.title,
+        }
+        for topic_article, article in rows_db
+    ]
+    rows.sort(key=lambda row: row["date"])
+    data = synthp.synthesize(topic.name, topic.description, rows)
+    data["input_articles"] = len(rows)
+    return data
+
+
+def persist_synthesis(session: Session, topic_id: int, data: dict[str, Any]) -> None:
+    analysis_md = data.get("analysis_md", "")
+    if analysis_md and LLM_ANALYSIS_MARKER not in analysis_md:
+        analysis_md = f"{LLM_ANALYSIS_MARKER}\n{analysis_md}"
+    _persist_analysis(
+        session,
+        topic_id,
+        {
+            "events": data.get("timeline", []),
+            "framing": data.get("framing", []),
+            "analysis_md": analysis_md,
+        },
+    )
+
+
+def remove_topic(session: Session, topic_id: int, *, dry_run: bool = True) -> dict[str, Any]:
+    topic = session.get(Topic, topic_id)
+    if not topic:
+        return {
+            "found": False,
+            "topic_id": topic_id,
+            "topic_name": "",
+            "links": 0,
+            "exclusive_articles": 0,
+            "timeline": 0,
+            "framing": 0,
+            "analysis": 0,
+            "deleted": False,
+        }
+
+    links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic_id)).all()
+    article_ids = [link.article_id for link in links]
+    exclusive_article_ids = []
+    for article_id in article_ids:
+        shared_link = session.exec(
+            select(TopicArticle)
+            .where(TopicArticle.article_id == article_id)
+            .where(TopicArticle.topic_id != topic_id)
+        ).first()
+        if not shared_link:
+            exclusive_article_ids.append(article_id)
+
+    timeline = session.exec(select(TimelineEvent).where(TimelineEvent.topic_id == topic_id)).all()
+    framing = session.exec(select(SourceFraming).where(SourceFraming.topic_id == topic_id)).all()
+    analyses = session.exec(select(Analysis).where(Analysis.topic_id == topic_id)).all()
+    result = {
+        "found": True,
+        "topic_id": topic_id,
+        "topic_name": topic.name,
+        "links": len(links),
+        "exclusive_articles": len(exclusive_article_ids),
+        "timeline": len(timeline),
+        "framing": len(framing),
+        "analysis": len(analyses),
+        "deleted": False,
+    }
+    if dry_run:
+        return result
+
+    for row in [*timeline, *framing, *analyses]:
+        session.delete(row)
+    for link in links:
+        session.delete(link)
+    for article_id in exclusive_article_ids:
+        article = session.get(Article, article_id)
+        if article:
+            session.delete(article)
+    session.delete(topic)
+    session.commit()
+    result["deleted"] = True
+    return result
+
+
+def _persist_analysis(session: Session, topic_id: int, data: dict[str, Any]) -> None:
+    for model in (TimelineEvent, SourceFraming, Analysis):
+        for old in session.exec(select(model).where(model.topic_id == topic_id)).all():
+            session.delete(old)
+    session.commit()
+
+    for ev in data.get("events", []):
+        session.add(TimelineEvent(
+            topic_id=topic_id,
+            date=_parse_date(ev.get("date")),
+            title_zh=ev.get("title_zh", ""),
+            summary_zh=ev.get("summary_zh", ""),
+            article_ids=ev.get("article_ids", []),
+        ))
+    for fr in data.get("framing", []):
+        session.add(SourceFraming(
+            topic_id=topic_id,
+            party=fr.get("party", ""),
+            stance=fr.get("stance", ""),
+            summary_zh=fr.get("summary_zh", ""),
+            article_ids=fr.get("article_ids", []),
+        ))
+    session.add(Analysis(topic_id=topic_id, content_md=data.get("analysis_md", "")))
+    session.commit()
+
+
+def _parse_date(value: str | None):
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y"):
+        try:
+            return datetime.strptime(value, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _request_id(kind: str, index: int) -> str:
+    return f"{kind}-{index + 1}"
+
+
+def _request_stats(
+    request_id: str,
+    collector: str,
+    query: str,
+    raw_count: int,
+    error: str = "",
+) -> dict[str, Any]:
+    return {
+        "id": request_id,
+        "collector": collector,
+        "query": query,
+        "raw_count": raw_count,
+        "kept_count": 0,
+        "status": "failed" if error else "ok",
+        "error": error,
+    }
+
+
+def _tag_items(items: list[dict], request_id: str) -> list[dict]:
+    out = []
+    for item in items:
+        tagged = dict(item)
+        tagged["_request_id"] = request_id
+        out.append(tagged)
+    return out
+
+
+def _time_span(items: list[dict]) -> dict[str, str | None]:
+    dates = sorted(item.get("published_at") for item in items if item.get("published_at"))
+    return {
+        "start": dates[0].isoformat() if dates else None,
+        "end": dates[-1].isoformat() if dates else None,
+    }

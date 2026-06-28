@@ -1,0 +1,310 @@
+"""Read-only FastAPI surface for the dossier database."""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Session, select
+
+from app.db import (
+    Analysis,
+    Article,
+    SentimentPost,
+    SourceFraming,
+    TimelineEvent,
+    Topic,
+    TopicArticle,
+    SearchJob,
+    engine,
+    init_db,
+)
+from app.pipeline import local_analyze
+from app.schemas.search import AcademicAnalysisRequest, DeepAnalysisRequest, SearchRequest, SentimentAnalysisRequest
+from app.services import country_compare, payloads, search_service
+from app.pipeline import academic, cross_synthesis, sentiment
+
+app = FastAPI(
+    title="Dossier API",
+    version="0.1.0",
+    description="Read-only API for collected topic dossiers.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    search_service.mark_interrupted_search_jobs()
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/topics")
+def list_topics() -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        topics = session.exec(select(Topic).order_by(Topic.created_at.desc())).all()
+        return [payloads.topic_summary(session, topic) for topic in topics]
+
+
+@app.get("/api/topics/{topic_id}")
+def get_topic(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        summary = payloads.topic_summary(session, topic)
+        timeline = session.exec(
+            select(TimelineEvent)
+            .where(TimelineEvent.topic_id == topic_id)
+            .order_by(TimelineEvent.date)
+        ).all()
+        framing = session.exec(
+            select(SourceFraming).where(SourceFraming.topic_id == topic_id)
+        ).all()
+        analyses = session.exec(
+            select(Analysis)
+            .where(Analysis.topic_id == topic_id)
+            .order_by(Analysis.generated_at.desc())
+        ).all()
+
+        summary["timeline"] = [payloads.timeline_event(row) for row in timeline]
+        summary["framing"] = [payloads.source_framing(row) for row in framing]
+        summary["analysis"] = payloads.analysis_payload(analyses[0]) if analyses else None
+        return summary
+
+
+@app.get("/api/topics/{topic_id}/articles")
+def list_articles(
+    topic_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        rows = session.exec(
+            select(TopicArticle, Article)
+            .where(TopicArticle.article_id == Article.id)
+            .where(TopicArticle.topic_id == topic_id)
+        ).all()
+        rows.sort(key=lambda pair: pair[1].published_at or datetime.min, reverse=True)
+        page = rows[offset : offset + limit]
+
+        return {
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+            "items": [payloads.article_payload(topic_article, article) for topic_article, article in page],
+        }
+
+
+@app.get("/api/topics/{topic_id}/local-events")
+def local_events(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        rows = session.exec(
+            select(TopicArticle, Article)
+            .where(TopicArticle.article_id == Article.id)
+            .where(TopicArticle.topic_id == topic_id)
+            .where(TopicArticle.relevant == True)  # noqa: E712
+        ).all()
+        evidence_lookup = payloads.article_evidence_lookup(rows)
+        article_rows = [
+            local_analyze.ArticleRow(
+                id=article.id,
+                title=article.title_zh or article.title,
+                source=article.source,
+                published_at=article.published_at,
+                snippet=article.snippet_zh or article.snippet,
+                relevance=topic_article.relevance,
+                stance=topic_article.stance
+                or local_analyze.infer_stance(
+                    article.title_zh or article.title,
+                    article.snippet_zh or article.snippet,
+                ),
+            )
+            for topic_article, article in rows
+        ]
+        data = local_analyze.analyze_topic(topic.name, article_rows)
+        data["events"] = payloads.attach_event_evidence(data["events"], evidence_lookup)
+        return {
+            "topic_id": topic_id,
+            "events": data["events"],
+            "framing": data["framing"],
+            "analysis_md": data["analysis_md"],
+            "stance_evolution": data["stance_evolution"],
+            "keywords": data["keywords"],
+            "entities": data["entities"],
+            "entity_groups": data["entity_groups"],
+            "criteria": data["criteria"],
+        }
+
+
+@app.get("/api/topics/{topic_id}/country-compare")
+def country_compare_view(
+    topic_id: int,
+    article_ids: list[str] | None = Query(default=None),
+) -> dict[str, Any]:
+    scoped_article_ids = parse_article_ids(article_ids)
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return country_compare.build_country_compare(session, topic, scoped_article_ids)
+
+
+@app.get("/api/topics/{topic_id}/academic")
+def academic_view(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return academic.academic_payload(
+            session,
+            topic,
+            summary_md=latest_academic_summary(session, topic),
+        )
+
+
+@app.get("/api/topics/{topic_id}/sentiment")
+def sentiment_view(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return sentiment.sentiment_payload_from_db(
+            session,
+            topic,
+            summary_md=latest_sentiment_summary(session, topic),
+        )
+
+
+@app.get("/api/topics/{topic_id}/cross-synthesis")
+def cross_synthesis_view(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return cross_synthesis.cross_synthesis_payload_from_db(session, topic)
+
+
+@app.post("/api/search")
+def search_and_collect(payload: SearchRequest) -> dict[str, Any]:
+    return search_service.run_search(payload)
+
+
+@app.post("/api/search/jobs")
+def create_search_job(payload: SearchRequest) -> dict[str, Any]:
+    return search_service.enqueue_search_job(payload)
+
+
+@app.post("/api/topics/{topic_id}/deep-analysis/jobs")
+def create_deep_analysis_job(
+    topic_id: int,
+    payload: DeepAnalysisRequest | None = None,
+) -> dict[str, Any]:
+    enrich_limit = payload.enrich_limit if payload else 30
+    return search_service.enqueue_deep_analysis_job(topic_id, enrich_limit)
+
+
+@app.post("/api/topics/{topic_id}/academic/jobs")
+def create_academic_analysis_job(
+    topic_id: int,
+    payload: AcademicAnalysisRequest | None = None,
+) -> dict[str, Any]:
+    top_n = payload.top_n if payload else 30
+    return search_service.enqueue_academic_analysis_job(topic_id, top_n)
+
+
+@app.post("/api/topics/{topic_id}/sentiment/jobs")
+def create_sentiment_analysis_job(
+    topic_id: int,
+    payload: SentimentAnalysisRequest | None = None,
+) -> dict[str, Any]:
+    limit = payload.limit if payload else 25
+    return search_service.enqueue_sentiment_analysis_job(topic_id, limit)
+
+
+@app.post("/api/topics/{topic_id}/cross-synthesis/jobs")
+def create_cross_synthesis_job(topic_id: int) -> dict[str, Any]:
+    return search_service.enqueue_cross_synthesis_job(topic_id)
+
+
+@app.post("/api/search/jobs/{job_id}/rerun")
+def rerun_search_job(job_id: str) -> dict[str, Any]:
+    return search_service.rerun_search_job(job_id)
+
+
+@app.get("/api/search/jobs/{job_id}")
+def get_search_job(job_id: str) -> dict[str, Any]:
+    return search_service.job_snapshot(job_id)
+
+
+def parse_article_ids(values: list[str] | None) -> list[int] | None:
+    if not values:
+        return None
+    ids: list[int] = []
+    for value in values:
+        for part in str(value).split(","):
+            part = part.strip()
+            if part:
+                ids.append(int(part))
+    return ids or None
+
+
+def latest_academic_summary(session: Session, topic: Topic) -> str:
+    jobs = session.exec(
+        select(SearchJob)
+        .where(SearchJob.status == "done")
+        .where(SearchJob.query == f"academic:{topic.name}")
+        .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
+    ).all()
+    for job in jobs:
+        payload = job.payload or {}
+        if payload.get("kind") != "academic_analysis":
+            continue
+        if int(payload.get("topic_id") or 0) != topic.id:
+            continue
+        result = job.result or {}
+        summary = result.get("summary_md")
+        if isinstance(summary, str) and summary.strip():
+            return summary
+    return ""
+
+
+def latest_sentiment_summary(session: Session, topic: Topic) -> str:
+    jobs = session.exec(
+        select(SearchJob)
+        .where(SearchJob.status == "done")
+        .where(SearchJob.query == f"sentiment:{topic.name}")
+        .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
+    ).all()
+    for job in jobs:
+        payload = job.payload or {}
+        if payload.get("kind") != "sentiment_analysis":
+            continue
+        if int(payload.get("topic_id") or 0) != topic.id:
+            continue
+        result = job.result or {}
+        summary = result.get("summary_md")
+        if isinstance(summary, str) and summary.strip():
+            return summary
+    return ""
