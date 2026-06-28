@@ -1,6 +1,6 @@
 # ChinaNewsMap / Dossier Intelligence 项目路径规划
 
-最后更新：2026-06-21
+最后更新：2026-06-28
 
 ## 1. 项目重新定位
 
@@ -46,56 +46,68 @@
 
 ## 4. 当前已完成能力
 
+> 说明：本节描述截至 2026-06-28 的真实代码状态。项目已从单一"媒体"分析，扩展为**三方对照情报台**：同一事件同时从 **媒体 / 学界 / 民间** 三个声音采集、分析，再做交叉综合。核心链路在无 LLM 时仍可运行；LLM 仅作增强。06-21 之后的逐项进展见第 21 节。
+
 ### 4.1 后端能力
 
-当前后端位于 `backend/`，核心能力包括：
+当前后端位于 `backend/`，FastAPI 入口 `backend/app/api.py`，SQLite 存储 `backend/app/db.py`。
 
-- FastAPI 服务入口：`backend/app/api.py`
-- SQLite 数据存储：`backend/app/db.py`
-- Google News RSS / GDELT 新闻采集
-- 专题、文章、专题文章关联、时间线事件、来源立场、分析结果存储
-- 本地规则分析：`backend/app/pipeline/local_analyze.py`
-- 搜索任务持久化：`SearchJob`
-- 后台任务接口：
-  - `POST /api/search/jobs`
-  - `GET /api/search/jobs/{job_id}`
-  - `POST /api/search/jobs/{job_id}/rerun`
-- 服务重启时将遗留的 `queued/running` 任务标记为 `interrupted`
-- 中断或失败任务可重新运行
-- 事件节点支持证据报道 `evidence_articles`
-- 事件节点支持来源矩阵 `source_matrix`
-- 规则配置已外置到 `backend/config/rule_config.json`
+实际 API 端点（17 个）：
+
+- 基础：`GET /api/health`、`GET /api/topics`、`GET /api/topics/{id}`、`GET /api/topics/{id}/articles`
+- 媒体分析：`GET /api/topics/{id}/local-events`（本地规则时间轴 + 关键节点）、`GET /api/topics/{id}/country-compare`（多国对比）
+- 学界：`GET /api/topics/{id}/academic`
+- 民间：`GET /api/topics/{id}/sentiment`
+- 三方对照：`GET /api/topics/{id}/cross-synthesis`
+- 同步搜索：`POST /api/search`
+- 后台任务（统一经 `JobRunner` 生命周期）：`POST /api/search/jobs`、`POST /api/topics/{id}/deep-analysis/jobs`、`POST /api/topics/{id}/academic/jobs`、`POST /api/topics/{id}/sentiment/jobs`、`POST /api/topics/{id}/cross-synthesis/jobs`、`POST /api/search/jobs/{id}/rerun`、`GET /api/search/jobs/{id}`
+
+采集层 `backend/app/collectors/`：
+
+- `gnews` Google News RSS、`rss.py`（11 个策展源，带 country/lang/tier 元数据，见 `backend/config/feeds.json`）
+- `gdelt.py`（多国对比数据，当前 IP 被 429 封）
+- `openalex.py`（学术论文，2026-02 起需 API key，relevance 排序）
+- `reddit_sentiment.py`（多平台民间声音：B站 / 小红书 / 雪球 / Reddit，经 OpenCLI 驱动真实 Chrome 采集，含帖子 + 评论）
+
+分析管线 `backend/app/pipeline/`（本地规则为主）：
+
+- `local_analyze.py`（门面，183 行）入口 `analyze_topic()`，内部已拆分为：`clustering.py`（聚类/标题清洗/jaccard）、`scoring.py`（事件装配/评分/来源矩阵/分析）、`entities.py`（关键词/实体/spaCy/jieba 分组）、`categorization.py`（立场/报道功能分类）
+- `academic.py`（CJK→英文查询翻译、摘要重建、引用收敛图、学界综合）
+- `sentiment.py`（民间情绪分析）
+- `cross_synthesis.py`（三方对照：共识/矛盾/各自盲区/机制重建/批判提示）
+- `enrich.py` / `synthesize.py`（LLM 增强层）
+
+服务层 `backend/app/services/`：`search_service.py`（`JobRunner` 统一 5 类任务生命周期）、`payloads.py`（序列化）、`country_compare.py`（按国家归类报道）。
+
+LLM 层 `backend/app/llm.py`：双协议（OpenAI-compatible / Anthropic-compatible），当前走 Pixel API（`ai-pixel.online`），`HAIKU_MODEL=gpt-5.4-mini`、`SYNTH_MODEL=gpt-5.4`。
+
+特性：搜索任务持久化 `SearchJob`；服务重启将遗留 `queued/running` 标记为 `interrupted`，可重跑；事件节点带 `evidence_articles`、`source_matrix`、`importance_label`、`coverage_label`、`location_signals`；规则配置外置 `backend/config/rule_config.json`。
 
 ### 4.2 前端能力
 
-当前前端位于 `frontend/`，核心能力包括：
+当前前端位于 `frontend/`（Vue 3 + TS + Vite，`App.vue` 639 行，已从 2057 行拆薄）。
 
-- 事件关键词搜索界面
-- 搜索任务提交与轮询
-- 搜索任务 ID、步骤状态、失败/中断状态展示
-- 中断或失败任务的重新运行入口
-- 事件发展时间轴
-- 关键节点详情
-- 节点证据报道展示
-- 来源矩阵表格
-- 来源层级筛选
-- 来源矩阵排序
-- 关键人物、组织、地点、概念分组展示
-- 原始报道流折叠/整理方向已形成
+工作台按 Tab 分为 5 个面板（`frontend/src/components/`，组件只收 props/发 emits，不自拉数据）：
+
+- `MediaPanel.vue`：事件时间轴、关键节点详情、证据报道、来源矩阵（层级筛选/排序/快捷按钮）、关键实体分组、原始报道折叠分组、多国对比视图
+- `AcademicPanel.vue`：学界论文、引用收敛图、学界综合
+- `SentimentPanel.vue`：民间多平台帖子 + 评论
+- `CrossPanel.vue`：三方对照综合（共识/矛盾/盲区/机制/批判）
+- `LlmPanel.vue`：LLM 深度分析
+
+数据获取集中在 composable（`useTopicData.ts` / `useJobRunner.ts` / `useEventWorkbench.ts`）：搜索提交、任务轮询、状态/失败/中断展示、重跑入口、markdown 渲染（marked + DOMPurify 统一封装）。
 
 ### 4.3 测试与验证
 
-当前已有验证能力：
-
-- 后端 pytest 回归测试
+- 后端 pytest 回归（含 `test_local_analyze_golden.py` 黄金快照，保护 `analyze_topic` 输出逐字段不变）
 - 前端生产构建验证
 - Playwright 端到端测试
-- 来源矩阵桌面端和移动端基础检查
+- 来源矩阵桌面端/移动端基础检查
 
-常用验证命令：
+常用验证命令（注意：必须用项目虚拟环境的 Python，系统 Python 没装 pytest）：
 
 ```powershell
-python -m pytest backend/tests -q
+venv\Scripts\python.exe -m pytest backend\tests -q
 cd frontend
 npm run build
 npm run test:e2e
@@ -1047,3 +1059,71 @@ venv\Scripts\python.exe backend\cli.py llm-check --model gpt-5.4
 1. 先执行前端组件拆分，降低 `App.vue` 复杂度。
 2. 再设计 LLM 增强结果在前端的呈现方式：不要覆盖本地分析，而是作为可折叠的“AI 综合层”。
 3. 最后用一个真实事件做端到端验证：搜索 -> 富化 -> 综合 -> 前端展示 -> 人工评估证据质量。
+
+## 21. 三方对照架构与发现方向（2026-06-28）
+
+本节记录 06-21 之后的进展。核心变化：项目从"媒体单一声音"扩展为**媒体 / 学界 / 民间三方对照**，并完成一轮架构重构、依赖清理、GitHub 备份，且开始探索"事件发现"这一新方向。
+
+### 21.1 三个声音（媒体 / 学界 / 民间）
+
+产品认知升级：同一事件不该只看媒体怎么报，而要三方对照。
+
+- **媒体声音（已有，强化）**：新增**多国对比视图** `country-compare`，按"当事国 + 主权国家（G20 ∪ 涉事方）"归类报道，看谁先报、各国侧重差异。`country_of_source` 用词边界匹配避免媒体名子串误判（dw→DE、aws→US 这类）。
+- **学界声音（新增，"重度"层）**：`academic.py` + `openalex.py`。CJK 话题先经 LLM 翻成英文查询（"美伊战争"直译会捞到 0 引用的无关论文，"US Iran war" 才相关），再取论文 + 构建**引用收敛图**。已知特性：新事件引用边稀疏（美伊战争 edges=0 正常），成熟话题才富（亚洲金融危机 12 边）。需 OpenAlex API key（2026-02 起政策变更）。
+- **民间声音（新增，"最该被怀疑的一角"）**：`reddit_sentiment.py` 多平台 —— B站 / 小红书 / 雪球 / Reddit，经 OpenCLI 驱动真实 Chrome 采集，绕过沙箱计费网关。采集规则：每平台默认排序取 K=5 帖、每帖 M=10 评论，逐帖 try/except 容错。Reddit 用英文查询、中文平台用原中文名。雪球对非财经话题返回 0 = 正确降级。
+
+### 21.2 三方对照综合（cross-synthesis）
+
+`cross_synthesis.py` 把三个声音喂给 LLM，输出 5 个区块：**三方共识 / 三方矛盾 / 各自盲区 / 机制重建（"分析机制与因果，不做道德归责"）/ 批判提示（"民间情绪是非事实源"）**。
+
+- `gather_voices` 对缺失声音优雅降级（某一路超时不影响其余）。
+- 容错链：`run_cross_voice_step` 单声音失败只记录不中断，因 LLM 网关偶发 ReadTimeout/SSL EOF（网络不稳，非代码问题）。
+- 实测在真实话题上三方齐发成功（媒体/学界/民间链路均 done，民间含 B站20 + 小红书17 + Reddit30 帖 + 50 评论）。
+
+### 21.3 架构重构（H / I / J 三阶段）
+
+先建基线提交 `2333a53` 保证可回滚，再逐阶段验收、各自独立提交：
+
+- **H 前端组件拆分**（`834af15`）：`App.vue` 2057→639 行，抽出 5 个面板组件，组件零 fetch（数据留在 composable）。
+- **I JobRunner 去重**（`185be03`）：5 类任务生命周期统一为 `JobRunner`，`api.py` 零改动（API 契约不变），554→538 行。
+- **J local_analyze 拆分**（`8ed7aaa` 黄金测试 + `35db70e` 拆分）：**黄金快照测试先行**（15 处断言锁定输出），再把 1075→183 行的门面拆成 clustering/scoring/entities/categorization 四模块。`analyze_topic` 签名不变。拆分后黄金测试仍过 = 行为逐字段保住。
+
+教训记录：早期 E+F+G 三个任务的 git diff 曾因"验收后未即时提交"缠在一起，之后改为**每个验收通过的任务立即独立提交**。
+
+### 21.4 依赖清理（Ponytail 审视）
+
+用 Ponytail 插件只读审视，GPT 执行：
+
+- `acf3341`：删未用前端依赖（unplugin-auto-import / unplugin-vue-components）+ 死 CSS（.run-hint 等 4 个类）。
+- `b85209a`：合并 3 处重复 markdown 渲染为 `renderMarkdown()`、合并 5 个 `waitFor*Job` 轮询。
+- 保留 `local_analyze.py` 门面转发函数（被测试和 country_compare 兼容使用，删了不划算）。
+
+> 注：本批清理 GPT 已提交进库，Claude 侧的 K1–K4 逐项复核（删依赖后 build 仍过、CSS 零引用、渲染抽取等价、轮询语义不变）尚未完成。
+
+### 21.5 GitHub 备份
+
+代码已推送至 `https://github.com/rly0506/message-platform`（master）。推送前做了三层密钥扫描（历史文件名 / 全历史 key 模式 / 深度 blob 扫描），确认 `backend/.env`（含真实 ANTHROPIC + OPENALEX key）从未进库，只有空占位的 `.env.example`；`dossier.db` 也已忽略。**当前为公开仓库。**
+
+### 21.6 已知约束（诚实记录）
+
+- **GDELT 429 IP 封锁**：持续，VPN 更糟（数据中心 IP 封得更狠）。需住宅 IP + 冷却，代码已就绪、未恢复。真实格式确认：sourcecountry 为英文全名（"China"/"United States"）。
+- **LLM 网关不稳**：偶发 ReadTimeout / SSL EOF / 503，已用容错链兜底。
+- **Claude 沙箱网络**：bash 走计费网关，部分外部域名（arXiv export、raw.githubusercontent）被拦，需改走 GitHub API 或 WebFetch 兜底。
+- **spaCy**：zh/en 模型手动装（`spacy download` 给 403），不可用时降级 jieba。
+
+### 21.7 新方向：从"搜索"到"发现"
+
+详见 `docs/future-directions.md`。核心问题：现有全部功能都是**搜索**（用户得先叫得出名字），但真正痛点是**发现**（认知之外、叫不出名字的事件）。
+
+- 已认清的硬道理：**零输入下"完全认知之外 + 低噪声"互斥** —— 任何发现系统都需先验（领域/信任源/重要性定义），"扫世界只捞对我重要的"是神谕不是工具。
+- 可行解法：**借别人架好的"注意力前沿"**（HN / arXiv / 智库 / GDELT），订阅"圈子里冒头、还没出圈"的东西。
+- 关键信号不是"最大"而是"**加速**"（从低基数在长），这要求存**每日快照基线**比 delta —— 发现系统必须有记忆，这是它和无状态的搜索最本质的区别。
+- 已做**零成本验证**（HN + arXiv 真实数据）：核心假设成立（技术圈种子确实捞得到），但噪声占快一半（需二级 LLM 分拣折叠），且"加速检测"需多日基线才能验。
+- 领域局限（结构性）：HN/arXiv 偏技术圈。换领域需换源 —— 政治时事的对口引擎是 **GDELT**（报道量异常突增 = 政治版加速检测），但受 GDELT 封锁 + 中文敏感议题审查双重约束。
+
+### 21.8 当前待办
+
+- 前端三方对照面板与后端 academic/sentiment/cross 端点的整合复核（确认能点火、能展示）。
+- Ponytail 清理 K1–K4 的 Claude 侧复核。
+- "事件发现"领域选定（技术 / 金融 / 政治时事），再逐领域验证源可得性与信号质量。
+- GDELT 待住宅 IP 冷却后回填。

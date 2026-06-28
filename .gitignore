@@ -5,6 +5,8 @@ __pycache__/
 backend/.env
 backend/dossier.db
 backend/dossier.db.bak-*
+backend/discovery.db
+backend/discovery_reports/
 
 # Node
 node_modules/
