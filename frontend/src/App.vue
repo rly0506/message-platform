@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { fetchCountryCompare } from './api/dossierApi'
+import AcademicPanel from './components/AcademicPanel.vue'
+import CrossPanel from './components/CrossPanel.vue'
+import LlmPanel from './components/LlmPanel.vue'
+import MediaPanel from './components/MediaPanel.vue'
+import SentimentPanel from './components/SentimentPanel.vue'
 import { useEventWorkbench } from './composables/useEventWorkbench'
 import { useJobRunner } from './composables/useJobRunner'
 import { readableError, useTopicData } from './composables/useTopicData'
@@ -501,809 +506,133 @@ function countryCoverageNote(country: CountryCompareCountry) {
       </nav>
 
       <section class="workspace">
-        <section :class="['feed-pane', { 'tab-pane-wide': activeWorkspaceTab !== 'media' }]">
-          <template v-if="activeWorkspaceTab === 'media'">
-          <div class="pane-header">
-            <div>
-              <p class="eyebrow">Event Timeline</p>
-              <h2>事件发展轴</h2>
-            </div>
-            <input v-model="query" class="search" placeholder="筛选报道标题、来源、摘要" />
-          </div>
-
-          <p v-if="localLoading" class="muted">正在用本地规则计算重大事件...</p>
-          <div v-else-if="majorEvents.length" class="timeline-visual">
-            <article
-              v-for="(event, index) in majorEvents"
-              :key="`${event.date}-${event.title_zh}`"
-              :class="['timeline-item', { active: index === selectedEventIndex, expanded: index === expandedTimelineIndex }]"
-            >
-              <button class="timeline-node" type="button" @click="toggleTimelineEvent(index)">
-                <span class="node-dot" />
-                <time>{{ fmtDate(event.date) }}</time>
-                <strong>{{ event.title_zh }}</strong>
-                <em>{{ hasLlmAnalysis ? 'LLM 生成' : `${importanceText(event)} · ${coverageText(event)}` }}</em>
-              </button>
-              <div v-if="index === expandedTimelineIndex" class="timeline-inline-detail">
-                <p>{{ event.summary_zh }}</p>
-                <div class="event-tags compact-tags">
-                  <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-                  <span>{{ event.category || '进展/报道' }}</span>
-                  <span>{{ event.article_count }} 篇报道</span>
-                  <span>{{ event.source_count }} 个来源</span>
-                  <span>{{ event.stance }}</span>
-                </div>
-                <div v-if="event.selection_basis?.length" class="basis-list">
-                  <strong>入选依据</strong>
-                  <span v-for="basis in event.selection_basis" :key="basis">{{ basis }}</span>
-                </div>
-                <div v-if="event.sources?.length" class="source-list">
-                  <strong>主要来源</strong>
-                  <span v-for="source in event.sources" :key="source.name">
-                    {{ source.name }} {{ source.count }} · {{ source.tier_label || '其他来源' }}
-                  </span>
-                </div>
-                <p v-if="event.category_reason" class="event-reason">
-                  阶段依据：{{ event.category_reason }}
-                </p>
-              </div>
-            </article>
-          </div>
-          <p v-else class="muted">目前文章还不足以聚合出关键节点。请搜索并采集更多报道。</p>
-
-          <article v-if="selectedEvent" class="event-detail">
-            <div class="event-title-row">
-              <div>
-                <p class="eyebrow">Selected Node</p>
-                <h2>{{ selectedEvent.title_zh }}</h2>
-              </div>
-              <div class="event-actions">
-                <span class="score">{{ hasLlmAnalysis ? 'LLM 生成' : `${importanceText(selectedEvent)} · ${coverageText(selectedEvent)}` }}</span>
-                <button
-                  type="button"
-                  class="ghost-button country-trigger"
-                  :disabled="countryCompareLoading"
-                  @click="loadCountryCompareForSelectedEvent"
-                >
-                  {{ countryCompareLoading ? '读取中...' : '各国怎么报道' }}
-                </button>
-              </div>
-            </div>
-            <p>{{ selectedEvent.summary_zh }}</p>
-            <div class="event-tags">
-              <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-              <span>{{ selectedEvent.category || '进展/报道' }}</span>
-              <span>{{ importanceText(selectedEvent) }}</span>
-              <span>{{ coverageText(selectedEvent) }}</span>
-              <span>{{ selectedEvent.source_count }} 个来源</span>
-              <span>{{ selectedEvent.article_count }} 篇报道</span>
-              <span>{{ selectedEvent.stance }}</span>
-              <span v-if="selectedEvent.evidence?.date_span_days">
-                持续 {{ selectedEvent.evidence.date_span_days }} 天
-              </span>
-            </div>
-            <p v-if="selectedEvent.category_reason" class="event-reason">
-              阶段依据：{{ selectedEvent.category_reason }}
-            </p>
-            <p v-if="!hasLlmAnalysis" class="event-caveat">
-              证据范围：当前仅使用标题、摘要、来源、发布时间和链接进行本地规则判断，不等同于全文事实核查。
-            </p>
-            <p v-else class="event-caveat llm-caveat">
-              证据范围：该节点由 LLM 基于已富化报道综合生成，仍应回到原始报道核对事实与上下文。
-            </p>
-
-            <div v-if="selectedEvent.selection_basis?.length" class="basis-list">
-              <strong>入选依据</strong>
-              <span v-for="basis in selectedEvent.selection_basis" :key="basis">{{ basis }}</span>
-            </div>
-
-            <div v-if="selectedEvent.location_signals?.length" class="basis-list">
-              <strong>地点线索</strong>
-              <span v-for="place in selectedEvent.location_signals" :key="place.term">
-                {{ place.term }} {{ place.count }}
-              </span>
-            </div>
-
-            <div v-if="selectedEvent.sources?.length" class="source-list">
-              <strong>主要来源</strong>
-              <span v-for="source in selectedEvent.sources" :key="source.name">
-                {{ source.name }} {{ source.count }} · {{ source.tier_label || '其他来源' }}
-              </span>
-            </div>
-
-            <div v-if="selectedEvent.source_tiers?.length" class="source-list">
-              <strong>来源层级</strong>
-              <span v-for="tier in selectedEvent.source_tiers" :key="tier.key">
-                {{ tier.label }} {{ tier.count }}
-              </span>
-            </div>
-
-            <div v-if="selectedEvent.source_matrix?.length" class="source-matrix">
-              <div class="evidence-header">
-                <strong>来源矩阵</strong>
-                <span>显示 {{ visibleSourceMatrix.length }} / {{ selectedEvent.source_matrix.length }} 个来源</span>
-              </div>
-              <div class="source-matrix-tools">
-                <button type="button" class="ghost-button" @click="showAuthoritySources">权威来源</button>
-                <button type="button" class="ghost-button" @click="showEarliestSources">首见来源</button>
-                <button type="button" class="ghost-button" @click="showMostCoveredSources">报道最多</button>
-                <label>
-                  <span>层级</span>
-                  <select v-model="sourceTierFilter" aria-label="来源层级筛选">
-                    <option v-for="option in sourceTierOptions" :key="option.key" :value="option.key">
-                      {{ option.label }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>排序</span>
-                  <select v-model="sourceMatrixSort" aria-label="来源矩阵排序">
-                    <option value="tier">来源层级</option>
-                    <option value="first">首见时间</option>
-                    <option value="count">报道数量</option>
-                    <option value="stance">主导立场</option>
-                  </select>
-                </label>
-              </div>
-              <div class="source-matrix-table">
-                <div class="source-matrix-head">
-                  <span>来源</span>
-                  <span>首见时间</span>
-                  <span>分类/立场</span>
-                  <span>报道</span>
-                </div>
-                <article v-for="source in visibleSourceMatrix" :key="source.source">
-                  <div>
-                    <strong>{{ source.source }}</strong>
-                    <small>{{ source.tier_label || '其他来源' }}</small>
-                  </div>
-                  <time>{{ fmtDate(source.first_published_at, true) }}</time>
-                  <span>{{ source.dominant_category || '行动进展' }} · {{ source.dominant_stance || '中性观察' }}</span>
-                  <b>{{ source.article_count }}</b>
-                  <p>{{ source.representative_title }}</p>
-                </article>
-                <p v-if="!visibleSourceMatrix.length" class="source-matrix-empty">当前筛选下没有来源。</p>
-              </div>
-            </div>
-
-            <div v-if="selectedEvent.evidence?.first_sources?.length" class="first-source-list">
-              <strong>首批来源</strong>
-              <article v-for="source in selectedEvent.evidence.first_sources" :key="`${source.name}-${source.title}`">
-                <span>{{ fmtDate(source.published_at, true) }}</span>
-                <b>{{ source.name }}</b>
-                <em>{{ source.tier_label || '其他来源' }}</em>
-                <p>{{ source.title }}</p>
-              </article>
-            </div>
-
-            <div v-if="selectedEvent.evidence_articles?.length" class="evidence-list">
-              <div class="evidence-header">
-                <strong>证据报道</strong>
-                <span>展示前 {{ selectedEvent.evidence_articles.length }} 篇关联报道</span>
-              </div>
-              <article v-for="article in selectedEvent.evidence_articles" :key="article.id">
-                <div>
-                  <time>{{ fmtDate(article.published_at, true) }}</time>
-                  <span>{{ article.source || '未知来源' }}</span>
-                  <span>{{ article.collector || 'unknown' }}</span>
-                  <span>{{ article.category || '行动进展' }}</span>
-                  <span>相关度 {{ percent(article.relevance) }}</span>
-                </div>
-                <h3>
-                  <a :href="article.url" target="_blank" rel="noreferrer">{{ article.title }}</a>
-                </h3>
-                <p>{{ evidenceSnippet(article) }}</p>
-              </article>
-            </div>
-
-            <section class="country-compare-panel">
-              <div class="evidence-header">
-                <div>
-                  <strong>各国怎么报道</strong>
-                  <span v-if="hasCountryCompare">
-                    {{ visibleCountryCompare?.article_scope_count || 0 }} 篇关联报道 ·
-                    另有 {{ visibleCountryCompare?.unmapped_count || 0 }} 篇未识别来源国
-                  </span>
-                  <span v-else>按当前事件的关联报道生成多国媒体对比</span>
-                </div>
-                <button
-                  type="button"
-                  class="ghost-button"
-                  :disabled="countryCompareLoading"
-                  @click="loadCountryCompareForSelectedEvent"
-                >
-                  {{ hasCountryCompare ? '刷新对比' : '生成对比' }}
-                </button>
-              </div>
-
-              <p v-if="countryCompareError" class="country-compare-error">
-                {{ countryCompareError }}
-              </p>
-              <p v-else-if="countryCompareLoading" class="muted">正在读取多国对比...</p>
-
-              <template v-else-if="visibleCountryCompare">
-                <p v-if="visibleCountryCompare.unmapped_count > 0" class="coverage-gap">
-                  另有 {{ visibleCountryCompare.unmapped_count }} 篇报道暂未能根据媒体名识别来源国家。
-                </p>
-
-                <div class="first-reporters">
-                  <div class="evidence-header">
-                    <strong>谁先报</strong>
-                    <span>{{ firstReporterTimeline.length }} 条首报线索</span>
-                  </div>
-                  <ol v-if="firstReporterTimeline.length">
-                    <li v-for="reporter in firstReporterTimeline" :key="`${reporter.article_id}-${reporter.outlet}`">
-                      <time>{{ fmtDate(reporter.date, true) }}</time>
-                      <b>{{ countryFlag(reporter.country_code) }} {{ reporter.country_name }}</b>
-                      <span>{{ reporter.outlet }}</span>
-                      <p>{{ reporter.title }}</p>
-                    </li>
-                  </ol>
-                  <p v-else class="source-matrix-empty">当前事件没有可排序的首报记录。</p>
-                </div>
-
-                <div class="country-card-grid">
-                  <article
-                    v-for="country in countryCards"
-                    :key="country.code"
-                    :class="['country-card', { party: country.is_party, empty: country.article_count === 0 }]"
-                  >
-                    <div class="country-card-head">
-                      <div>
-                        <strong>{{ countryFlag(country.code) }} {{ country.name }}</strong>
-                        <small>{{ country.code }}</small>
-                      </div>
-                      <span>{{ country.article_count }} 篇</span>
-                    </div>
-                    <div class="country-badges">
-                      <span v-if="country.is_party">当事方</span>
-                      <span v-if="country.is_g20">G20</span>
-                      <span v-if="country.party_mention_count">提及 {{ country.party_mention_count }}</span>
-                    </div>
-                    <p v-if="countryCoverageNote(country)" class="country-empty-note">
-                      {{ countryCoverageNote(country) }}
-                    </p>
-                    <div v-if="topStanceEntries(country).length" class="stance-pills country-stances">
-                      <span v-for="[label, count] in topStanceEntries(country)" :key="label">
-                        {{ label }} {{ count }}
-                      </span>
-                    </div>
-                    <p class="country-outlets">
-                      <b>媒体</b>
-                      {{ outletSummary(country) }}
-                    </p>
-                    <p v-if="country.first_report" class="country-first-report">
-                      <b>首报</b>
-                      {{ fmtDate(country.first_report.date, true) }} · {{ country.first_report.outlet }}
-                    </p>
-                    <ul v-if="country.sample_titles.length" class="country-samples">
-                      <li v-for="title in country.sample_titles.slice(0, 3)" :key="title">{{ title }}</li>
-                    </ul>
-                  </article>
-                </div>
-              </template>
-            </section>
-
-            <div class="breakdown-grid">
-              <div v-for="item in selectedEvent.score_breakdown" :key="item.label">
-                <div class="breakdown-head">
-                  <strong>{{ item.label }}</strong>
-                  <span>{{ percent(item.value) }}</span>
-                </div>
-                <i :style="{ width: percent(item.value) }" />
-                <p>{{ item.reason }}</p>
-              </div>
-            </div>
-          </article>
-
-          <details class="media-collapse criteria-panel">
-            <summary>
-              <strong>关键节点判定标准</strong>
-              <span>{{ criteria.length || (hasLlmAnalysis ? 1 : 0) }} 项</span>
-            </summary>
-            <div class="collapse-body">
-              <p class="eyebrow">Selection Criteria</p>
-              <h2>关键节点判定标准</h2>
-              <div v-if="criteria.length" class="criteria-grid">
-                <article v-for="item in criteria" :key="item.key">
-                  <strong>{{ item.label }} · {{ percent(item.weight) }}</strong>
-                  <p>{{ item.description }}</p>
-                </article>
-              </div>
-              <p v-else-if="hasLlmAnalysis" class="muted">
-                当前时间线由 LLM 深度分析生成，综合依据来自已富化报道的标题、摘要、来源、时间与单篇立场判断。
-              </p>
-            </div>
-          </details>
-          </template>
-
-          <section v-if="activeWorkspaceTab === 'cross'" class="wide-panel cross-synthesis-panel">
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Cross Synthesis</p>
-                <h2>三方对照</h2>
-              </div>
-              <button type="button" class="cross-primary-button" :disabled="crossSynthesisAnalyzing" @click="runCrossSynthesis">
-                {{ crossSynthesisAnalyzing ? '生成中...' : hasCrossSynthesis ? '刷新三方对照' : '生成三方对照' }}
-              </button>
-            </div>
-
-            <div class="cross-synthesis-note">
-              <strong>媒体 / 学界 / 民间的交叉校验</strong>
-              <span>点击后会依次尝试更新媒体、学界、民间声部；单个声部失败不会阻断最终综合。</span>
-              <span>综合共识、矛盾、盲区、机制链条和批判提示；民间情绪始终按非事实源处理。</span>
-            </div>
-
-            <p v-if="activeCrossSynthesisJobId" class="search-message">三方对照任务：{{ activeCrossSynthesisJobId.slice(0, 8) }}</p>
-            <p v-if="crossSynthesisMessage" class="search-message">{{ crossSynthesisMessage }}</p>
-            <div v-if="crossSynthesisSteps.length" class="step-list deep-step-list">
-              <span v-for="step in crossSynthesisSteps" :key="step.key" :class="`step-${step.status}`">
-                {{ step.label }} · {{ stepStatusText(step.status) }}
-              </span>
-            </div>
-
-            <div v-if="hasCrossSynthesis || crossSynthesisSteps.length" class="cross-chain-status">
-              <article v-for="item in crossChainItems" :key="item.key" :class="`chain-${item.status}`">
-                <strong>{{ item.label }}</strong>
-                <span>{{ stepStatusText(item.status) }}</span>
-                <p v-if="item.error">{{ item.error }}</p>
-              </article>
-            </div>
-
-            <p v-if="crossSynthesisLoading" class="muted">正在读取三方对照...</p>
-            <p v-else-if="crossSynthesisError" class="country-compare-error">{{ crossSynthesisError }}</p>
-
-            <template v-else>
-              <div class="voice-badges">
-                <span v-if="!crossVoicesUsed.length">暂无可用声部</span>
-                <span v-for="voice in crossVoicesUsed" :key="voice">{{ voiceLabel(voice) }}</span>
-              </div>
-
-              <div v-if="safeCrossSynthesisHtml" class="analysis markdown-body cross-synthesis-summary" v-html="safeCrossSynthesisHtml" />
-              <p v-else class="muted">请先运行媒体/学界/民间分析，再生成三方对照。</p>
-            </template>
-          </section>
-
-          <details v-if="activeWorkspaceTab === 'media'" class="media-collapse wide-panel framing-panel">
-            <summary>
-              <strong>各方态度</strong>
-              <span>{{ framing.length }} 方</span>
-            </summary>
-            <div class="collapse-body">
-              <div class="pane-header compact">
-                <div>
-                  <p class="eyebrow">Framing</p>
-                  <h2>各方态度</h2>
-                </div>
-                <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-              </div>
-              <div v-if="framing.length" class="framing-list wide-framing-list">
-                <article v-for="item in framing" :key="`${item.party}-${item.stance}`">
-                  <span>{{ item.stance }}</span>
-                  <strong>{{ item.party }}</strong>
-                  <p>{{ item.summary_zh }}</p>
-                </article>
-              </div>
-              <p v-else class="muted">还没有足够样本形成态度分组。</p>
-            </div>
-          </details>
-
-          <section v-if="activeWorkspaceTab === 'academic'" class="wide-panel academic-panel">
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Academic Layer</p>
-                <h2>学界视角</h2>
-              </div>
-              <button type="button" class="ghost-button" :disabled="academicAnalyzing" @click="runAcademicAnalysis">
-                {{ academicAnalyzing ? '分析中...' : hasAcademicLayer ? '刷新学界层' : '生成学界层' }}
-              </button>
-            </div>
-
-            <p v-if="activeAcademicJobId" class="search-message">学界任务：{{ activeAcademicJobId.slice(0, 8) }}</p>
-            <p v-if="academicMessage" class="search-message">{{ academicMessage }}</p>
-            <div v-if="academicSteps.length" class="step-list deep-step-list">
-              <span v-for="step in academicSteps" :key="step.key" :class="`step-${step.status}`">
-                {{ step.label }} · {{ stepStatusText(step.status) }}
-              </span>
-            </div>
-
-            <p v-if="academicLoading" class="muted">正在读取学界层...</p>
-            <p v-else-if="academicError" class="country-compare-error">{{ academicError }}</p>
-
-            <template v-else>
-              <div class="academic-metrics">
-                <div>
-                  <strong>{{ academicPapers.length }}</strong>
-                  <span>论文</span>
-                </div>
-                <div>
-                  <strong>{{ academicCitationEdges.length }}</strong>
-                  <span>内部引用</span>
-                </div>
-                <div>
-                  <strong>{{ academicSchools.length }}</strong>
-                  <span>学派/主题群</span>
-                </div>
-                <div>
-                  <strong>{{ academicFoundationalPapers.length }}</strong>
-                  <span>奠基论文</span>
-                </div>
-              </div>
-
-              <p v-if="!academicPapers.length" class="muted">
-                暂无学界论文。点击“生成学界层”后会从 OpenAlex 拉取相关论文并构建引用图。
-              </p>
-
-              <div v-if="safeAcademicSummaryHtml" class="analysis markdown-body academic-summary" v-html="safeAcademicSummaryHtml" />
-              <p v-else class="muted">暂无学界综合摘要。</p>
-
-              <div v-if="academicFoundationalPapers.length" class="academic-section">
-                <div class="evidence-header">
-                  <strong>奠基论文</strong>
-                  <span>按样本内部入度与被引量排序</span>
-                </div>
-                <div class="academic-paper-grid">
-                  <article v-for="paper in academicFoundationalPapers" :key="paper.openalex_id" class="academic-paper foundation">
-                    <div>
-                      <span class="llm-badge">奠基</span>
-                      <b>{{ paper.year || '未知年份' }}</b>
-                      <b>被引 {{ paper.cited_by_count }}</b>
-                      <b>内部引用 {{ paper.internal_citations }}</b>
-                    </div>
-                    <h3>
-                      <a :href="academicPaperUrl(paper)" target="_blank" rel="noreferrer">{{ paper.title }}</a>
-                    </h3>
-                  </article>
-                </div>
-              </div>
-
-              <div v-if="academicSchools.length" class="academic-section">
-                <div class="evidence-header">
-                  <strong>学派/主题群</strong>
-                  <span>{{ academicSchools.length }} 组</span>
-                </div>
-                <div class="academic-school-grid">
-                  <article v-for="school in academicSchools" :key="school.name" class="academic-school">
-                    <div class="country-card-head">
-                      <strong>{{ school.name }}</strong>
-                      <span>{{ school.paper_count }} 篇</span>
-                    </div>
-                    <p v-if="school.years.length">{{ school.years[0] }} - {{ school.years[school.years.length - 1] }}</p>
-                    <div v-if="school.concepts.length" class="country-badges">
-                      <span v-for="concept in school.concepts.slice(0, 5)" :key="concept">{{ concept }}</span>
-                    </div>
-                    <ul v-if="school.top_papers.length" class="country-samples">
-                      <li v-for="paper in school.top_papers.slice(0, 3)" :key="paper.openalex_id">
-                        {{ paper.title }} · {{ paper.year || '未知年份' }}
-                      </li>
-                    </ul>
-                  </article>
-                </div>
-              </div>
-
-              <div class="academic-section">
-                <div class="evidence-header">
-                  <strong>引用图</strong>
-                  <span>{{ academicCitationEdges.length }} 条样本内部引用</span>
-                </div>
-                <p v-if="!academicCitationEdges.length" class="source-matrix-empty">暂无内部引用关系。</p>
-                <div v-else class="academic-edge-list">
-                  <span v-for="edge in academicCitationEdges.slice(0, 16)" :key="`${edge.citing_openalex_id}-${edge.cited_openalex_id}`">
-                    {{ edge.citing_openalex_id.split('/').pop() }} → {{ edge.cited_openalex_id.split('/').pop() }}
-                  </span>
-                </div>
-              </div>
-
-              <div v-if="academicPapers.length" class="academic-section">
-                <div class="evidence-header">
-                  <strong>论文列表</strong>
-                  <span>{{ academicPapers.length }} 篇</span>
-                </div>
-                <div class="academic-paper-list">
-                  <article v-for="paper in academicPapers" :key="paper.openalex_id" class="academic-paper">
-                    <div>
-                      <span v-if="isFoundationalPaper(paper)" class="llm-badge">
-                        奠基 {{ foundationalStats(paper)?.internal_citations || 0 }}
-                      </span>
-                      <b>{{ paper.year || '未知年份' }}</b>
-                      <b>被引 {{ paper.cited_by_count }}</b>
-                      <span>{{ academicVenue(paper) }}</span>
-                    </div>
-                    <h3>
-                      <a :href="academicPaperUrl(paper)" target="_blank" rel="noreferrer">{{ paper.title }}</a>
-                    </h3>
-                    <p>{{ academicAuthors(paper) }}</p>
-                  </article>
-                </div>
-              </div>
-            </template>
-          </section>
-
-          <section v-if="activeWorkspaceTab === 'sentiment'" class="wide-panel sentiment-panel">
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Public Sentiment</p>
-                <h2>民间情绪</h2>
-              </div>
-              <button type="button" class="ghost-button" :disabled="sentimentAnalyzing" @click="runSentimentAnalysis">
-                {{ sentimentAnalyzing ? '分析中...' : hasSentimentLayer ? '刷新民间情绪' : '生成民间情绪' }}
-              </button>
-            </div>
-
-            <div class="sentiment-warning">
-              <strong>民间情绪 · 最该被怀疑的一角</strong>
-              <span>Reddit 样本以情绪、站队和看热闹为主；高赞≠事实，只能作为待核实线索。</span>
-            </div>
-
-            <p v-if="activeSentimentJobId" class="search-message">民间情绪任务：{{ activeSentimentJobId.slice(0, 8) }}</p>
-            <p v-if="sentimentMessage" class="search-message">{{ sentimentMessage }}</p>
-            <div v-if="sentimentSteps.length" class="step-list deep-step-list">
-              <span v-for="step in sentimentSteps" :key="step.key" :class="`step-${step.status}`">
-                {{ step.label }} · {{ stepStatusText(step.status) }}
-              </span>
-            </div>
-
-            <p v-if="sentimentLoading" class="muted">正在读取民间情绪层...</p>
-            <p v-else-if="sentimentError" class="country-compare-error">{{ sentimentError }}</p>
-
-            <template v-else>
-                <div class="academic-metrics sentiment-metrics">
-                <div>
-                  <strong>{{ sentimentPostItems.length }}</strong>
-                  <span>平台帖子</span>
-                </div>
-                <div>
-                  <strong>{{ sentimentCommentItems.length }}</strong>
-                  <span>高赞评论</span>
-                </div>
-                <div>
-                  <strong>{{ sentimentPlatformLabels || '待生成' }}</strong>
-                  <span>覆盖平台</span>
-                </div>
-                <div>
-                  <strong>{{ sentimentLayer?.queries?.reddit || sentimentLayer?.query || '待生成' }}</strong>
-                  <span>Reddit 英文查询</span>
-                </div>
-                <div>
-                  <strong>{{ sentimentLayer?.queries?.chinese || selectedTopic.name }}</strong>
-                  <span>中文平台查询</span>
-                </div>
-              </div>
-
-              <div v-if="sentimentLayer?.errors?.length" class="sentiment-platform-errors">
-                <p v-for="item in sentimentLayer.errors" :key="`${item.platform}-${item.error}`">
-                  {{ sentimentPlatformLabel(item.platform) }} 暂不可用：{{ item.error }}
-                </p>
-              </div>
-
-              <p v-if="!sentimentPosts.length" class="muted">
-                暂无民间平台样本。点击“生成民间情绪”会调用本地 OpenCLI；如果 Chrome、扩展或平台登录不可用，错误会显示在这里。
-              </p>
-
-              <div v-if="safeSentimentSummaryHtml" class="analysis markdown-body academic-summary sentiment-summary" v-html="safeSentimentSummaryHtml" />
-              <p v-else class="muted">暂无民间情绪摘要。</p>
-
-              <div v-if="sentimentPosts.length" class="academic-section">
-                <div class="evidence-header">
-                  <strong>多平台讨论样本</strong>
-                  <span>{{ sentimentPostItems.length }} 条帖子 · {{ sentimentCommentItems.length }} 条评论</span>
-                </div>
-                <div class="sentiment-platform-groups">
-                  <section v-for="group in sentimentPlatformGroups" :key="group.platform" class="sentiment-platform-group">
-                    <div class="country-card-head">
-                      <strong>{{ group.label }}</strong>
-                      <span>{{ group.posts.length }} 条</span>
-                    </div>
-                    <div class="sentiment-post-list">
-                      <article v-for="post in group.posts" :key="`${post.platform}-${post.url}-${post.title}`" class="sentiment-post">
-                        <div>
-                          <span>{{ sentimentCommunityLabel(post) }}</span>
-                          <b>{{ post.score }} 赞</b>
-                          <b>{{ post.num_comments }} 评论</b>
-                          <time>{{ sentimentPostDate(post) }}</time>
-                        </div>
-                        <h3>
-                          <a :href="post.url" target="_blank" rel="noreferrer">{{ post.title || '未命名讨论' }}</a>
-                        </h3>
-                        <p>{{ sentimentSnippet(post) }}</p>
-                        <small>作者：{{ post.author || 'unknown' }} · {{ group.label }} 情绪样本，非事实来源</small>
-                        <details v-if="sentimentCommentsForPost(post).length" class="sentiment-comments">
-                          <summary>{{ sentimentCommentsForPost(post).length }} 条高赞评论</summary>
-                          <article
-                            v-for="comment in sentimentCommentsForPost(post)"
-                            :key="`${comment.platform}-${comment.id}-${comment.title}`"
-                            class="sentiment-comment"
-                          >
-                            <div>
-                              <span>评论</span>
-                              <b>{{ comment.score }} 赞</b>
-                              <time>{{ sentimentPostDate(comment) }}</time>
-                            </div>
-                            <p>{{ sentimentSnippet(comment) }}</p>
-                            <small>作者：{{ comment.author || 'unknown' }} · 评论样本，非事实来源</small>
-                          </article>
-                        </details>
-                      </article>
-                    </div>
-                  </section>
-                </div>
-              </div>
-            </template>
-          </section>
-
-          <section v-if="activeWorkspaceTab === 'llm'" class="wide-panel llm-panel">
-            <div class="pane-header compact">
-              <div>
-                <p class="eyebrow">Deep Analysis</p>
-                <h2>{{ hasLlmAnalysis ? 'LLM 批判分析' : '本地规则说明' }}</h2>
-              </div>
-              <div class="event-actions">
-                <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-                <button type="button" :disabled="deepAnalyzing" @click="runDeepAnalysis">
-                  {{ deepAnalyzing ? '深度分析中...' : '深度分析（LLM）' }}
-                </button>
-              </div>
-            </div>
-
-            <p v-if="activeDeepJobId" class="search-message">深度任务：{{ activeDeepJobId.slice(0, 8) }}</p>
-            <p v-if="deepMessage" class="search-message">{{ deepMessage }}</p>
-            <div v-if="deepSteps.length" class="step-list deep-step-list">
-              <span v-for="step in deepSteps" :key="step.key" :class="`step-${step.status}`">
-                {{ step.label }} · {{ stepStatusText(step.status) }}
-              </span>
-            </div>
-
-            <div v-if="safeAnalysisHtml" class="analysis markdown-body llm-analysis-body" v-html="safeAnalysisHtml" />
-            <div v-else-if="displayAnalysisText" class="analysis llm-analysis-body">
-              <p>{{ displayAnalysisText }}</p>
-            </div>
-            <p v-else class="muted">{{ hasLlmAnalysis ? 'LLM 分析尚未生成。' : '本地分析尚未生成。' }}</p>
-          </section>
-
-          <template v-if="activeWorkspaceTab === 'media'">
-          <details class="media-collapse article-feed-collapse">
-            <summary>
-              <strong>原始报道流</strong>
-              <span>{{ totalArticles }} 篇</span>
-            </summary>
-            <div class="collapse-body">
-              <div class="section-divider">
-                <div>
-                  <p class="eyebrow">News Feed</p>
-                  <h2>原始报道流</h2>
-                </div>
-              </div>
-
-              <div class="mini-chart" aria-label="立场分布">
-                <div v-for="group in stanceGroups" :key="group.name" class="bar-row">
-                  <span>{{ group.name }}</span>
-                  <div>
-                    <i :style="{ width: `${Math.max(8, (group.count / Math.max(1, articles.length)) * 100)}%` }" />
-                  </div>
-                  <b>{{ group.count }}</b>
-                </div>
-              </div>
-
-              <div v-if="articleCategoryGroups.length" class="article-tools">
-                <label>
-                  <span>报道分类</span>
-                  <select v-model="articleCategoryFilter" aria-label="报道功能分类筛选">
-                    <option v-for="option in articleCategoryOptions" :key="option.key" :value="option.key">
-                      {{ option.label }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <p v-if="articleLoading" class="muted">正在加载报道...</p>
-              <p v-else-if="!filteredArticles.length" class="muted">没有匹配的报道。</p>
-
-              <details
-                v-for="group in visibleArticleGroups"
-                :key="group.category"
-                class="article-group"
-                open
-              >
-                <summary>
-                  <strong>{{ group.category }}</strong>
-                  <span>{{ group.items.length }} 篇报道</span>
-                </summary>
-                <article v-for="article in group.items" :key="article.id" class="article-row">
-                  <div class="article-main">
-                    <div class="article-meta">
-                      <span>{{ fmtDate(article.published_at, true) }}</span>
-                      <span>{{ article.source || '未知来源' }}</span>
-                      <span>{{ article.source_lang || '未知语言' }}</span>
-                      <span>{{ article.collector }}</span>
-                      <span>{{ article.category || '行动进展' }}</span>
-                    </div>
-                    <h3>
-                      <a :href="article.url" target="_blank" rel="noreferrer">{{ titleFor(article) }}</a>
-                    </h3>
-                    <p>{{ snippetFor(article) }}</p>
-                  </div>
-                  <aside>
-                    <strong>{{ percent(article.relevance) }}</strong>
-                    <span>{{ article.stance || (article.enriched ? '未标注' : '本地待判定') }}</span>
-                  </aside>
-                </article>
-              </details>
-            </div>
-          </details>
-          </template>
-        </section>
-
-        <aside v-if="activeWorkspaceTab === 'media'" class="insight-pane">
-          <details class="media-collapse">
-            <summary>
-              <strong>关键人物/组织</strong>
-              <span>{{ entities.length || keywords.length }} 个</span>
-            </summary>
-            <div class="collapse-body">
-              <div class="pane-header compact">
-                <div>
-                  <p class="eyebrow">Entity Cloud</p>
-                  <h2>关键人物/名词</h2>
-                </div>
-              </div>
-              <div v-if="entities.length" class="entity-groups">
-                <article v-for="group in entityGroups" :key="group.kind">
-                  <strong>{{ group.label }}</strong>
-                  <div class="entity-list">
-                    <button
-                      v-for="word in group.items"
-                      :key="word.term"
-                      type="button"
-                      class="entity-chip"
-                      :style="{ opacity: 0.66 + word.weight * 0.34 }"
-                      @click="query = word.term"
-                    >
-                      <span>{{ word.term }}</span>
-                      <small>{{ word.count }}</small>
-                    </button>
-                  </div>
-                </article>
-              </div>
-              <div v-else-if="keywords.length" class="word-cloud">
-                <span
-                  v-for="word in keywords"
-                  :key="word.term"
-                  :style="{ fontSize: keywordSize(word), opacity: 0.55 + word.weight * 0.45 }"
-                >
-                  {{ word.term }}
-                </span>
-              </div>
-              <p v-else class="muted">暂无关键实体。采集报道后会自动生成。</p>
-            </div>
-          </details>
-
-          <details class="media-collapse">
-            <summary>
-              <strong>态度随时间变化</strong>
-              <span>{{ stancePeriods.length }} 期</span>
-            </summary>
-            <div class="collapse-body">
-              <div class="pane-header compact">
-                <div>
-                  <p class="eyebrow">Attitude Shift</p>
-                  <h2>态度随时间变化</h2>
-                </div>
-              </div>
-              <div v-if="stancePeriods.length" class="stance-evolution">
-                <article v-for="period in stancePeriods" :key="period.period">
-                  <time>{{ period.period }}</time>
-                  <strong>{{ period.dominant_stance }}</strong>
-                  <div class="stance-pills">
-                    <span v-for="(count, label) in period.counts" :key="label">
-                      {{ label }} {{ count }}
-                    </span>
-                  </div>
-                </article>
-              </div>
-              <p v-else class="muted">需要更多带时间的报道才能观察态度变化。</p>
-            </div>
-          </details>
-        </aside>
+        <MediaPanel
+          v-if="activeWorkspaceTab === 'media'"
+          v-model:query="query"
+          v-model:source-tier-filter="sourceTierFilter"
+          v-model:source-matrix-sort="sourceMatrixSort"
+          v-model:article-category-filter="articleCategoryFilter"
+          :local-loading="localLoading"
+          :major-events="majorEvents"
+          :selected-event-index="selectedEventIndex"
+          :expanded-timeline-index="expandedTimelineIndex"
+          :has-llm-analysis="hasLlmAnalysis"
+          :selected-event="selectedEvent"
+          :country-compare-loading="countryCompareLoading"
+          :country-compare-error="countryCompareError"
+          :visible-source-matrix="visibleSourceMatrix"
+          :source-tier-options="sourceTierOptions"
+          :has-country-compare="hasCountryCompare"
+          :visible-country-compare="visibleCountryCompare"
+          :first-reporter-timeline="firstReporterTimeline"
+          :country-cards="countryCards"
+          :criteria="criteria"
+          :framing="framing"
+          :total-articles="totalArticles"
+          :stance-groups="stanceGroups"
+          :articles="articles"
+          :article-category-groups="articleCategoryGroups"
+          :article-category-options="articleCategoryOptions"
+          :article-loading="articleLoading"
+          :filtered-articles="filteredArticles"
+          :visible-article-groups="visibleArticleGroups"
+          :entities="entities"
+          :keywords="keywords"
+          :entity-groups="entityGroups"
+          :stance-periods="stancePeriods"
+          :fmt-date="fmtDate"
+          :importance-text="importanceText"
+          :coverage-text="coverageText"
+          :percent="percent"
+          :evidence-snippet="evidenceSnippet"
+          :country-flag="countryFlag"
+          :top-stance-entries="topStanceEntries"
+          :outlet-summary="outletSummary"
+          :country-coverage-note="countryCoverageNote"
+          :title-for="titleFor"
+          :snippet-for="snippetFor"
+          :keyword-size="keywordSize"
+          :toggle-timeline-event="toggleTimelineEvent"
+          :load-country-compare-for-selected-event="loadCountryCompareForSelectedEvent"
+          :show-authority-sources="showAuthoritySources"
+          :show-earliest-sources="showEarliestSources"
+          :show-most-covered-sources="showMostCoveredSources"
+        />
+        <CrossPanel
+          v-else-if="activeWorkspaceTab === 'cross'"
+          :cross-synthesis-analyzing="crossSynthesisAnalyzing"
+          :has-cross-synthesis="hasCrossSynthesis"
+          :active-cross-synthesis-job-id="activeCrossSynthesisJobId"
+          :cross-synthesis-message="crossSynthesisMessage"
+          :cross-synthesis-steps="crossSynthesisSteps"
+          :cross-chain-items="crossChainItems"
+          :cross-synthesis-loading="crossSynthesisLoading"
+          :cross-synthesis-error="crossSynthesisError"
+          :cross-voices-used="crossVoicesUsed"
+          :safe-cross-synthesis-html="safeCrossSynthesisHtml"
+          :step-status-text="stepStatusText"
+          :voice-label="voiceLabel"
+          @run-cross-synthesis="runCrossSynthesis"
+        />
+        <AcademicPanel
+          v-else-if="activeWorkspaceTab === 'academic'"
+          :academic-analyzing="academicAnalyzing"
+          :has-academic-layer="hasAcademicLayer"
+          :active-academic-job-id="activeAcademicJobId"
+          :academic-message="academicMessage"
+          :academic-steps="academicSteps"
+          :academic-loading="academicLoading"
+          :academic-error="academicError"
+          :academic-papers="academicPapers"
+          :academic-citation-edges="academicCitationEdges"
+          :academic-schools="academicSchools"
+          :academic-foundational-papers="academicFoundationalPapers"
+          :safe-academic-summary-html="safeAcademicSummaryHtml"
+          :step-status-text="stepStatusText"
+          :academic-paper-url="academicPaperUrl"
+          :is-foundational-paper="isFoundationalPaper"
+          :foundational-stats="foundationalStats"
+          :academic-venue="academicVenue"
+          :academic-authors="academicAuthors"
+          @run-academic-analysis="runAcademicAnalysis"
+        />
+        <SentimentPanel
+          v-else-if="activeWorkspaceTab === 'sentiment'"
+          :sentiment-analyzing="sentimentAnalyzing"
+          :has-sentiment-layer="hasSentimentLayer"
+          :active-sentiment-job-id="activeSentimentJobId"
+          :sentiment-message="sentimentMessage"
+          :sentiment-steps="sentimentSteps"
+          :sentiment-loading="sentimentLoading"
+          :sentiment-error="sentimentError"
+          :sentiment-post-items="sentimentPostItems"
+          :sentiment-comment-items="sentimentCommentItems"
+          :sentiment-platform-labels="sentimentPlatformLabels"
+          :sentiment-layer="sentimentLayer"
+          :selected-topic="selectedTopic"
+          :sentiment-posts="sentimentPosts"
+          :safe-sentiment-summary-html="safeSentimentSummaryHtml"
+          :sentiment-platform-groups="sentimentPlatformGroups"
+          :step-status-text="stepStatusText"
+          :sentiment-platform-label="sentimentPlatformLabel"
+          :sentiment-community-label="sentimentCommunityLabel"
+          :sentiment-post-date="sentimentPostDate"
+          :sentiment-snippet="sentimentSnippet"
+          :sentiment-comments-for-post="sentimentCommentsForPost"
+          @run-sentiment-analysis="runSentimentAnalysis"
+        />
+        <LlmPanel
+          v-else-if="activeWorkspaceTab === 'llm'"
+          :has-llm-analysis="hasLlmAnalysis"
+          :deep-analyzing="deepAnalyzing"
+          :active-deep-job-id="activeDeepJobId"
+          :deep-message="deepMessage"
+          :deep-steps="deepSteps"
+          :safe-analysis-html="safeAnalysisHtml"
+          :display-analysis-text="displayAnalysisText"
+          :step-status-text="stepStatusText"
+          @run-deep-analysis="runDeepAnalysis"
+        />
       </section>
     </template>
   </main>
