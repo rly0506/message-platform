@@ -304,16 +304,6 @@ button:disabled {
   line-height: 1.65;
 }
 
-.run-hint {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  color: #5e7079;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -570,14 +560,6 @@ button:disabled {
   text-align: right;
 }
 
-.major-timeline {
-  display: grid;
-  gap: 0;
-  margin: 0 0 20px;
-  padding: 0;
-  list-style: none;
-}
-
 .timeline-visual {
   position: relative;
   display: grid;
@@ -740,16 +722,6 @@ button:disabled {
   margin-top: 10px;
   padding-top: 12px;
   border-top: 1px solid #e2e9ec;
-}
-
-.event-date {
-  color: #55717d;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.event-body {
-  min-width: 0;
 }
 
 .event-title-row {
@@ -1492,12 +1464,6 @@ button:disabled {
   margin: 0;
 }
 
-.event-body p {
-  margin-top: 8px;
-  color: #53636e;
-  line-height: 1.65;
-}
-
 .event-reason {
   margin-top: 10px;
   color: #53636e;
@@ -2038,11 +2004,6 @@ button:disabled {
 
   .article-row {
     grid-template-columns: 1fr;
-  }
-
-  .major-timeline li {
-    grid-template-columns: 1fr;
-    gap: 8px;
   }
 
   .timeline-node {
