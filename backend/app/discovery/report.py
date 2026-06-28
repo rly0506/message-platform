@@ -23,6 +23,9 @@ MAINSTREAM_SIGNAL = 400
 NEW_SEED_MIN_SIGNAL = 30
 # 两次运行间 signal 增量高于此 = 在加速 (从低基数在长)
 RISE_DELTA_MIN = 25
+# 新鲜窗口 (小时): 首次出现在此窗口内 = 仍算"今天的新苗头",
+# 与被轮询了几次无关。这是关键修复: 同一天重跑不该把今天的种子冲成噪声。
+FRESH_HOURS = 36
 
 # 领域桶的中文标签 (报告分组用)
 _DOMAIN_LABELS = {
@@ -35,28 +38,44 @@ _DOMAIN_LABELS = {
 }
 
 
+def _is_fresh(scored: ScoredItem) -> bool:
+    """是否仍在新鲜窗口内 = 算"今天的新苗头"。
+
+    有 age_hours (真实 ISO 时间) -> 按窗口判定, 与轮询几次无关。
+    无 age_hours (测试用非 ISO run_id) -> 降级到 is_new (保持旧测试语义)。
+    """
+    if scored.age_hours is not None:
+        return scored.age_hours <= FRESH_HOURS
+    return scored.is_new
+
+
 def categorize(scored: ScoredItem, has_history: bool) -> str:
     """给一条 ScoredItem 定档: seed / mainstream / noise。
 
     has_history=False (首次运行): 无法判定加速, 一律归 baseline 处理 (见 build_report)。
+
+    关键: 种子 = "新鲜"(首见在窗口内) 或 "在加速"。不再因"被轮询过一次"
+    就把今天的苗头打成噪声 —— 那是早期 bug, 同一天重跑会冲光所有种子。
     """
     it = scored.item
+    fresh = _is_fresh(scored)
 
-    # arXiv 无投票信号: "新出现的一篇论文"本身就是早期信号 -> 全新即种子
-    if it.source == "arxiv":
-        return "seed" if scored.is_new else "noise"
+    # arXiv / RSS 无投票信号: "新鲜出现的一条"本身就是早期信号
+    if it.source == "arxiv" or it.signal == 0:
+        return "seed" if fresh else "noise"
 
-    # HN: 用 points (signal) + 加速 (delta) 判定
+    # HN: 信号已很大 = 已出圈
     if it.signal >= MAINSTREAM_SIGNAL:
         return "mainstream"
 
-    if scored.is_new:
-        # 全新出现且已带一定初速度 = 苗头
-        return "seed" if it.signal >= NEW_SEED_MIN_SIGNAL else "noise"
-
-    # 见过的项: 看它是否在加速 (从低基数往上拐)
+    # 在加速 (从低基数往上拐) = 种子, 无论新旧
     if scored.delta >= RISE_DELTA_MIN:
         return "seed"
+
+    # 新鲜且带一定初速度 = 苗头
+    if fresh:
+        return "seed" if it.signal >= NEW_SEED_MIN_SIGNAL else "noise"
+
     return "noise"
 
 

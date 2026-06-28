@@ -153,3 +153,31 @@ def test_report_renders_with_annotations(store):
     md = report.build_report(scored, run_id="d2", has_history=True, annotations=anns)
     assert "一个新方法" in md
     assert "还在小圈子" in md
+
+
+def test_same_day_rerun_keeps_fresh_seed(store):
+    """关键修复: 今天首见的论文, 同一天重跑仍是种子 (不因被轮询两次而被打成噪声)。"""
+    from app.discovery import report
+    paper = DiscoveryItem(source="arxiv", external_id="2606.001", title="Fresh paper",
+                          url="http://arxiv.org/abs/2606.001", category="cs.AI")
+    # 上午 09:00 首见
+    store.score([paper], run_id="2026-06-28T09:00:00Z", now_iso="2026-06-28T09:00:00Z")
+    store.commit_run([paper], run_id="2026-06-28T09:00:00Z", now_iso="2026-06-28T09:00:00Z")
+    # 同日 11:00 重跑: age=2h, 仍在新鲜窗口 -> 仍是种子
+    scored = store.score([paper], run_id="2026-06-28T11:00:00Z", now_iso="2026-06-28T11:00:00Z")
+    assert scored[0].is_new is False              # 确实被见过两次
+    assert scored[0].age_hours == 2.0
+    assert report.categorize(scored[0], has_history=True) == "seed"  # 但仍是种子!
+
+
+def test_stale_item_ages_out_to_noise(store):
+    """超过新鲜窗口 (FRESH_HOURS) 的旧条目, 老化成噪声。"""
+    from app.discovery import report
+    paper = DiscoveryItem(source="arxiv", external_id="2606.002", title="Old paper",
+                          url="http://arxiv.org/abs/2606.002", category="cs.AI")
+    store.score([paper], run_id="2026-06-25T09:00:00Z", now_iso="2026-06-25T09:00:00Z")
+    store.commit_run([paper], run_id="2026-06-25T09:00:00Z", now_iso="2026-06-25T09:00:00Z")
+    # 3 天后重跑: age=72h > 36h 窗口 -> 老化进噪声
+    scored = store.score([paper], run_id="2026-06-28T09:00:00Z", now_iso="2026-06-28T09:00:00Z")
+    assert scored[0].age_hours == 72.0
+    assert report.categorize(scored[0], has_history=True) == "noise"

@@ -15,10 +15,26 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 from app import config
 from app.discovery.sources import DiscoveryItem
+
+
+def _hours_between(start_iso: str, end_iso: str) -> Optional[float]:
+    """两个 ISO 时间戳之间的小时差 (end - start)。
+
+    无法解析时返回 None —— 调用方据此降级到 is_new 判定 (测试里用非 ISO
+    run_id 如 'day1' 时即走此降级路径, 不影响逻辑)。
+    """
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    try:
+        start = datetime.strptime(start_iso, fmt)
+        end = datetime.strptime(end_iso, fmt)
+    except (ValueError, TypeError):
+        return None
+    return (end - start).total_seconds() / 3600.0
 
 # 独立于 dossier.db, 默认放 backend/discovery.db; 可经 DISCOVERY_DB_PATH 覆盖 (便于测试)
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,6 +52,7 @@ class ScoredItem:
     prev_signal: Optional[int]      # 上次运行时的 signal (None = 从未见过)
     delta: int                      # signal 增量 (加速量); 新项的 delta = 当前 signal
     runs_seen: int                  # 跨多少次运行被见过 (持续性)
+    age_hours: Optional[float] = None  # 首次出现距本次运行多少小时 (None = 无法解析时间)
 
 
 class DiscoveryStore:
@@ -106,16 +123,20 @@ class DiscoveryStore:
             is_new = prev is None
             delta = it.signal if is_new else (it.signal - prev)
             seen_row = self._conn.execute(
-                "SELECT runs_seen FROM item_seen WHERE source = ? AND external_id = ?",
+                "SELECT runs_seen, first_seen_at FROM item_seen WHERE source = ? AND external_id = ?",
                 (it.source, it.external_id),
             ).fetchone()
             runs_seen = (int(seen_row["runs_seen"]) if seen_row else 0) + 1
+            # 首见距今多少小时: 已登记的用其 first_seen_at; 本次才首见的 age=0。
+            first_seen = seen_row["first_seen_at"] if seen_row else now_iso
+            age_hours = _hours_between(first_seen, now_iso)
             scored.append(ScoredItem(
                 item=it,
                 is_new=is_new,
                 prev_signal=prev,
                 delta=delta,
                 runs_seen=runs_seen,
+                age_hours=age_hours,
             ))
         return scored
 
