@@ -4,7 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime
 from threading import Thread
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -20,23 +20,128 @@ from app.services import payloads
 MAX_SEARCH_JOBS = 50
 
 
-def enqueue_search_job(payload: SearchRequest) -> dict[str, Any]:
+class JobRunner:
+    def __init__(self, job_id: str, steps: list[dict[str, str]]) -> None:
+        self.job_id = job_id
+        self.steps = steps
+
+    def run(
+        self,
+        work: Callable[["JobRunner"], dict[str, Any]],
+        status_for_result: Callable[[dict[str, Any]], str] | str = "done",
+    ) -> None:
+        update_job(self.job_id, status="running")
+        try:
+            result = work(self)
+            status = status_for_result(result) if callable(status_for_result) else status_for_result
+            update_job(self.job_id, status=status, result=result, error="")
+        except Exception as exc:  # pragma: no cover - defensive task boundary
+            fail_job(self.job_id, exc)
+
+    def on_step(self, key: str, status: str, details: dict[str, Any] | None = None) -> None:
+        self.set_step(key, status)
+        if details is not None:
+            update_job(self.job_id, result={"progress": {"step": key, **details}})
+
+    def set_step(self, key: str, status: str) -> None:
+        set_step(self.steps, key, status, self.job_id)
+
+    def mark_all_steps_done(self) -> None:
+        for step in self.steps:
+            step["status"] = "done"
+        sync_job_steps(self.steps, self.job_id)
+
+    def mark_running_steps_done(self) -> None:
+        for step in self.steps:
+            if step["status"] == "running":
+                step["status"] = "done"
+        sync_job_steps(self.steps, self.job_id)
+
+
+def enqueue_job(
+    *,
+    query: str,
+    steps: list[dict[str, str]],
+    payload: dict[str, Any],
+    target: Callable[..., None],
+    args: tuple[Any, ...],
+) -> dict[str, Any]:
     job_id = uuid4().hex
     init_db()
     with Session(engine) as session:
         job = SearchJob(
             id=job_id,
-            query=payload.query.strip(),
+            query=query,
             status="queued",
-            steps=search_steps(payload.collect),
-            payload=request_payload(payload),
+            steps=steps,
+            payload=payload,
         )
         session.add(job)
         session.commit()
 
     trim_search_jobs()
-    Thread(target=run_search_job, args=(job_id, payload), daemon=True).start()
+    Thread(target=target, args=(job_id, *args), daemon=True).start()
     return job_snapshot(job_id)
+
+
+def enqueue_topic_job(
+    topic_id: int,
+    *,
+    query_prefix: str,
+    steps: list[dict[str, str]],
+    payload: dict[str, Any],
+    target: Callable[..., None],
+    args: tuple[Any, ...],
+) -> dict[str, Any]:
+    topic_name = topic_name_or_404(topic_id)
+    return enqueue_job(
+        query=f"{query_prefix}:{topic_name}",
+        steps=steps,
+        payload=payload,
+        target=target,
+        args=args,
+    )
+
+
+def topic_name_or_404(topic_id: int) -> str:
+    init_db()
+    with Session(engine) as session:
+        return topic_or_404(session, topic_id).name
+
+
+def topic_or_404(session: Session, topic_id: int) -> Topic:
+    topic = session.get(Topic, topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    return topic
+
+
+def run_topic_job(
+    job_id: str,
+    topic_id: int,
+    steps: list[dict[str, str]],
+    work: Callable[[Session, Topic, JobRunner], dict[str, Any]],
+    status_for_result: Callable[[dict[str, Any]], str] | str = "done",
+) -> None:
+    runner = JobRunner(job_id, steps)
+
+    def run_with_topic(runner: JobRunner) -> dict[str, Any]:
+        init_db()
+        with Session(engine) as session:
+            topic = topic_or_404(session, topic_id)
+            return work(session, topic, runner)
+
+    runner.run(run_with_topic, status_for_result)
+
+
+def enqueue_search_job(payload: SearchRequest) -> dict[str, Any]:
+    return enqueue_job(
+        query=payload.query.strip(),
+        steps=search_steps(payload.collect),
+        payload=request_payload(payload),
+        target=run_search_job,
+        args=(payload,),
+    )
 
 
 def rerun_search_job(job_id: str) -> dict[str, Any]:
@@ -51,91 +156,47 @@ def rerun_search_job(job_id: str) -> dict[str, Any]:
 
 
 def enqueue_deep_analysis_job(topic_id: int, enrich_limit: int = 30) -> dict[str, Any]:
-    job_id = uuid4().hex
-    init_db()
-    with Session(engine) as session:
-        topic = session.get(Topic, topic_id)
-        if not topic:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        job = SearchJob(
-            id=job_id,
-            query=f"deep-analysis:{topic.name}",
-            status="queued",
-            steps=deep_analysis_steps(),
-            payload={"topic_id": topic_id, "enrich_limit": enrich_limit, "kind": "deep_analysis"},
-        )
-        session.add(job)
-        session.commit()
-
-    trim_search_jobs()
-    Thread(target=run_deep_analysis_job, args=(job_id, topic_id, enrich_limit), daemon=True).start()
-    return job_snapshot(job_id)
+    return enqueue_topic_job(
+        topic_id,
+        query_prefix="deep-analysis",
+        steps=deep_analysis_steps(),
+        payload={"topic_id": topic_id, "enrich_limit": enrich_limit, "kind": "deep_analysis"},
+        target=run_deep_analysis_job,
+        args=(topic_id, enrich_limit),
+    )
 
 
 def enqueue_academic_analysis_job(topic_id: int, top_n: int = 30) -> dict[str, Any]:
-    job_id = uuid4().hex
-    init_db()
-    with Session(engine) as session:
-        topic = session.get(Topic, topic_id)
-        if not topic:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        job = SearchJob(
-            id=job_id,
-            query=f"academic:{topic.name}",
-            status="queued",
-            steps=academic_analysis_steps(),
-            payload={"topic_id": topic_id, "top_n": top_n, "kind": "academic_analysis"},
-        )
-        session.add(job)
-        session.commit()
-
-    trim_search_jobs()
-    Thread(target=run_academic_analysis_job, args=(job_id, topic_id, top_n), daemon=True).start()
-    return job_snapshot(job_id)
+    return enqueue_topic_job(
+        topic_id,
+        query_prefix="academic",
+        steps=academic_analysis_steps(),
+        payload={"topic_id": topic_id, "top_n": top_n, "kind": "academic_analysis"},
+        target=run_academic_analysis_job,
+        args=(topic_id, top_n),
+    )
 
 
 def enqueue_sentiment_analysis_job(topic_id: int, limit: int = 25) -> dict[str, Any]:
-    job_id = uuid4().hex
-    init_db()
-    with Session(engine) as session:
-        topic = session.get(Topic, topic_id)
-        if not topic:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        job = SearchJob(
-            id=job_id,
-            query=f"sentiment:{topic.name}",
-            status="queued",
-            steps=sentiment_analysis_steps(),
-            payload={"topic_id": topic_id, "limit": limit, "kind": "sentiment_analysis"},
-        )
-        session.add(job)
-        session.commit()
-
-    trim_search_jobs()
-    Thread(target=run_sentiment_analysis_job, args=(job_id, topic_id, limit), daemon=True).start()
-    return job_snapshot(job_id)
+    return enqueue_topic_job(
+        topic_id,
+        query_prefix="sentiment",
+        steps=sentiment_analysis_steps(),
+        payload={"topic_id": topic_id, "limit": limit, "kind": "sentiment_analysis"},
+        target=run_sentiment_analysis_job,
+        args=(topic_id, limit),
+    )
 
 
 def enqueue_cross_synthesis_job(topic_id: int) -> dict[str, Any]:
-    job_id = uuid4().hex
-    init_db()
-    with Session(engine) as session:
-        topic = session.get(Topic, topic_id)
-        if not topic:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        job = SearchJob(
-            id=job_id,
-            query=f"cross-synthesis:{topic.name}",
-            status="queued",
-            steps=cross_synthesis_steps(),
-            payload={"topic_id": topic_id, "kind": "cross_synthesis"},
-        )
-        session.add(job)
-        session.commit()
-
-    trim_search_jobs()
-    Thread(target=run_cross_synthesis_job, args=(job_id, topic_id), daemon=True).start()
-    return job_snapshot(job_id)
+    return enqueue_topic_job(
+        topic_id,
+        query_prefix="cross-synthesis",
+        steps=cross_synthesis_steps(),
+        payload={"topic_id": topic_id, "kind": "cross_synthesis"},
+        target=run_cross_synthesis_job,
+        args=(topic_id,),
+    )
 
 
 def run_search(payload: SearchRequest, job_id: str | None = None) -> dict[str, Any]:
@@ -190,197 +251,120 @@ def run_search(payload: SearchRequest, job_id: str | None = None) -> dict[str, A
 
 
 def run_search_job(job_id: str, payload: SearchRequest) -> None:
-    update_job(job_id, status="running")
-    try:
-        result = run_search(payload, job_id=job_id)
-        update_job(
-            job_id,
-            status="done" if result.get("events") else "empty",
-            result=result,
-            error="",
-        )
-    except Exception as exc:  # pragma: no cover - defensive task boundary
-        update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-        steps = job_snapshot(job_id)["steps"]
-        for step in steps:
-            if step["status"] == "running":
-                step["status"] = "failed"
-        sync_job_steps(steps, job_id)
+    def work(_runner: JobRunner) -> dict[str, Any]:
+        return run_search(payload, job_id=job_id)
+
+    JobRunner(job_id, search_steps(payload.collect)).run(
+        work,
+        lambda result: "done" if result.get("events") else "empty",
+    )
 
 
 def run_deep_analysis_job(job_id: str, topic_id: int, enrich_limit: int) -> None:
-    update_job(job_id, status="running")
-    steps = deep_analysis_steps()
-
-    def on_step(key: str, status: str, details: dict[str, Any] | None = None) -> None:
-        set_step(steps, key, status, job_id)
-        if details is not None:
-            update_job(job_id, result={"progress": {"step": key, **details}})
-
-    try:
-        init_db()
-        with Session(engine) as session:
-            topic = session.get(Topic, topic_id)
-            if not topic:
-                raise HTTPException(status_code=404, detail="Topic not found")
-            result = topic_ops.run_deep_analysis(
-                session,
-                topic,
-                enrich_limit=enrich_limit,
-                on_step=on_step,
-            )
-        set_step(steps, "synthesize", "done", job_id)
-        set_step(steps, "persist", "done", job_id)
-        update_job(
-            job_id,
-            status="done",
-            result=result,
-            error="",
+    def work(session: Session, topic: Topic, runner: JobRunner) -> dict[str, Any]:
+        result = topic_ops.run_deep_analysis(
+            session,
+            topic,
+            enrich_limit=enrich_limit,
+            on_step=runner.on_step,
         )
-    except Exception as exc:  # pragma: no cover - defensive task boundary
-        update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-        snapshot_steps = job_snapshot(job_id)["steps"]
-        for step in snapshot_steps:
-            if step["status"] == "running":
-                step["status"] = "failed"
-        sync_job_steps(snapshot_steps, job_id)
+        runner.set_step("synthesize", "done")
+        runner.set_step("persist", "done")
+        return result
+
+    run_topic_job(job_id, topic_id, deep_analysis_steps(), work)
 
 
 def run_academic_analysis_job(job_id: str, topic_id: int, top_n: int) -> None:
-    update_job(job_id, status="running")
-    steps = academic_analysis_steps()
+    def work(session: Session, topic: Topic, runner: JobRunner) -> dict[str, Any]:
+        result = academic.run_academic_analysis(
+            session,
+            topic,
+            top_n=top_n,
+            on_step=runner.on_step,
+        )
+        runner.mark_all_steps_done()
+        return result
 
-    def on_step(key: str, status: str, details: dict[str, Any] | None = None) -> None:
-        set_step(steps, key, status, job_id)
-        if details is not None:
-            update_job(job_id, result={"progress": {"step": key, **details}})
-
-    try:
-        init_db()
-        with Session(engine) as session:
-            topic = session.get(Topic, topic_id)
-            if not topic:
-                raise HTTPException(status_code=404, detail="Topic not found")
-            result = academic.run_academic_analysis(
-                session,
-                topic,
-                top_n=top_n,
-                on_step=on_step,
-            )
-        for step in steps:
-            step["status"] = "done"
-        sync_job_steps(steps, job_id)
-        update_job(job_id, status="done", result=result, error="")
-    except Exception as exc:  # pragma: no cover - defensive task boundary
-        update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-        snapshot_steps = job_snapshot(job_id)["steps"]
-        for step in snapshot_steps:
-            if step["status"] == "running":
-                step["status"] = "failed"
-        sync_job_steps(snapshot_steps, job_id)
+    run_topic_job(job_id, topic_id, academic_analysis_steps(), work)
 
 
 def run_sentiment_analysis_job(job_id: str, topic_id: int, limit: int) -> None:
-    update_job(job_id, status="running")
-    steps = sentiment_analysis_steps()
+    def work(session: Session, topic: Topic, runner: JobRunner) -> dict[str, Any]:
+        result = sentiment.run_sentiment_analysis(
+            session,
+            topic,
+            limit=limit,
+            on_step=runner.on_step,
+        )
+        runner.mark_all_steps_done()
+        return result
 
-    def on_step(key: str, status: str, details: dict[str, Any] | None = None) -> None:
-        set_step(steps, key, status, job_id)
-        if details is not None:
-            update_job(job_id, result={"progress": {"step": key, **details}})
-
-    try:
-        init_db()
-        with Session(engine) as session:
-            topic = session.get(Topic, topic_id)
-            if not topic:
-                raise HTTPException(status_code=404, detail="Topic not found")
-            result = sentiment.run_sentiment_analysis(
-                session,
-                topic,
-                limit=limit,
-                on_step=on_step,
-            )
-        for step in steps:
-            step["status"] = "done"
-        sync_job_steps(steps, job_id)
-        update_job(job_id, status="done" if result.get("posts") else "empty", result=result, error="")
-    except Exception as exc:  # pragma: no cover - defensive task boundary
-        update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-        snapshot_steps = job_snapshot(job_id)["steps"]
-        for step in snapshot_steps:
-            if step["status"] == "running":
-                step["status"] = "failed"
-        sync_job_steps(snapshot_steps, job_id)
+    run_topic_job(
+        job_id,
+        topic_id,
+        sentiment_analysis_steps(),
+        work,
+        lambda result: "done" if result.get("posts") else "empty",
+    )
 
 
 def run_cross_synthesis_job(job_id: str, topic_id: int) -> None:
-    update_job(job_id, status="running")
-    steps = cross_synthesis_steps()
     chain: dict[str, dict[str, Any]] = {}
 
-    def on_step(key: str, status: str, details: dict[str, Any] | None = None) -> None:
-        set_step(steps, key, status, job_id)
-        if details is not None:
-            update_job(job_id, result={"progress": {"step": key, **details}})
-
-    try:
-        init_db()
-        with Session(engine) as session:
-            topic = session.get(Topic, topic_id)
-            if not topic:
-                raise HTTPException(status_code=404, detail="Topic not found")
-            run_cross_voice_step(
-                steps,
-                job_id,
-                chain,
-                "media",
-                lambda: topic_ops.run_deep_analysis(
-                    session,
-                    topic,
-                    enrich_limit=30,
-                ),
-            )
-            run_cross_voice_step(
-                steps,
-                job_id,
-                chain,
-                "academic",
-                lambda: academic.run_academic_analysis(
-                    session,
-                    topic,
-                    top_n=30,
-                ),
-            )
-            run_cross_voice_step(
-                steps,
-                job_id,
-                chain,
-                "sentiment",
-                lambda: sentiment.run_sentiment_analysis(
-                    session,
-                    topic,
-                    limit=25,
-                ),
-            )
-            result = cross_synthesis.run_cross_synthesis(
+    def work(session: Session, topic: Topic, runner: JobRunner) -> dict[str, Any]:
+        run_cross_voice_step(
+            runner.steps,
+            job_id,
+            chain,
+            "media",
+            lambda: topic_ops.run_deep_analysis(
                 session,
                 topic,
-                on_step=on_step,
-            )
+                enrich_limit=30,
+            ),
+        )
+        run_cross_voice_step(
+            runner.steps,
+            job_id,
+            chain,
+            "academic",
+            lambda: academic.run_academic_analysis(
+                session,
+                topic,
+                top_n=30,
+            ),
+        )
+        run_cross_voice_step(
+            runner.steps,
+            job_id,
+            chain,
+            "sentiment",
+            lambda: sentiment.run_sentiment_analysis(
+                session,
+                topic,
+                limit=25,
+            ),
+        )
+        result = cross_synthesis.run_cross_synthesis(
+            session,
+            topic,
+            on_step=runner.on_step,
+        )
         result["chain"] = chain
-        for step in steps:
-            if step["status"] == "running":
-                step["status"] = "done"
-        sync_job_steps(steps, job_id)
-        update_job(job_id, status="done", result=result, error="")
-    except Exception as exc:  # pragma: no cover - defensive task boundary
-        update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-        snapshot_steps = job_snapshot(job_id)["steps"]
-        for step in snapshot_steps:
-            if step["status"] == "running":
-                step["status"] = "failed"
-        sync_job_steps(snapshot_steps, job_id)
+        runner.mark_running_steps_done()
+        return result
+
+    run_topic_job(job_id, topic_id, cross_synthesis_steps(), work)
+
+
+def fail_job(job_id: str, exc: Exception) -> None:
+    update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
+    steps = job_snapshot(job_id)["steps"]
+    for step in steps:
+        if step["status"] == "running":
+            step["status"] = "failed"
+    sync_job_steps(steps, job_id)
 
 
 def run_cross_voice_step(
