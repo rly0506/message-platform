@@ -1438,6 +1438,12 @@ button:disabled {
   line-height: 1.5;
 }
 
+.sentiment-warning .sentiment-prereq {
+  margin-top: 4px;
+  font-weight: 600;
+  color: #8a4b00;
+}
+
 .sentiment-metrics {
   grid-template-columns: 0.7fr 0.7fr 1.1fr 1.4fr 1.4fr;
 }

@@ -649,6 +649,7 @@ function isCrossSynthesis(result: SearchJob['result']): result is CrossSynthesis
 function sentimentPlatformLabel(platform: string) {
   const labels: Record<string, string> = {
     reddit: 'Reddit',
+    hackernews: 'Hacker News',
     bilibili: 'B站',
     xiaohongshu: '小红书',
     xueqiu: '雪球',
@@ -660,9 +661,10 @@ function sentimentPlatformLabel(platform: string) {
 function sentimentPlatformRank(platform: string) {
   const ranks: Record<string, number> = {
     reddit: 1,
-    bilibili: 2,
-    xiaohongshu: 3,
-    xueqiu: 4,
+    hackernews: 2,
+    bilibili: 3,
+    xiaohongshu: 4,
+    xueqiu: 5,
   }
   return ranks[platform] || 99
 }

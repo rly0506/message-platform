@@ -27,6 +27,12 @@ SYNTH_MODEL = os.getenv("SYNTH_MODEL", "claude-sonnet-4-6")
 OPENALEX_API_KEY = os.getenv("OPENALEX_API_KEY", "")
 OPENCLI_COMMAND = os.getenv("OPENCLI_COMMAND", "opencli")
 
+# Reddit 官方 API (无浏览器路线)。配齐则 Reddit 走官方 API, 否则回退 OpenCLI(需 Chrome+登录)。
+# 在 https://www.reddit.com/prefs/apps 注册 "script" 类型应用拿 client_id/secret。
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "dossier-tool/0.1 (personal research)")
+
 # 采集默认参数
 GDELT_MAX_RECORDS = 250          # GDELT 单次上限
 RSS_USER_AGENT = "Mozilla/5.0 (compatible; DossierBot/0.1; personal-research)"

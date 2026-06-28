@@ -48,7 +48,8 @@ defineEmits<{
 
       <div class="sentiment-warning">
         <strong>民间情绪 · 最该被怀疑的一角</strong>
-        <span>Reddit 样本以情绪、站队和看热闹为主；高赞≠事实，只能作为待核实线索。</span>
+        <span>Reddit / Hacker News 样本以情绪、站队和看热闹为主；高赞≠事实，只能作为待核实线索。</span>
+        <span class="sentiment-prereq">⚠️ 中文平台(B站/小红书/雪球)经本机浏览器采集：点击前请确认 Chrome 已打开并登录这些平台。Hacker News 与已配 API 的 Reddit 不需要浏览器。</span>
       </div>
 
       <p v-if="activeSentimentJobId" class="search-message">民间情绪任务：{{ activeSentimentJobId.slice(0, 8) }}</p>

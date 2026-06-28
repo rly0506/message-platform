@@ -135,6 +135,7 @@ def test_search_all_platforms_degrades_when_one_platform_fails(monkeypatch):
     result = reddit_sentiment.search_all_platforms(
         reddit_query="US Iran war",
         chinese_query="美伊战争",
+        hackernews=False,
         limit=5,
         platforms=("reddit", "bilibili", "xiaohongshu", "xueqiu"),
         comment_post_limit=0,
@@ -191,6 +192,7 @@ comments:
     result = reddit_sentiment.search_all_platforms(
         reddit_query="US Iran war",
         chinese_query="美伊战争",
+        hackernews=False,
         limit=5,
         platforms=("reddit",),
         comment_post_limit=1,
@@ -230,6 +232,7 @@ def test_comment_fetch_failure_keeps_parent_post(monkeypatch):
     result = reddit_sentiment.search_all_platforms(
         reddit_query="US Iran war",
         chinese_query="美伊战争",
+        hackernews=False,
         limit=5,
         platforms=("bilibili",),
         comment_post_limit=5,
@@ -264,6 +267,7 @@ def test_comment_command_unavailable_degrades_to_posts_only(monkeypatch):
     result = reddit_sentiment.search_all_platforms(
         reddit_query="US Iran war",
         chinese_query="美伊战争",
+        hackernews=False,
         limit=5,
         platforms=("xiaohongshu",),
         comment_post_limit=5,
@@ -304,6 +308,7 @@ def test_comment_fetch_respects_top_k_limit(monkeypatch):
     reddit_sentiment.search_all_platforms(
         reddit_query="US Iran war",
         chinese_query="美伊战争",
+        hackernews=False,
         limit=7,
         platforms=("reddit",),
         comment_post_limit=5,

@@ -20,6 +20,13 @@ COMMENT_COMMANDS = {
 }
 
 
+def _browser_hint() -> str:
+    """OpenCLI 失败多半是 Chrome 没开 / 登录态失效。给一句可操作提示, 并安抚: HN 不受影响。"""
+    return ("　← 该平台经本机浏览器采集, 请确认 Chrome 已打开并登录对应平台后重试。"
+            "(Hacker News 走公开 API, 不受此影响, 已照常采集。)")
+
+
+
 def search_reddit(query: str, limit: int = 25, timeout: int = 45) -> list[dict[str, Any]]:
     """Search Reddit through OpenCLI and normalize posts.
 
@@ -46,11 +53,26 @@ def search_all_platforms(
     platforms: tuple[str, ...] = ("reddit", "bilibili", "xiaohongshu", "xueqiu"),
     comment_post_limit: int = 5,
     comments_per_post: int = 10,
+    hackernews: bool = True,
 ) -> dict[str, Any]:
-    """Search all configured platforms, keeping failures isolated by platform."""
+    """Search all configured platforms, keeping failures isolated by platform.
+
+    Hacker News runs over plain HTTP (no OpenCLI), so it's collected separately and
+    succeeds even when the OpenCLI platforms are unavailable. It uses the English
+    (reddit) query since HN is an English-language community.
+    """
     posts: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     for platform in platforms:
+        # Reddit: 配了官方 API 就走 API (无浏览器); 否则回退 OpenCLI (需 Chrome+登录)。
+        if platform == "reddit":
+            from app.collectors import reddit_api
+            if reddit_api.is_configured():
+                try:
+                    posts.extend(reddit_api.search_reddit_api(reddit_query, limit=limit))
+                except reddit_api.RedditApiError as exc:
+                    errors.append({"platform": "reddit", "error": str(exc)})
+                continue  # 已走 API, 跳过 OpenCLI 路线
         query = reddit_query if platform == "reddit" else chinese_query
         try:
             platform_posts = search_platform(platform, query, limit=limit, timeout=timeout)
@@ -66,11 +88,26 @@ def search_all_platforms(
             errors.extend(comment_errors)
         except RedditSentimentError as exc:
             errors.append({"platform": platform, "error": str(exc)})
+
+    # Hacker News: 公开 API, 零配置, 与 OpenCLI 平台失败相互隔离。
+    if hackernews:
+        from app.collectors import hackernews_sentiment
+        try:
+            posts.extend(hackernews_sentiment.search_hackernews(
+                reddit_query,
+                limit=limit,
+                comment_post_limit=comment_post_limit,
+                comments_per_post=comments_per_post,
+            ))
+        except hackernews_sentiment.HackerNewsError as exc:
+            errors.append({"platform": "hackernews", "error": str(exc)})
+
+    used_platforms = list(platforms) + (["hackernews"] if hackernews else [])
     return {
         "posts": posts,
         "errors": errors,
         "queries": {"reddit": reddit_query, "chinese": chinese_query},
-        "platforms": list(platforms),
+        "platforms": used_platforms,
     }
 
 
@@ -92,11 +129,15 @@ def search_platform(platform: str, query: str, limit: int = 25, timeout: int = 4
             f"OpenCLI is not available at '{command}'. Set OPENCLI_COMMAND to the full local path."
         ) from exc
     except subprocess.TimeoutExpired as exc:
-        raise RedditSentimentError(f"OpenCLI {platform} search timed out after {timeout}s.") from exc
+        raise RedditSentimentError(
+            f"OpenCLI {platform} search timed out after {timeout}s.{_browser_hint()}"
+        ) from exc
 
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
-        raise RedditSentimentError(f"OpenCLI {platform} search failed: {detail or completed.returncode}")
+        raise RedditSentimentError(
+            f"OpenCLI {platform} search failed: {detail or completed.returncode}{_browser_hint()}"
+        )
 
     return [_normalize_post(item, platform=platform) for item in _load_yaml_list(completed.stdout)[: max(1, limit)]]
 
