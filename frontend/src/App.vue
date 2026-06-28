@@ -3,9 +3,11 @@ import { onMounted, ref, watch } from 'vue'
 import { fetchCountryCompare } from './api/dossierApi'
 import AcademicPanel from './components/AcademicPanel.vue'
 import CrossPanel from './components/CrossPanel.vue'
+import DiscoveryPanel from './components/DiscoveryPanel.vue'
 import LlmPanel from './components/LlmPanel.vue'
 import MediaPanel from './components/MediaPanel.vue'
 import SentimentPanel from './components/SentimentPanel.vue'
+import { useDiscovery } from './composables/useDiscovery'
 import { useEventWorkbench } from './composables/useEventWorkbench'
 import { useJobRunner } from './composables/useJobRunner'
 import { readableError, useTopicData } from './composables/useTopicData'
@@ -15,6 +17,7 @@ import type {
   Article,
   CountryCompare,
   CountryCompareCountry,
+  DiscoverySeed,
   EvidenceArticle,
   Keyword,
   LocalEvent,
@@ -26,6 +29,32 @@ const countryCompareLoading = ref(false)
 const countryCompare = ref<CountryCompare | null>(null)
 const countryCompareError = ref('')
 const countryCompareEventKey = ref('')
+
+type AppMode = 'workbench' | 'discovery'
+const appMode = ref<AppMode>('workbench')
+const appModes = [
+  { key: 'workbench', label: '事件分析台' },
+  { key: 'discovery', label: '认知前沿' },
+] as const
+
+const {
+  report: discoveryReport,
+  loading: discoveryLoading,
+  analyzing: discoveryAnalyzing,
+  loaded: discoveryLoaded,
+  error: discoveryError,
+  message: discoveryMessage,
+  activeJobId: discoveryJobId,
+  steps: discoverySteps,
+  safeReportHtml: discoverySafeHtml,
+  hasReport: discoveryHasReport,
+  seeds: discoverySeeds,
+  loadLatest: loadLatestDiscovery,
+  runDiscovery,
+  distill: distillSeedTopic,
+  stepStatusText: discoveryStepStatusText,
+} = useDiscovery()
+
 const workspaceTabs = [
   { key: 'media', label: '媒体' },
   { key: 'academic', label: '学界' },
@@ -179,6 +208,43 @@ const {
 onMounted(async () => {
   await loadTopics()
 })
+
+watch(appMode, (mode) => {
+  if (mode === 'discovery' && !discoveryLoaded.value) {
+    loadLatestDiscovery()
+  }
+})
+
+// 发现 -> 分析闭环: 点种子 -> LLM 提炼成话题词 -> 切到事件分析台 -> 自动搜索。
+const seedBusy = ref(false)
+const activeSeedUrl = ref('')
+const seedNote = ref('')
+
+async function analyzeSeed(seed: DiscoverySeed) {
+  if (seedBusy.value) return
+  seedBusy.value = true
+  activeSeedUrl.value = seed.url
+  seedNote.value = ''
+  try {
+    const { query, llm } = await distillSeedTopic(seed)
+    const term = (query || seed.title).trim()
+    eventSearch.value = term
+    appMode.value = 'workbench'
+    if (llm && query) {
+      // LLM 提炼成功 -> 直接跑搜索
+      await runEventSearch()
+    } else {
+      // 降级 (无 LLM / 提炼失败): 已带入话题词，但不自动搜，提示用户精简后手动点。
+      searchMessage.value = `已从认知前沿带入「${term}」。未用 LLM 提炼，建议精简关键词后点击搜索。`
+    }
+  } catch (err) {
+    // distill 调用本身失败 (网络等) -> 停在发现页给出提示，不切走。
+    seedNote.value = readableError(err)
+  } finally {
+    seedBusy.value = false
+    activeSeedUrl.value = ''
+  }
+}
 
 watch(selectedTopicId, async (id) => {
   if (id) {
@@ -348,14 +414,50 @@ function countryCoverageNote(country: CountryCompareCountry) {
     <section class="topbar">
       <div>
         <p class="eyebrow">Dossier Intelligence</p>
-        <h1>事件搜索与发展时间轴</h1>
+        <h1>{{ appMode === 'discovery' ? '认知前沿日报' : '事件搜索与发展时间轴' }}</h1>
       </div>
-      <select v-model="selectedTopicId" class="topic-select" aria-label="选择专题">
-        <option v-for="topic in topics" :key="topic.id" :value="topic.id">
-          #{{ topic.id }} {{ topic.name }}
-        </option>
-      </select>
+      <div class="topbar-controls">
+        <nav class="mode-switch" aria-label="顶层视图切换">
+          <button
+            v-for="mode in appModes"
+            :key="mode.key"
+            type="button"
+            :class="{ active: appMode === mode.key }"
+            @click="appMode = mode.key"
+          >
+            {{ mode.label }}
+          </button>
+        </nav>
+        <select v-if="appMode === 'workbench'" v-model="selectedTopicId" class="topic-select" aria-label="选择专题">
+          <option v-for="topic in topics" :key="topic.id" :value="topic.id">
+            #{{ topic.id }} {{ topic.name }}
+          </option>
+        </select>
+      </div>
     </section>
+
+    <DiscoveryPanel
+      v-if="appMode === 'discovery'"
+      :report="discoveryReport"
+      :loading="discoveryLoading"
+      :analyzing="discoveryAnalyzing"
+      :loaded="discoveryLoaded"
+      :error="discoveryError"
+      :message="discoveryMessage"
+      :active-job-id="discoveryJobId"
+      :steps="discoverySteps"
+      :safe-report-html="discoverySafeHtml"
+      :has-report="discoveryHasReport"
+      :seeds="discoverySeeds"
+      :seed-busy="seedBusy"
+      :active-seed-url="activeSeedUrl"
+      :seed-note="seedNote"
+      :step-status-text="discoveryStepStatusText"
+      @run-discovery="runDiscovery"
+      @analyze-seed="analyzeSeed"
+    />
+
+    <template v-else>
 
     <section class="search-panel">
       <div>
@@ -634,6 +736,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           @run-deep-analysis="runDeepAnalysis"
         />
       </section>
+    </template>
     </template>
   </main>
 </template>

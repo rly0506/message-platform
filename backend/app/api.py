@@ -21,7 +21,7 @@ from app.db import (
     init_db,
 )
 from app.pipeline import local_analyze
-from app.schemas.search import AcademicAnalysisRequest, DeepAnalysisRequest, SearchRequest, SentimentAnalysisRequest
+from app.schemas.search import AcademicAnalysisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
 from app.services import country_compare, payloads, search_service
 from app.pipeline import academic, cross_synthesis, sentiment
 
@@ -33,7 +33,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    # 本地开发: 放行任意 localhost / 127.0.0.1 端口 (Vite 端口被占时会自动跳 5174/5175...),
+    # 避免端口漂移导致前端跨域报"无法连接后端"。仅匹配本地回环, 不放行外部来源。
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -251,6 +253,32 @@ def create_cross_synthesis_job(topic_id: int) -> dict[str, Any]:
 @app.post("/api/search/jobs/{job_id}/rerun")
 def rerun_search_job(job_id: str) -> dict[str, Any]:
     return search_service.rerun_search_job(job_id)
+
+
+@app.get("/api/discovery/latest")
+def get_latest_discovery() -> dict[str, Any]:
+    from app.discovery import run as discovery_run
+
+    report = discovery_run.latest_report()
+    if report is None:
+        raise HTTPException(status_code=404, detail="还没有任何认知前沿日报。点击「立即分析」生成第一份。")
+    return report
+
+
+@app.post("/api/discovery/jobs")
+def create_discovery_job(annotate: bool = Query(default=True)) -> dict[str, Any]:
+    return search_service.enqueue_discovery_job(annotate=annotate)
+
+
+@app.post("/api/discovery/distill")
+def distill_discovery_seed(payload: DiscoveryDistillRequest) -> dict[str, Any]:
+    """把一条发现种子的长标题提炼成简短新闻话题词 (供事件分析台搜索)。
+
+    同步单次调用 (非后台 job); 无 LLM 时降级返回启发式截断, llm=false。
+    """
+    from app.discovery import annotate as discovery_annotate
+
+    return discovery_annotate.distill_topic(payload.title, payload.domain or "")
 
 
 @app.get("/api/search/jobs/{job_id}")

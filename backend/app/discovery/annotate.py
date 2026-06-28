@@ -11,11 +11,82 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
 from app import config
 from app.discovery.store import ScoredItem
+
+
+def _heuristic_topic(title: str) -> str:
+    """无 LLM 时的降级提炼: 取主干、去技术性后缀, 限长。
+
+    不追求聪明, 只求"比原始长标题更像一个搜索词"。前端会让用户再改。
+    """
+    t = (title or "").strip()
+    # 去掉常见栏目前缀 (MIT TR 的 "The Download:" 等)
+    t = re.sub(r"^(the download|the algorithm)\s*[:：]\s*", "", t, flags=re.IGNORECASE)
+    # 冒号/破折号前的主干通常就是话题
+    for sep in ("：", ":", " — ", " – ", " - "):
+        if sep in t:
+            t = t.split(sep, 1)[0].strip()
+            break
+    # 去掉 [pdf]/(2026)/【…】 这类括注
+    t = re.sub(r"[\[\(【].*?[\]\)】]", "", t).strip()
+    return t[:40] if t else (title or "").strip()[:40]
+
+
+def distill_topic(title: str, domain: str = "") -> dict:
+    """把一条前沿种子的长标题提炼成简短新闻话题词, 供事件分析台搜索。
+
+    返回 {query, llm}:
+      llm=True  -> 走了 LLM 提炼;
+      llm=False -> 降级到启发式截断 (无 LLM key / 调用失败 / 空结果)。
+    守住发现层红线: LLM 只是按需增强, 不可用时优雅降级, 绝不报错。
+    """
+    title = (title or "").strip()
+    fallback = _heuristic_topic(title)
+    if not title:
+        return {"query": "", "llm": False}
+    if not config.LLM_API_KEY:
+        return {"query": fallback, "llm": False}
+
+    try:
+        from app import llm
+    except Exception:
+        return {"query": fallback, "llm": False}
+
+    prompt = (
+        f"前沿标题: {title}\n"
+        f"领域: {domain or '未知'}\n\n"
+        "把它转换成一个简短的新闻检索话题词 (2-6 个词), 用于在新闻聚合里搜相关报道。\n"
+        "要求: 去掉论文/帖子腔 (如 DSpark、[pdf]、版本号), 提炼出底层主题; "
+        "语言跟随该主题最可能的新闻语种 (中文或英文); 只输出话题词本身, 不要引号、标点或解释。"
+    )
+    try:
+        raw = llm.chat(
+            config.HAIKU_MODEL,
+            prompt,
+            max_tokens=40,
+            system="你把科技/财经/地缘的前沿标题提炼成简短、可检索的新闻话题词。只输出话题词。",
+        )
+    except Exception:
+        return {"query": fallback, "llm": False}
+
+    q = _clean_term(raw)
+    if not q:
+        return {"query": fallback, "llm": False}
+    return {"query": q, "llm": True}
+
+
+def _clean_term(raw: str) -> str:
+    """清洗 LLM 返回: 取首行、去引号/前后标点, 限长。"""
+    if not raw:
+        return ""
+    line = raw.strip().splitlines()[0].strip()
+    line = line.strip("\"'“”‘’` 。.，,").strip()
+    return line[:50]
 
 
 @dataclass

@@ -36,6 +36,7 @@
       "name": "MIT Technology Review",
       "type": "rss",
       "domain": "tech",
+      "tier": "mass",
       "enabled": true,
       "url": "https://www.technologyreview.com/feed/"
     },

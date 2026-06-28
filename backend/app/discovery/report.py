@@ -56,9 +56,21 @@ def categorize(scored: ScoredItem, has_history: bool) -> str:
 
     关键: 种子 = "新鲜"(首见在窗口内) 或 "在加速"。不再因"被轮询过一次"
     就把今天的苗头打成噪声 —— 那是早期 bug, 同一天重跑会冲光所有种子。
+
+    源分级 (tier): 大众媒体 (mass, 如 MIT Tech Review) 发出来就是给所有人看的 = 已出圈,
+    "新鲜"不再等于"认知之外", 故不能仅凭新鲜进种子档 —— 这修掉了"大众媒体当日新闻
+    污染 A 档"的 bug。小众/领先源 (niche, 默认: arXiv/智库/央行/HN) 保持原判定。
     """
     it = scored.item
     fresh = _is_fresh(scored)
+
+    # 大众媒体 (mass): 当日新闻 = 已出圈。新鲜的归 mainstream, 旧的归 noise。
+    # 唯一破例: 真加速 (delta 超阈值, 从低基数往上拐) 仍算种子
+    # —— 但 RSS 大众源 signal=0、delta 恒为 0, 故实际只会落在 mainstream/noise。
+    if it.tier == "mass":
+        if scored.delta >= RISE_DELTA_MIN:
+            return "seed"
+        return "mainstream" if fresh else "noise"
 
     # arXiv / RSS 无投票信号: "新鲜出现的一条"本身就是早期信号
     if it.source == "arxiv" or it.signal == 0:
@@ -154,6 +166,44 @@ def build_report(scored: list[ScoredItem], run_id: str, has_history: bool,
 def _seed_sort_key(s: ScoredItem) -> tuple:
     """种子排序: 优先加速量大的, 其次全新的, 再次持续被见的。"""
     return (s.delta, 1 if s.is_new else 0, s.runs_seen)
+
+
+def collect_seeds(scored: list[ScoredItem], has_history: bool,
+                  annotations: dict | None = None) -> list[dict]:
+    """抽出结构化的种子列表 (A 档), 供前端做"点种子->深入分析"闭环。
+
+    与 build_report 的 A 档同源: 同样的 categorize 判档、同样的排序。
+    但这里返回结构化 dict (而非 markdown 字符串), 让单条种子可被前端点击。
+
+    has_history=False (首次/基线): 无加速信号 -> 无种子, 返回 []。
+    annotations: 可选 {external_id: Annotation}, 有则把 what/why/still_niche 一并带出。
+    """
+    if not has_history:
+        return []
+    annotations = annotations or {}
+    seeds = sorted(
+        (s for s in scored if categorize(s, has_history) == "seed"),
+        key=_seed_sort_key,
+        reverse=True,
+    )
+    out: list[dict] = []
+    for s in seeds:
+        it = s.item
+        domain = it.domain or "other"
+        ann = annotations.get(it.external_id)
+        out.append({
+            "title": it.title,
+            "url": it.url,
+            "domain": domain,
+            "domain_label": _DOMAIN_LABELS.get(domain, domain),
+            "signal": it.signal,
+            "delta": s.delta,
+            "is_new": s.is_new,
+            "what": ann.what if ann else "",
+            "why": ann.why if ann else "",
+            "still_niche": ann.still_niche if ann else True,
+        })
+    return out
 
 
 def _render_line(s: ScoredItem, show_delta: bool) -> str:

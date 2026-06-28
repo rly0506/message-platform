@@ -1,7 +1,6 @@
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import type { Ref } from 'vue'
 import { computed, ref, watch } from 'vue'
+import { renderMarkdown } from '../utils/markdown'
 import type {
   Article,
   CountryCompare,
@@ -84,11 +83,7 @@ export function useEventWorkbench(options: UseEventWorkbenchOptions) {
       : localData.value?.analysis_md || detail.value?.analysis?.content_md || '',
   )
   const displayAnalysisText = computed(() => analysisText.value.replace(llmAnalysisMarker, '').trim())
-  const safeAnalysisHtml = computed(() => {
-    if (!displayAnalysisText.value) return ''
-    const html = marked.parse(displayAnalysisText.value, { async: false, breaks: true, gfm: true }) as string
-    return DOMPurify.sanitize(html)
-  })
+  const safeAnalysisHtml = computed(() => renderMarkdown(displayAnalysisText.value))
   const stancePeriods = computed(() => localData.value?.stance_evolution || [])
   const criteria = computed(() => localData.value?.criteria || [])
   const keywords = computed(() => localData.value?.keywords || [])

@@ -52,6 +52,41 @@ code {
   padding: 14px 0 18px;
 }
 
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mode-switch {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #c9d4d9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.mode-switch button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #24515f;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mode-switch button:hover {
+  color: #155a6e;
+}
+
+.mode-switch button.active {
+  background: #155a6e;
+  color: #fff;
+}
+
 .eyebrow,
 .status {
   margin: 0 0 4px;

@@ -387,6 +387,35 @@ export type DeepAnalysisResult = {
   analysis_md: string
 }
 
+export type DiscoverySeed = {
+  title: string
+  url: string
+  domain: string
+  domain_label: string
+  signal: number
+  delta: number
+  is_new: boolean
+  what: string
+  why: string
+  still_niche: boolean
+}
+
+export type DiscoveryResult = {
+  kind: 'discovery'
+  markdown: string
+  run_id: string
+  path?: string
+  annotated?: boolean
+  seeds?: DiscoverySeed[]
+}
+
+export type DiscoveryReport = {
+  markdown: string
+  run_id: string
+  path?: string
+  seeds?: DiscoverySeed[]
+}
+
 export type SearchJob = {
   id: string
   query: string
@@ -394,6 +423,6 @@ export type SearchJob = {
   steps: { key: string; label: string; status: string }[]
   created_at: string
   updated_at: string
-  result: SearchResponse | DeepAnalysisResult | AcademicLayer | SentimentLayer | CrossSynthesis | null
+  result: SearchResponse | DeepAnalysisResult | AcademicLayer | SentimentLayer | CrossSynthesis | DiscoveryResult | null
   error: string
 }

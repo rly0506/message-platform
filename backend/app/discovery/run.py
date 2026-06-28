@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 
@@ -25,12 +26,15 @@ REPORTS_DIR = os.getenv("DISCOVERY_REPORTS_DIR") or os.path.join(_BACKEND, "disc
 
 
 def run_discovery(store: DiscoveryStore | None = None, items=None, run_id: str | None = None,
-                  annotate: bool = False) -> str:
-    """跑一轮发现, 返回 markdown 报告。
+                  annotate: bool = False) -> dict:
+    """跑一轮发现, 返回 {markdown, seeds}。
 
     参数可注入 (store / items / run_id), 便于测试与复用;
     默认走真实拉取 + 默认 db + 当前时间戳。
     annotate=True: 对种子做可选 LLM 二级分拣 (无 LLM 时自动降级, 不报错)。
+
+    seeds: 结构化 A 档种子列表 (供前端"点种子->深入分析"闭环);
+           首次/基线运行无加速信号 -> seeds 为 []。
     """
     own_store = store is None
     store = store or DiscoveryStore()
@@ -50,8 +54,9 @@ def run_discovery(store: DiscoveryStore | None = None, items=None, run_id: str |
 
         md = report.build_report(scored, run_id=run_id, has_history=has_history,
                                  annotations=annotations)
+        seeds = report.collect_seeds(scored, has_history=has_history, annotations=annotations)
         store.commit_run(items, run_id=run_id, now_iso=run_id)
-        return md
+        return {"markdown": md, "seeds": seeds}
     finally:
         if own_store:
             store.close()
@@ -67,16 +72,85 @@ def _save_report(md: str, run_id: str) -> str:
     return path
 
 
-def main() -> None:
+def _seeds_path_for(md_path: str) -> str:
+    """报告 .md 的同名 sidecar .json 路径 (存结构化种子)。"""
+    return md_path[: -len(".md")] + ".json" if md_path.endswith(".md") else md_path + ".json"
+
+
+def _save_seeds(seeds: list, md_path: str) -> str:
+    """把结构化种子写到与 .md 同名的 .json sidecar, 返回其路径。
+
+    与 markdown 报告并存: markdown 给人读, json 给前端做"点种子"闭环。
+    """
+    path = _seeds_path_for(md_path)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(seeds, f, ensure_ascii=False)
+    return path
+
+
+def run_and_save(annotate: bool = False, on_step=None) -> dict:
+    """跑一轮发现并落盘, 返回结构化结果 (供 API job 复用)。
+
+    on_step(key, status): 可选进度回调 (JobRunner.on_step 形状), 用于前端步骤展示。
+    返回 {markdown, seeds, run_id, path, annotated} —— job result 与 /latest 共用此形状。
+    """
+    def step(key: str, status: str) -> None:
+        if on_step is not None:
+            on_step(key, status)
+
     run_id = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    md = run_discovery(run_id=run_id)
+    step("fetch", "running")
+    result = run_discovery(run_id=run_id, annotate=annotate)
+    md, seeds = result["markdown"], result["seeds"]
+    step("fetch", "done")
+    step("persist", "running")
     path = _save_report(md, run_id)
+    _save_seeds(seeds, path)
+    step("persist", "done")
+    return {"markdown": md, "seeds": seeds, "run_id": run_id, "path": path, "annotated": annotate}
+
+
+def latest_report() -> dict | None:
+    """读 discovery_reports/ 里最新一份报告。
+
+    ISO 命名 = 字典序即时间序, 取末尾即最新。
+    命令行 / 定时任务跑出的报告也落在同一目录, 故前端能统一看到。
+    一并读同名 .json sidecar 拿结构化种子 (老报告无 sidecar -> seeds=[])。
+    无报告时返回 None。
+    """
+    if not os.path.isdir(REPORTS_DIR):
+        return None
+    files = sorted(f for f in os.listdir(REPORTS_DIR) if f.startswith("frontier-") and f.endswith(".md"))
+    if not files:
+        return None
+    name = files[-1]
+    path = os.path.join(REPORTS_DIR, name)
+    with open(path, "r", encoding="utf-8") as f:
+        md = f.read()
+    seeds: list = []
+    seeds_path = _seeds_path_for(path)
+    if os.path.exists(seeds_path):
+        try:
+            with open(seeds_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, list):
+                seeds = loaded
+        except (json.JSONDecodeError, OSError):
+            seeds = []  # sidecar 损坏 -> 退回空种子, 报告照常显示
+    # 文件名形如 frontier-20260628T123000Z.md -> 抽回 run_id 标识
+    run_id = name[len("frontier-"):-len(".md")]
+    return {"markdown": md, "seeds": seeds, "run_id": run_id, "path": path}
+
+
+def main() -> None:
+    result = run_and_save()
+    md = result["markdown"]
     # Windows GBK 控制台可能打不出 emoji; 落盘是权威输出, stdout 仅作提示。
     try:
         print(md)
     except UnicodeEncodeError:
         print(md.encode("ascii", "replace").decode("ascii"))
-    print(f"\n[报告已保存] {path}")
+    print(f"\n[报告已保存] {result['path']}  (种子 {len(result['seeds'])} 条)")
 
 
 if __name__ == "__main__":

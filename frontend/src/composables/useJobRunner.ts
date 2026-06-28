@@ -1,5 +1,3 @@
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import type { Ref } from 'vue'
 import { computed, ref } from 'vue'
 import {
@@ -10,10 +8,11 @@ import {
   createSentimentJob,
   fetchAcademic,
   fetchCrossSynthesis,
-  fetchSearchJob,
   fetchSentiment,
   rerunSearchJob,
 } from '../api/dossierApi'
+import { renderMarkdown } from '../utils/markdown'
+import { stepStatusText, waitForJob, type StepState } from './jobPolling'
 import type {
   AcademicLayer,
   CrossSynthesis,
@@ -25,8 +24,6 @@ import type {
   SentimentPost,
 } from '../types/dossier'
 import { readableError } from './useTopicData'
-
-type StepState = { key: string; label: string; status: string }
 
 type UseJobRunnerOptions = {
   selectedTopicId: Ref<number | null>
@@ -42,17 +39,6 @@ type UseJobRunnerOptions = {
 const deepEnrichLimit = 30
 const academicTopN = 30
 const sentimentLimit = 25
-
-const stepStatusLabels: Record<string, string> = {
-  pending: '等待中',
-  running: '进行中',
-  done: '已完成',
-  warning: '已完成，有提示',
-  empty: '没有新数据',
-  skipped: '已跳过',
-  failed: '失败',
-  interrupted: '已中断',
-}
 
 export function useJobRunner(options: UseJobRunnerOptions) {
   const {
@@ -619,36 +605,6 @@ export function useJobRunner(options: UseJobRunnerOptions) {
   }
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-function renderMarkdown(text: string | undefined) {
-  if (!text) return ''
-  return DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true, gfm: true }) as string)
-}
-
-async function waitForJob(
-  jobId: string,
-  steps: Ref<StepState[]>,
-  message: Ref<string>,
-  intervalMs: number,
-  label: string,
-) {
-  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-  for (;;) {
-    const job = await fetchSearchJob(jobId)
-    steps.value = job.steps || steps.value
-    if (job.status === 'running' || job.status === 'queued') {
-      message.value = `${label} ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-    }
-    if (terminal.has(job.status)) {
-      return job
-    }
-    await delay(intervalMs)
-  }
-}
-
 function canRerunJob(job: SearchJob | null) {
   return job?.status === 'interrupted' || job?.status === 'failed'
 }
@@ -671,10 +627,6 @@ function isSentimentLayer(result: SearchJob['result']): result is SentimentLayer
 
 function isCrossSynthesis(result: SearchJob['result']): result is CrossSynthesis {
   return Boolean(result && 'content_md' in result && 'voices_used' in result && 'generated_at' in result)
-}
-
-function stepStatusText(status: string) {
-  return stepStatusLabels[status] || status
 }
 
 function sentimentPlatformLabel(platform: string) {

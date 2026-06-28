@@ -104,6 +104,107 @@ def test_arxiv_new_is_seed_seen_is_noise(store):
     assert report.categorize(scored2[0], has_history=True) == "noise"  # 已见过
 
 
+def test_mass_tier_fresh_is_mainstream_not_seed(store):
+    """源分级修复: 大众媒体 (mass) 的当日新闻 = 已出圈, 不进种子档。
+
+    回归 bug: MIT Tech Review 这类 RSS 源 signal=0, 旧逻辑只凭'新鲜'就判种子,
+    导致 A 档塞满'已出圈'的大众媒体新闻 (报告自相矛盾)。现在 mass 源新鲜->mainstream。
+    对照: 同样 signal=0、同样全新, 但 niche 源 (默认) 仍是种子。
+    """
+    mass = DiscoveryItem(source="MIT Technology Review", external_id="https://tr/x",
+                         title="The Download: today's news", url="https://tr/x", tier="mass")
+    niche = DiscoveryItem(source="Carnegie", external_id="https://c/y",
+                          title="A niche think-tank piece", url="https://c/y", tier="niche")
+    scored = store.score([mass, niche], run_id="day1", now_iso="day1")
+    by_id = {s.item.external_id: s for s in scored}
+    # 两者都全新、signal=0; tier 是唯一区别
+    assert report.categorize(by_id["https://tr/x"], has_history=True) == "mainstream"
+    assert report.categorize(by_id["https://c/y"], has_history=True) == "seed"
+
+
+def test_mass_tier_stale_is_noise(store):
+    """大众媒体的旧条目 (过新鲜窗口) -> noise, 不残留在任何档。"""
+    mass = DiscoveryItem(source="MIT Technology Review", external_id="https://tr/old",
+                         title="Old news", url="https://tr/old", tier="mass")
+    store.score([mass], run_id="2026-06-25T09:00:00Z", now_iso="2026-06-25T09:00:00Z")
+    store.commit_run([mass], run_id="2026-06-25T09:00:00Z", now_iso="2026-06-25T09:00:00Z")
+    # 3 天后: age=72h > 36h 窗口
+    scored = store.score([mass], run_id="2026-06-28T09:00:00Z", now_iso="2026-06-28T09:00:00Z")
+    assert report.categorize(scored[0], has_history=True) == "noise"
+
+
+def test_mass_tier_real_acceleration_still_seed(store):
+    """破例: 大众媒体若真加速 (delta 超阈值), 仍算种子 —— 但需有投票信号才可能发生。
+
+    构造一个带 signal 的 mass 源 (假想场景), 验证加速通道没被源分级误堵死。
+    """
+    mass = DiscoveryItem(source="SomeMassOutlet", external_id="m1", title="Surging story",
+                         url="https://m/1", signal=30, tier="mass")
+    store.score([mass], run_id="day1", now_iso="day1")
+    store.commit_run([mass], run_id="day1", now_iso="day1")
+    mass_up = DiscoveryItem(source="SomeMassOutlet", external_id="m1", title="Surging story",
+                            url="https://m/1", signal=90, tier="mass")  # +60 > RISE_DELTA_MIN
+    scored = store.score([mass_up], run_id="day2", now_iso="day2")
+    assert scored[0].delta == 60
+    assert report.categorize(scored[0], has_history=True) == "seed"
+
+
+def test_collect_seeds_structured(store):
+    """collect_seeds: 有历史时返回结构化种子 (供前端点击闭环); 无历史返回 []。"""
+    day1 = [_hn("1", "Rising seed", 30), _hn("2", "Flat", 50)]
+    store.score(day1, run_id="day1", now_iso="day1")
+    store.commit_run(day1, run_id="day1", now_iso="day1")
+    day2 = [_hn("1", "Rising seed", 95), _hn("2", "Flat", 51)]  # 1 加速->seed, 2 没动->noise
+    scored = store.score(day2, run_id="day2", now_iso="day2")
+
+    seeds = report.collect_seeds(scored, has_history=True)
+    assert len(seeds) == 1
+    seed = seeds[0]
+    assert seed["title"] == "Rising seed"
+    assert seed["delta"] == 65
+    # 必备字段齐全 (前端依赖)
+    for key in ("title", "url", "domain", "domain_label", "signal", "delta", "is_new",
+                "what", "why", "still_niche"):
+        assert key in seed
+    # 无历史 = 只建基线 = 无种子
+    assert report.collect_seeds(scored, has_history=False) == []
+
+
+def test_collect_seeds_carries_annotation(store):
+    """有 LLM 标注时, collect_seeds 把 what/why/still_niche 一并带出给前端。"""
+    from app.discovery.annotate import Annotation
+    day1 = [_hn("1", "Rising", 30)]
+    store.score(day1, run_id="day1", now_iso="day1")
+    store.commit_run(day1, run_id="day1", now_iso="day1")
+    day2 = [_hn("1", "Rising", 95)]
+    scored = store.score(day2, run_id="day2", now_iso="day2")
+    anns = {"1": Annotation(external_id="1", what="一个新方法", why="可能降本", still_niche=False)}
+    seeds = report.collect_seeds(scored, has_history=True, annotations=anns)
+    assert seeds[0]["what"] == "一个新方法"
+    assert seeds[0]["why"] == "可能降本"
+    assert seeds[0]["still_niche"] is False
+
+
+def test_distill_degrades_without_llm(monkeypatch):
+    """distill_topic 无 LLM key 时降级到启发式截断, llm=False, 绝不报错。"""
+    from app import config
+    from app.discovery import annotate
+    monkeypatch.setattr(config, "LLM_API_KEY", "")
+    r = annotate.distill_topic("The Download: brain-melting heatwaves and OpenAI restrictions", "tech")
+    assert r["llm"] is False
+    # 启发式应去掉 "The Download:" 栏目前缀
+    assert "Download" not in r["query"]
+    assert r["query"]
+
+
+def test_heuristic_topic_strips_noise():
+    """启发式提炼: 去栏目前缀 / 取冒号前主干 / 去 [pdf] 括注。"""
+    from app.discovery.annotate import _heuristic_topic
+    assert _heuristic_topic("DSpark: Speculative decoding accelerates LLM inference [pdf]") == "DSpark"
+    assert "[pdf]" not in _heuristic_topic("Some title [pdf]")
+    assert _heuristic_topic("The Download: AI restrictions").strip() == "AI restrictions"
+
+
 def test_arxiv_id_strips_version():
     """external_id 必须跨天稳定: 去掉 vN 版本后缀让同一篇论文对齐。"""
     assert _arxiv_id("http://arxiv.org/abs/2406.01234v2") == "2406.01234"

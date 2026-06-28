@@ -22,3 +22,6 @@ frontend/playwright-report/
 # OS / IDE
 .DS_Store
 .vscode/
+
+# Local run logs
+*_run.log

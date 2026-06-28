@@ -61,15 +61,13 @@ def discover(
     """事件发现: 拉注意力前沿 (HN/arXiv/智库) -> 存快照 -> 出认知前沿日报。
 
     每天跑一次, 攒快照基线; 次日起报告才有'加速'信号。
-    报告同时落盘到 backend/discovery_reports/。
+    报告同时落盘到 backend/discovery_reports/ (含结构化种子 sidecar)。
     """
-    from app.discovery.run import run_discovery, _save_report
-    run_id = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    md = run_discovery(run_id=run_id, annotate=annotate)
-    path = _save_report(md, run_id)
+    from app.discovery.run import run_and_save
+    result = run_and_save(annotate=annotate)
     if print_report:
-        typer.echo(md)
-    typer.echo(f"\n[报告已保存] {path}")
+        typer.echo(result["markdown"])
+    typer.echo(f"\n[报告已保存] {result['path']}  (种子 {len(result['seeds'])} 条)")
 
 
 @app.command()

@@ -25,6 +25,11 @@ class SentimentAnalysisRequest(BaseModel):
     limit: int = Field(default=25, ge=1, le=100)
 
 
+class DiscoveryDistillRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=400)
+    domain: str = Field(default="", max_length=40)
+
+
 class SearchStep(BaseModel):
     key: str
     label: str

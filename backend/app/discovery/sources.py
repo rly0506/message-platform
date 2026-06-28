@@ -40,6 +40,11 @@ class DiscoveryItem:
             (它们的"信号"是"是否新出现", 由快照层的 first_seen 承担)。
     engagement: 互动量 (HN 评论数), 作为辅助信号。
     domain: 粗领域桶 (tech/finance/geopolitics/...), 用于报告分组、突破技术圈。
+    tier: 源的"触达层级"。
+          niche (默认): 小众/领先源 (arXiv/智库/央行/HN) —— "新鲜出现"本身就是早期信号。
+          mass: 大众媒体 (如 MIT Tech Review) —— 发出来就是给所有人看的 = 已出圈,
+                "新鲜"不再等于"认知之外"。只有真加速 (从低基数往上拐) 才破例算种子。
+                这道分级修掉了"大众媒体当日新闻污染种子档"的 bug。
     """
     source: str                     # hackernews / arxiv / 源名
     external_id: str                # 跨天比对的稳定键
@@ -49,6 +54,7 @@ class DiscoveryItem:
     engagement: int = 0             # 辅助信号 (评论数)
     category: str = ""              # 源内分类 (arXiv 的 cs.AI 等)
     domain: str = "tech"            # 领域桶
+    tier: str = "niche"             # 触达层级: niche (默认) / mass
     meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -61,7 +67,7 @@ def _http_get(url: str) -> bytes:
         return resp.read()
 
 
-def fetch_hackernews(limit: int = 30, domain: str = "tech") -> list[DiscoveryItem]:
+def fetch_hackernews(limit: int = 30, domain: str = "tech", tier: str = "niche") -> list[DiscoveryItem]:
     """HN 当日 front_page。Algolia API, 无需 key, 稳定。
 
     signal = points, engagement = num_comments。
@@ -87,6 +93,7 @@ def fetch_hackernews(limit: int = 30, domain: str = "tech") -> list[DiscoveryIte
             engagement=int(hit.get("num_comments") or 0),
             category="",
             domain=domain,
+            tier=tier,
             meta={"author": hit.get("author", "")},
         ))
     return out
@@ -100,6 +107,7 @@ def fetch_arxiv(
     categories: tuple[str, ...] = ARXIV_CATEGORIES,
     per_cat: int = 10,
     domain: str = "tech",
+    tier: str = "niche",
 ) -> list[DiscoveryItem]:
     """arXiv 各分类最新提交。export API + feedparser 解析 Atom。
 
@@ -141,6 +149,7 @@ def fetch_arxiv(
                 engagement=0,
                 category=cat,
                 domain=domain,
+                tier=tier,
                 meta={"summary": (e.get("summary", "") or "")[:500].replace("\n", " ").strip()},
             ))
     return out
@@ -162,11 +171,12 @@ def _arxiv_id(link: str) -> str:
     return tail
 
 
-def fetch_rss_feed(name: str, url: str, domain: str = "tech") -> list[DiscoveryItem]:
+def fetch_rss_feed(name: str, url: str, domain: str = "tech", tier: str = "niche") -> list[DiscoveryItem]:
     """策展 RSS 源 (智库/央行/科技媒体)。这些是各领域专业人筛过的前沿。
 
     RSS 无投票信号 -> signal=0; "加速"= 新出现 (first_seen), 同 arXiv。
     external_id = 条目链接 (RSS 的 guid/link 跨天稳定)。
+    tier: 大众媒体 (MIT TR 等) 标 mass —— 当日新闻按"已出圈"处理, 不污染种子档。
     """
     parsed = feedparser.parse(url, agent=_USER_AGENT)
     out: list[DiscoveryItem] = []
@@ -184,6 +194,7 @@ def fetch_rss_feed(name: str, url: str, domain: str = "tech") -> list[DiscoveryI
             engagement=0,
             category="",
             domain=domain,
+            tier=tier,
             meta={"summary": (e.get("summary", "") or "")[:500].replace("\n", " ").strip()},
         ))
     return out
@@ -204,19 +215,23 @@ def load_frontier_config(path: str = FRONTIER_CONFIG) -> list[dict]:
 
 
 def fetch_one(src: dict) -> list[DiscoveryItem]:
-    """按配置项拉单个源。未知 type 返回空。"""
+    """按配置项拉单个源。未知 type 返回空。
+
+    tier 从配置读 (默认 niche); 大众媒体在配置里标 "tier": "mass"。
+    """
     stype = src.get("type")
     domain = src.get("domain", "tech")
+    tier = src.get("tier", "niche")
     if stype == "hackernews":
-        return fetch_hackernews(limit=src.get("limit", 30), domain=domain)
+        return fetch_hackernews(limit=src.get("limit", 30), domain=domain, tier=tier)
     if stype == "arxiv":
         cats = tuple(src.get("categories", ARXIV_CATEGORIES))
-        return fetch_arxiv(categories=cats, per_cat=src.get("per_cat", 10), domain=domain)
+        return fetch_arxiv(categories=cats, per_cat=src.get("per_cat", 10), domain=domain, tier=tier)
     if stype == "rss":
         url = src.get("url", "")
         if not url:
             return []
-        return fetch_rss_feed(name=src.get("name", "rss"), url=url, domain=domain)
+        return fetch_rss_feed(name=src.get("name", "rss"), url=url, domain=domain, tier=tier)
     return []
 
 

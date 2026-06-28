@@ -4,6 +4,7 @@ import type {
   Article,
   CountryCompare,
   CrossSynthesis,
+  DiscoveryReport,
   LocalEventsPayload,
   SearchJob,
   SentimentLayer,
@@ -97,6 +98,26 @@ export async function createCrossSynthesisJob(topicId: number) {
 
 export async function fetchSearchJob(jobId: string) {
   const res = await axios.get<SearchJob>(`${API_BASE}/api/search/jobs/${jobId}`)
+  return res.data
+}
+
+export async function fetchLatestDiscovery() {
+  const res = await axios.get<DiscoveryReport>(`${API_BASE}/api/discovery/latest`)
+  return res.data
+}
+
+export async function createDiscoveryJob(annotate = true) {
+  const res = await axios.post<SearchJob>(`${API_BASE}/api/discovery/jobs`, null, {
+    params: { annotate },
+  })
+  return res.data
+}
+
+export async function distillSeed(title: string, domain = '') {
+  const res = await axios.post<{ query: string; llm: boolean }>(
+    `${API_BASE}/api/discovery/distill`,
+    { title, domain },
+  )
   return res.data
 }
 

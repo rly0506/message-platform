@@ -358,6 +358,48 @@ def run_cross_synthesis_job(job_id: str, topic_id: int) -> None:
     run_topic_job(job_id, topic_id, cross_synthesis_steps(), work)
 
 
+def discovery_steps() -> list[dict[str, str]]:
+    return [
+        {"key": "fetch", "label": "拉取注意力前沿 (HN + arXiv)", "status": "pending"},
+        {"key": "annotate", "label": "LLM 标注种子 (这是什么/为何重要)", "status": "pending"},
+        {"key": "persist", "label": "落盘认知前沿日报", "status": "pending"},
+    ]
+
+
+def enqueue_discovery_job(annotate: bool = True) -> dict[str, Any]:
+    """全局发现任务 (不绑定专题), 复用通用 enqueue_job。"""
+    return enqueue_job(
+        query="discovery:frontier",
+        steps=discovery_steps(),
+        payload={"kind": "discovery", "annotate": annotate},
+        target=run_discovery_job,
+        args=(annotate,),
+    )
+
+
+def run_discovery_job(job_id: str, annotate: bool) -> None:
+    from app.discovery import run as discovery_run
+
+    runner = JobRunner(job_id, discovery_steps())
+
+    def work(runner: JobRunner) -> dict[str, Any]:
+        def on_step(key: str, status: str) -> None:
+            runner.set_step(key, status)
+
+        if not annotate:
+            runner.set_step("annotate", "skipped")
+        result = discovery_run.run_and_save(annotate=annotate, on_step=on_step)
+        # annotate=True 时, 拉取/落盘由 on_step 推进; 标注步骤在 run_discovery 内部完成,
+        # 这里补标 done (无 LLM 时优雅降级, 仍算完成)。
+        if annotate:
+            runner.set_step("annotate", "done")
+        result["kind"] = "discovery"
+        runner.mark_running_steps_done()
+        return result
+
+    runner.run(work)
+
+
 def fail_job(job_id: str, exc: Exception) -> None:
     update_job(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
     steps = job_snapshot(job_id)["steps"]
