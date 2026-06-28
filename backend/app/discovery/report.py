@@ -14,6 +14,7 @@ LLM 分拣 (给每条标一句"这是什么/为何重要") 可作后续可选增
 from __future__ import annotations
 
 from app.discovery.store import ScoredItem
+from app.discovery.annotate import Annotation
 
 # --- 启发式阈值 (可调) ---
 # HN points 高于此 = 已出圈 (主流已大量关注, 你看到就迟了)
@@ -22,6 +23,16 @@ MAINSTREAM_SIGNAL = 400
 NEW_SEED_MIN_SIGNAL = 30
 # 两次运行间 signal 增量高于此 = 在加速 (从低基数在长)
 RISE_DELTA_MIN = 25
+
+# 领域桶的中文标签 (报告分组用)
+_DOMAIN_LABELS = {
+    "tech": "🔬 科技 / AI",
+    "finance": "💰 金融 / 经济",
+    "geopolitics": "🌍 地缘 / 政治",
+    "science": "🧬 科学",
+    "society": "👥 社会 / 思潮",
+    "other": "其它",
+}
 
 
 def categorize(scored: ScoredItem, has_history: bool) -> str:
@@ -49,11 +60,14 @@ def categorize(scored: ScoredItem, has_history: bool) -> str:
     return "noise"
 
 
-def build_report(scored: list[ScoredItem], run_id: str, has_history: bool) -> str:
+def build_report(scored: list[ScoredItem], run_id: str, has_history: bool,
+                 annotations: dict | None = None) -> str:
     """渲染 markdown 认知前沿日报。
 
     has_history=False: 首次运行 = 只建基线, 报告说明"明天起才有加速信号"。
+    annotations: 可选 {external_id: Annotation}, 有则在种子下渲染 LLM 解读。
     """
+    annotations = annotations or {}
     lines: list[str] = []
     lines.append(f"# 认知前沿日报 · {run_id}")
     lines.append("")
@@ -84,11 +98,24 @@ def build_report(scored: list[ScoredItem], run_id: str, has_history: bool) -> st
     lines.append("*这是你最该看的一档: 认知之外、但在长的东西。*")
     lines.append("")
     if seeds:
+        # 按领域分组, 让非技术圈的种子 (金融/地缘/...) 不被技术圈淹没
+        by_domain: dict[str, list[ScoredItem]] = {}
         for s in seeds:
-            lines.append(_render_line(s, show_delta=True))
+            by_domain.setdefault(s.item.domain or "other", []).append(s)
+        for domain in sorted(by_domain):
+            label = _DOMAIN_LABELS.get(domain, domain)
+            lines.append(f"### {label} ({len(by_domain[domain])})")
+            for s in by_domain[domain]:
+                lines.append(_render_line(s, show_delta=True))
+                ann = annotations.get(s.item.external_id)
+                if ann is not None and (ann.what or ann.why):
+                    niche = "🌱 还在小圈子" if ann.still_niche else "已出圈"
+                    detail = " ".join(p for p in [ann.what, f"— {ann.why}" if ann.why else ""] if p)
+                    lines.append(f"  > {detail} _({niche})_")
+            lines.append("")
     else:
         lines.append("(本次无新种子)")
-    lines.append("")
+        lines.append("")
 
     mainstream = sorted(buckets["mainstream"], key=lambda x: x.item.signal, reverse=True)
     lines.append(f"## B. 已出圈 —— 看到时已经迟了 ({len(mainstream)} 条, 折叠)")

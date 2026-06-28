@@ -24,11 +24,13 @@ _BACKEND = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 REPORTS_DIR = os.getenv("DISCOVERY_REPORTS_DIR") or os.path.join(_BACKEND, "discovery_reports")
 
 
-def run_discovery(store: DiscoveryStore | None = None, items=None, run_id: str | None = None) -> str:
+def run_discovery(store: DiscoveryStore | None = None, items=None, run_id: str | None = None,
+                  annotate: bool = False) -> str:
     """跑一轮发现, 返回 markdown 报告。
 
     参数可注入 (store / items / run_id), 便于测试与复用;
     默认走真实拉取 + 默认 db + 当前时间戳。
+    annotate=True: 对种子做可选 LLM 二级分拣 (无 LLM 时自动降级, 不报错)。
     """
     own_store = store is None
     store = store or DiscoveryStore()
@@ -37,7 +39,17 @@ def run_discovery(store: DiscoveryStore | None = None, items=None, run_id: str |
         has_history = store.run_count() > 0
         items = items if items is not None else sources.fetch_all()
         scored = store.score(items, run_id=run_id, now_iso=run_id)
-        md = report.build_report(scored, run_id=run_id, has_history=has_history)
+
+        annotations = None
+        if annotate and has_history:
+            # 只标注种子档 (省钱), 且仅在有历史时 (首日只建基线无需标注)
+            from app.discovery import annotate as annotate_mod
+            from app.discovery.report import categorize
+            seeds = [s for s in scored if categorize(s, has_history) == "seed"]
+            annotations = annotate_mod.annotate_seeds(seeds)
+
+        md = report.build_report(scored, run_id=run_id, has_history=has_history,
+                                 annotations=annotations)
         store.commit_run(items, run_id=run_id, now_iso=run_id)
         return md
     finally:

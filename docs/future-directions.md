@@ -100,3 +100,45 @@
 
 注：雷达方向建议先做"零成本验证"——用 HN/arXiv 等高信号源跑一次"认知前沿日报"，
 亲眼判断"借别人的过滤器"是否真比"全世界扫描"有用，再决定要不要正式建。
+
+---
+
+## 6. 阶段锚点（2026-06-28）：发现系统从原型到可用
+
+零成本验证已做（HN+arXiv 真实数据），核心假设成立：借注意力前沿能捞到
+"圈子里冒头、还没出圈"的种子。在此基础上完成发现系统 #1-4 四项推进。
+
+### ✅ 已实现
+
+**#1 攒基线机制（发现 ≠ 搜索的本质：记忆）**
+- `backend/app/discovery/`（sources/store/report/run/annotate 五模块）。
+- `store.py` 每次运行存快照到 `discovery.db`，同一 external_id 比上次 signal
+  算出 delta（加速）与 is_new（全新苗头）。首日只建基线，次日起才有加速信号。
+- CLI 命令 `python backend/cli.py discover`；`run_discovery.bat` + schtasks 每日定时。
+- 用法见 `docs/discovery.md`。
+
+**#2 换源扩领域（突破技术圈）**
+- 前沿源外置 `backend/config/frontier_sources.json`，按 `domain` 桶分组。
+- 已配 7 个 enabled 源跨 tech / finance / geopolitics：HN、arXiv(cs + econ)、
+  MIT Tech Review、美联储、Carnegie、Brookings。增删源不必改代码。
+- 报告按领域分组，非技术圈种子不被技术圈淹没。
+- 诚实约束：中文社会/思潮源大多无干净 RSS/API，覆盖偏英文。
+
+**#3 二级 LLM 分拣（折叠噪声）**
+- `annotate.py`：给种子批量标"这是什么/为何可能重要/是否还在小圈子"。
+- 严守红线：可选增强（`discover --annotate`），无 LLM key 静默降级返回空、报告照常。
+- 走项目自己的 Pixel API，与个人 GPT 额度无关。
+
+**#4 全文抓取（治分析天花板）**
+- `backend/app/pipeline/fulltext.py`，基于 trafilatura 2.1。
+- 遵守版权原则：临时抓取供即时分析，默认只返回摘录（EXCERPT_CHARS=1500），
+  落库只存摘录不囤全文。trafilatura 不可用时优雅降级。
+
+**验证**：97 tests pass（90 + 3 标注 + 4 全文，零回归）。
+
+### 尚未做（下一步候选）
+
+- 真实多日基线：定时跑几天，让加速信号从"逻辑可行"变成"真有料"。
+- fulltext 接入主采集链路（目前是独立模块，未挂到 enrich/topic_ops）。
+- GDELT 解封后接入发现层做政治时事的"报道量加速检测"。
+- 中文领域源的可得性逐个验证（社会/思潮最难）。

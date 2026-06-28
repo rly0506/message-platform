@@ -5,6 +5,7 @@ sqlmodel>=0.0.22     # SQLite ORM (SQLAlchemy + Pydantic)
 rapidfuzz>=3.9       # fuzzy title dedup
 jieba>=0.42          # optional Chinese segmentation for local entity/keyword extraction
 spacy>=3.8           # optional zh/en NER; install models separately with python -m spacy download
+trafilatura>=2.1     # optional full-text body extraction (discovery / article enrichment)
 json-repair>=0.30    # repair malformed LLM JSON (unescaped quotes etc.)
 python-dotenv>=1.0   # .env loader
 PyYAML>=6.0          # OpenCLI YAML output parsing

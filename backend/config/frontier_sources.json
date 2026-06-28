@@ -1,0 +1,64 @@
+{
+  "_comment": "发现层的注意力前沿源。借各领域'聪明人已筛过一遍'的地方。type: hackernews|arxiv|rss。domain 是粗领域桶, 用于报告分组。enabled=false 的源暂不拉取。",
+  "sources": [
+    {
+      "name": "Hacker News 前沿",
+      "type": "hackernews",
+      "domain": "tech",
+      "enabled": true,
+      "limit": 30
+    },
+    {
+      "name": "arXiv 计算机/AI",
+      "type": "arxiv",
+      "domain": "tech",
+      "enabled": true,
+      "categories": ["cs.AI", "cs.LG", "cs.CL"],
+      "per_cat": 10
+    },
+    {
+      "name": "arXiv 经济学",
+      "type": "arxiv",
+      "domain": "finance",
+      "enabled": true,
+      "categories": ["econ.GN", "q-fin.GN"],
+      "per_cat": 8
+    },
+    {
+      "name": "arXiv 定量生物",
+      "type": "arxiv",
+      "domain": "science",
+      "enabled": false,
+      "categories": ["q-bio.GN"],
+      "per_cat": 8
+    },
+    {
+      "name": "MIT Technology Review",
+      "type": "rss",
+      "domain": "tech",
+      "enabled": true,
+      "url": "https://www.technologyreview.com/feed/"
+    },
+    {
+      "name": "Federal Reserve 新闻",
+      "type": "rss",
+      "domain": "finance",
+      "enabled": true,
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml"
+    },
+    {
+      "name": "Carnegie 国际和平",
+      "type": "rss",
+      "domain": "geopolitics",
+      "enabled": true,
+      "url": "https://carnegieendowment.org/rss/solr?maxrow=20"
+    },
+    {
+      "name": "Brookings 研究",
+      "type": "rss",
+      "domain": "geopolitics",
+      "enabled": true,
+      "url": "https://www.brookings.edu/feed/"
+    }
+  ]
+}

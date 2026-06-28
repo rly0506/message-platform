@@ -119,3 +119,37 @@ def test_runs_seen_accumulates(store):
     store.commit_run([item], run_id="day2", now_iso="day2")
     scored = store.score([item], run_id="day3", now_iso="day3")
     assert scored[0].runs_seen == 3
+
+
+def test_config_driven_sources_have_domains():
+    """配置化前沿源: 加载 enabled 源, 覆盖多个领域 (突破技术圈)。"""
+    from app.discovery import sources
+    cfg = sources.load_frontier_config()
+    assert len(cfg) >= 2
+    domains = {s.get("domain") for s in cfg}
+    # 至少应有技术之外的领域 (金融/地缘), 否则就退化回纯技术圈了
+    assert domains - {"tech"}, "前沿源应覆盖技术圈之外的领域"
+
+
+def test_annotate_degrades_without_llm(monkeypatch):
+    """无 LLM key 时, 标注层静默降级返回空 dict, 绝不报错 (守住无-LLM 红线)。"""
+    from app import config
+    from app.discovery import annotate
+    monkeypatch.setattr(config, "LLM_API_KEY", "")
+    seeds = [type("S", (), {"item": _hn("1", "x", 40)})()]
+    assert annotate.annotate_seeds(seeds) == {}
+
+
+def test_report_renders_with_annotations(store):
+    """带标注时, 报告在种子下渲染 LLM 解读。"""
+    from app.discovery import report
+    from app.discovery.annotate import Annotation
+    day1 = [_hn("1", "Rising", 30)]
+    store.score(day1, run_id="d1", now_iso="d1")
+    store.commit_run(day1, run_id="d1", now_iso="d1")
+    day2 = [_hn("1", "Rising", 95)]
+    scored = store.score(day2, run_id="d2", now_iso="d2")
+    anns = {"1": Annotation(external_id="1", what="一个新方法", why="可能降低推理成本", still_niche=True)}
+    md = report.build_report(scored, run_id="d2", has_history=True, annotations=anns)
+    assert "一个新方法" in md
+    assert "还在小圈子" in md

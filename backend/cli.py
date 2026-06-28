@@ -53,6 +53,25 @@ def llm_check(
     typer.echo(f"✓ LLM 调用成功: {text.strip()[:80]}")
 
 
+@app.command("discover")
+def discover(
+    annotate: bool = typer.Option(False, "--annotate", help="对种子做 LLM 二级分拣 (无 LLM 自动降级)"),
+    print_report: bool = typer.Option(True, "--print/--no-print", help="是否打印报告到终端"),
+):
+    """事件发现: 拉注意力前沿 (HN/arXiv/智库) -> 存快照 -> 出认知前沿日报。
+
+    每天跑一次, 攒快照基线; 次日起报告才有'加速'信号。
+    报告同时落盘到 backend/discovery_reports/。
+    """
+    from app.discovery.run import run_discovery, _save_report
+    run_id = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    md = run_discovery(run_id=run_id, annotate=annotate)
+    path = _save_report(md, run_id)
+    if print_report:
+        typer.echo(md)
+    typer.echo(f"\n[报告已保存] {path}")
+
+
 @app.command()
 def add(
     name: str,
