@@ -106,21 +106,15 @@ export function useJobRunner(options: UseJobRunnerOptions) {
 
   const safeAcademicSummaryHtml = computed(() => {
     const text = academicLayer.value?.summary_md?.trim()
-    if (!text) return ''
-    const html = marked.parse(text, { async: false, breaks: true, gfm: true }) as string
-    return DOMPurify.sanitize(html)
+    return renderMarkdown(text)
   })
   const safeSentimentSummaryHtml = computed(() => {
     const text = sentimentLayer.value?.summary_md?.trim()
-    if (!text) return ''
-    const html = marked.parse(text, { async: false, breaks: true, gfm: true }) as string
-    return DOMPurify.sanitize(html)
+    return renderMarkdown(text)
   })
   const safeCrossSynthesisHtml = computed(() => {
     const text = crossSynthesisLayer.value?.content_md?.trim()
-    if (!text) return ''
-    const html = marked.parse(text, { async: false, breaks: true, gfm: true }) as string
-    return DOMPurify.sanitize(html)
+    return renderMarkdown(text)
   })
   const crossVoicesUsed = computed(() => crossSynthesisLayer.value?.voices_used || [])
   const crossChainItems = computed(() => {
@@ -531,78 +525,23 @@ export function useJobRunner(options: UseJobRunnerOptions) {
   }
 
   async function waitForSearchJob(jobId: string) {
-    const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-    for (;;) {
-      const job = await fetchSearchJob(jobId)
-      searchSteps.value = job.steps || searchSteps.value
-      if (job.status === 'running' || job.status === 'queued') {
-        searchMessage.value = `任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-      }
-      if (terminal.has(job.status)) {
-        return job
-      }
-      await delay(1200)
-    }
+    return waitForJob(jobId, searchSteps, searchMessage, 1200, '任务')
   }
 
   async function waitForDeepAnalysisJob(jobId: string) {
-    const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-    for (;;) {
-      const job = await fetchSearchJob(jobId)
-      deepSteps.value = job.steps || deepSteps.value
-      if (job.status === 'running' || job.status === 'queued') {
-        deepMessage.value = `深度分析 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-      }
-      if (terminal.has(job.status)) {
-        return job
-      }
-      await delay(1500)
-    }
+    return waitForJob(jobId, deepSteps, deepMessage, 1500, '深度分析')
   }
 
   async function waitForAcademicJob(jobId: string) {
-    const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-    for (;;) {
-      const job = await fetchSearchJob(jobId)
-      academicSteps.value = job.steps || academicSteps.value
-      if (job.status === 'running' || job.status === 'queued') {
-        academicMessage.value = `学界任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-      }
-      if (terminal.has(job.status)) {
-        return job
-      }
-      await delay(1800)
-    }
+    return waitForJob(jobId, academicSteps, academicMessage, 1800, '学界任务')
   }
 
   async function waitForSentimentJob(jobId: string) {
-    const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-    for (;;) {
-      const job = await fetchSearchJob(jobId)
-      sentimentSteps.value = job.steps || sentimentSteps.value
-      if (job.status === 'running' || job.status === 'queued') {
-        sentimentMessage.value = `民间情绪任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-      }
-      if (terminal.has(job.status)) {
-        return job
-      }
-      await delay(1800)
-    }
+    return waitForJob(jobId, sentimentSteps, sentimentMessage, 1800, '民间情绪任务')
   }
 
   async function waitForCrossSynthesisJob(jobId: string) {
-    const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
-    for (;;) {
-      const job = await fetchSearchJob(jobId)
-      crossSynthesisSteps.value = job.steps || crossSynthesisSteps.value
-      if (job.status === 'running' || job.status === 'queued') {
-        crossSynthesisMessage.value = `三方对照任务 ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
-      }
-      if (terminal.has(job.status)) {
-        return job
-      }
-      await delay(1800)
-    }
+    return waitForJob(jobId, crossSynthesisSteps, crossSynthesisMessage, 1800, '三方对照任务')
   }
 
   return {
@@ -682,6 +621,32 @@ export function useJobRunner(options: UseJobRunnerOptions) {
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function renderMarkdown(text: string | undefined) {
+  if (!text) return ''
+  return DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true, gfm: true }) as string)
+}
+
+async function waitForJob(
+  jobId: string,
+  steps: Ref<StepState[]>,
+  message: Ref<string>,
+  intervalMs: number,
+  label: string,
+) {
+  const terminal = new Set(['done', 'empty', 'failed', 'interrupted'])
+  for (;;) {
+    const job = await fetchSearchJob(jobId)
+    steps.value = job.steps || steps.value
+    if (job.status === 'running' || job.status === 'queued') {
+      message.value = `${label} ${jobId.slice(0, 8)} 正在${job.status === 'queued' ? '排队' : '执行'}...`
+    }
+    if (terminal.has(job.status)) {
+      return job
+    }
+    await delay(intervalMs)
+  }
 }
 
 function canRerunJob(job: SearchJob | null) {
