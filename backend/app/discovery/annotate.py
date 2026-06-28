@@ -166,3 +166,73 @@ def _build_prompt(seeds: list[ScoredItem]) -> str:
         extra = f" — {summary[:160]}" if summary else ""
         lines.append(f'- id={it.external_id} [{it.domain}] {it.title}{extra}')
     return "\n".join(lines)
+
+
+def synthesize_frontier(
+    seeds: list[ScoredItem],
+    annotations: Optional[dict] = None,
+    model: str = "",
+) -> str:
+    """把今天的种子编织成一篇有叙事的前沿综述 (markdown 字符串)。
+
+    与 annotate_seeds 的区别:
+      annotate_seeds -> 逐条贴标签 (what/why), 产出是"带注解的清单";
+      synthesize_frontier -> 跨条目找主线、找关联, 产出是一篇可读的短文。
+
+    守住发现层红线: 可选增强, 无 LLM / 失败 / 无种子 -> 返回 ""
+    (调用方据此降级: 报告里就不出现综述段, 清单照常出, 绝不报错)。
+    """
+    if not seeds:
+        return ""
+    if not config.LLM_API_KEY:
+        return ""
+
+    try:
+        from app import llm
+    except Exception:
+        return ""
+
+    annotations = annotations or {}
+    target_model = model or config.HAIKU_MODEL
+    prompt = _build_synthesis_prompt(seeds, annotations)
+    try:
+        raw = llm.chat(
+            target_model,
+            prompt,
+            max_tokens=1200,
+            system=(
+                "你是科技/财经/地缘领域的资深情报分析师。给你一批今天'在加速、还没出圈'的前沿信号, "
+                "你要写一篇简短综述: 不是逐条复述, 而是找出贯穿的主线、跨领域的关联和值得追的方向。"
+                "讲机制与潜在影响, 不站队、不做道德归责。用中文, 直接输出 markdown 正文, 不要标题大字号。"
+            ),
+        )
+    except Exception:
+        return ""  # 网关超时 / 调用失败 -> 降级, 报告照常出清单
+
+    body = (raw or "").strip()
+    if not body:
+        return ""
+    # 去掉模型可能自带的一级标题 (我们在 report 里统一加段标题)
+    body = re.sub(r"^#{1,3}\s.*$", "", body, count=1, flags=re.MULTILINE).strip()
+    return body
+
+
+def _build_synthesis_prompt(seeds: list[ScoredItem], annotations: dict) -> str:
+    lines = [
+        "下面是今天从注意力前沿(HN/arXiv/智库)捞到、且'在加速/全新冒头、还没出圈'的种子。",
+        "请写一篇简短综述 (约 250-400 字), 帮我快速建立对今天前沿的整体认知。要求:",
+        "  1. 开头一两句点出今天前沿的主基调 (有没有贯穿多条的主线?);",
+        "  2. 中间按主题归并 (而非逐条复述), 指出跨领域的关联或呼应;",
+        "  3. 结尾点出 1-2 条最值得继续追的方向, 并说为什么;",
+        "  4. 讲机制与潜在影响, 不站队; 可以用少量 markdown (加粗/列表), 但不要加大标题。",
+        "",
+        "今天的种子:",
+    ]
+    for s in seeds:
+        it = s.item
+        ann = annotations.get(it.external_id)
+        note = ""
+        if ann is not None and (ann.what or ann.why):
+            note = f" — {ann.what}" + (f" ({ann.why})" if ann.why else "")
+        lines.append(f"- [{it.domain}] {it.title}{note}")
+    return "\n".join(lines)

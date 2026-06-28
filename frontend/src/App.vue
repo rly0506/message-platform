@@ -141,6 +141,8 @@ const {
   searchMessage,
   searchSteps,
   searchWarnings,
+  subtopics,
+  analogues,
   activeJobId,
   activeDeepJobId,
   activeCrossSynthesisJobId,
@@ -185,6 +187,7 @@ const {
   resetAcademicState,
   resetSentimentState,
   runEventSearch,
+  searchRelated,
   rerunTerminalJob,
   runDeepAnalysis,
   runAcademicAnalysis,
@@ -477,6 +480,36 @@ function countryCoverageNote(country: CountryCompareCountry) {
       </div>
       <p v-if="activeJobId" class="search-message">当前任务：{{ activeJobId.slice(0, 8) }}</p>
       <p v-if="searchMessage" class="search-message">{{ searchMessage }}</p>
+
+      <div v-if="subtopics.length || analogues.length" class="related-threads">
+        <div v-if="subtopics.length" class="thread-row">
+          <span class="thread-label">↘ 继续下钻</span>
+          <button
+            v-for="topic in subtopics"
+            :key="`sub-${topic}`"
+            type="button"
+            class="thread-chip thread-drill"
+            :disabled="searching"
+            @click="searchRelated(topic)"
+          >
+            {{ topic }}
+          </button>
+        </div>
+        <div v-if="analogues.length" class="thread-row">
+          <span class="thread-label">🕰 历史相似</span>
+          <button
+            v-for="ana in analogues"
+            :key="`ana-${ana}`"
+            type="button"
+            class="thread-chip thread-history"
+            :disabled="searching"
+            @click="searchRelated(ana)"
+          >
+            {{ ana }}
+          </button>
+        </div>
+      </div>
+
       <div v-if="searchSteps.length" class="step-list">
         <span v-for="step in searchSteps" :key="step.key" :class="`step-${step.status}`">
           {{ step.label }} · {{ stepStatusText(step.status) }}

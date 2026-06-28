@@ -64,6 +64,8 @@ export function useJobRunner(options: UseJobRunnerOptions) {
   const searchMessage = ref('')
   const searchSteps = ref<StepState[]>([])
   const searchWarnings = ref<string[]>([])
+  const subtopics = ref<string[]>([])   // 下钻: 当前主题的更细切面 (可点击开新搜索)
+  const analogues = ref<string[]>([])   // 历史: 相似先例事件 (可点击开新搜索)
   const activeJobId = ref('')
   const activeDeepJobId = ref('')
   const activeCrossSynthesisJobId = ref('')
@@ -222,6 +224,8 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     error.value = ''
     searchMessage.value = ''
     searchWarnings.value = []
+    subtopics.value = []
+    analogues.value = []
     terminalJob.value = null
     collectDiagnostics.value = null
     searchSteps.value = [
@@ -418,6 +422,8 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     selectedEventIndex.value = 0
     searchSteps.value = result.steps || []
     searchWarnings.value = result.collect.errors || []
+    subtopics.value = result.subtopics || []
+    analogues.value = result.analogues || []
     collectDiagnostics.value = result.collect
     searchMessage.value = `采集 ${result.collect.raw} 条，保留 ${result.collect.kept} 条，新增 ${result.collect.new_articles} 篇。`
     await loadTopics(topicId)
@@ -530,6 +536,14 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     return waitForJob(jobId, crossSynthesisSteps, crossSynthesisMessage, 1800, '三方对照任务')
   }
 
+  // 点下钻/历史 chip: 把该线索填进搜索框并立刻跑一次新搜索 (各开各的档案)。
+  async function searchRelated(term: string) {
+    const next = (term || '').trim()
+    if (!next || searching.value) return
+    eventSearch.value = next
+    await runEventSearch()
+  }
+
   return {
     searching,
     deepAnalyzing,
@@ -543,6 +557,8 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     searchMessage,
     searchSteps,
     searchWarnings,
+    subtopics,
+    analogues,
     activeJobId,
     activeDeepJobId,
     activeCrossSynthesisJobId,
@@ -593,6 +609,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     resetAcademicState,
     resetSentimentState,
     runEventSearch,
+    searchRelated,
     rerunTerminalJob,
     runDeepAnalysis,
     runAcademicAnalysis,

@@ -351,6 +351,8 @@ export type SearchResponse = LocalEventsPayload & {
     errors?: string[]
   }
   steps: { key: string; label: string; status: string }[]
+  subtopics?: string[]  // 下钻: 同一主题的更细切面 (前 3 条已并进采集, 全部供点击)
+  analogues?: string[]  // 历史: 相似先例事件 (仅供点击开新搜索, 不并进本档案)
 }
 
 export type DeepAnalysisResult = {

@@ -11,6 +11,7 @@ class SearchRequest(BaseModel):
     gdelt: bool = False
     years: int = Field(default=1, ge=1, le=10)
     min_relevance: float = Field(default=0.0, ge=0.0, le=1.0)
+    decompose: bool = True  # LLM 把宏观主题拆成子线索 (下钻) + 历史先例; 无 LLM 自动退回原行为
 
 
 class DeepAnalysisRequest(BaseModel):

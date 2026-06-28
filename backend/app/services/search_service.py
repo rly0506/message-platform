@@ -19,6 +19,10 @@ from app.services import payloads
 
 MAX_SEARCH_JOBS = 50
 
+# 展开撒网: 主题拆出的子角度最多并进多少条进采集 queries。
+# 限量是因为每条子角度 = 一次额外 gnews 采集请求, 太多会放大采集超时面。
+EXPAND_SUBTOPIC_LIMIT = 3
+
 
 class JobRunner:
     def __init__(self, job_id: str, steps: list[dict[str, str]]) -> None:
@@ -205,6 +209,19 @@ def run_search(payload: SearchRequest, job_id: str | None = None) -> dict[str, A
         query = payload.query.strip()
         steps = search_steps(payload.collect)
         set_step(steps, "topic", "running", job_id)
+
+        # 可选: LLM 把宏观/单薄主题拆成可深挖的相关线索。
+        # subtopics 前 N 条本次撒网 (采得更厚, 但不持久化进 topic); analogues 仅回传供前端点击, 不撒网。
+        subtopics: list[str] = []
+        analogues: list[str] = []
+        extra_queries: list[str] = []
+        if payload.decompose:
+            from app.discovery.decompose import decompose_topic
+            decomposed = decompose_topic(query)
+            subtopics = decomposed.subtopics
+            analogues = decomposed.analogues
+            extra_queries = subtopics[:EXPAND_SUBTOPIC_LIMIT]
+
         topic = topic_ops.get_or_create_topic(
             session,
             query,
@@ -221,6 +238,7 @@ def run_search(payload: SearchRequest, job_id: str | None = None) -> dict[str, A
                 gdelt_on=payload.gdelt,
                 years=payload.years,
                 min_rel=payload.min_relevance,
+                extra_queries=extra_queries,
             )
             steps[1]["status"] = "warning" if collect_stats.get("errors") else "done"
             if collect_stats["raw"] == 0 and not collect_stats.get("errors"):
@@ -247,6 +265,8 @@ def run_search(payload: SearchRequest, job_id: str | None = None) -> dict[str, A
             "entities": data["entities"],
             "entity_groups": data["entity_groups"],
             "criteria": data["criteria"],
+            "subtopics": subtopics,
+            "analogues": analogues,
         }
 
 

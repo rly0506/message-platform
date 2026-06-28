@@ -31,6 +31,17 @@ OPENCLI_COMMAND = os.getenv("OPENCLI_COMMAND", "opencli")
 GDELT_MAX_RECORDS = 250          # GDELT 单次上限
 RSS_USER_AGENT = "Mozilla/5.0 (compatible; DossierBot/0.1; personal-research)"
 
+# RSS/gnews 抓取的网络健壮性参数。
+# 快速失败: 连不上的源 (如国内直连不上的 Google News) 几秒内失败, 不卡死整批采集。
+# 代理: 两条路都支持 ——
+#   1) 显式 RSS_PROXY (推荐): 如 socks5://127.0.0.1:10808 (v2rayN) 或 http://127.0.0.1:7890 (Clash)。
+#      SOCKS5 需 httpx[socks] (已装 socksio)。
+#   2) trust_env=True 自动读 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 环境变量 (RSS_PROXY 留空时回退到此)。
+#   本机有 VPN 时设上, gnews 即可经代理出去 (Google 从国内可达)。
+RSS_FETCH_TIMEOUT = float(os.getenv("RSS_FETCH_TIMEOUT", "12"))  # 单次连接/读取超时 (秒)
+RSS_FETCH_RETRIES = int(os.getenv("RSS_FETCH_RETRIES", "1"))     # 失败后额外重试次数 (轻重试)
+RSS_PROXY = os.getenv("RSS_PROXY", "").strip()                   # 显式代理 URL, 空则回退到环境变量
+
 # Google News RSS 的多语种 locale: (hl, gl, ceid)
 # 用于跨语言围绕主题做检索式 RSS。
 GNEWS_LOCALES = [

@@ -15,8 +15,43 @@ from time import mktime
 from typing import Any
 
 import feedparser
+import httpx
 
 from app import config
+
+
+class FeedFetchError(RuntimeError):
+    """抓取 feed 的网络层失败 (超时/连不上/HTTP 错误)。"""
+
+
+def _fetch_feed_bytes(url: str) -> bytes:
+    """用 httpx 抓 feed 原始字节, 再交给 feedparser 解析。
+
+    相比 feedparser 自己发请求, 这样能拿到三件 feedparser 给不了的东西:
+      - 超时控制: 连不上的源 (国内直连不上的 Google News) 几秒内失败, 不干等。
+      - 代理: trust_env=True 自动读 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY, 本机有代理即走代理。
+      - 轻重试: 抖动性失败再试一次。
+    """
+    last_exc: Exception | None = None
+    attempts = max(1, 1 + config.RSS_FETCH_RETRIES)
+    # 显式 RSS_PROXY 优先; 留空则靠 trust_env 读环境变量。
+    client_kwargs: dict[str, Any] = {
+        "timeout": config.RSS_FETCH_TIMEOUT,
+        "trust_env": True,
+        "follow_redirects": True,
+        "headers": {"User-Agent": config.RSS_USER_AGENT},
+    }
+    if config.RSS_PROXY:
+        client_kwargs["proxy"] = config.RSS_PROXY
+    for _ in range(attempts):
+        try:
+            with httpx.Client(**client_kwargs) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+                return resp.content
+        except httpx.HTTPError as exc:
+            last_exc = exc
+    raise FeedFetchError(str(last_exc) if last_exc else "feed fetch failed")
 
 
 def _entry_datetime(entry) -> datetime | None:
@@ -37,7 +72,9 @@ def _parse_feed(
     metadata: dict[str, Any] | None = None,
 ) -> list[dict]:
     metadata = metadata or {}
-    parsed = feedparser.parse(url, agent=config.RSS_USER_AGENT)
+    # 先经 httpx 抓字节 (超时+代理+重试), 再喂给 feedparser 解析。
+    content = _fetch_feed_bytes(url)
+    parsed = feedparser.parse(content)
     if getattr(parsed, "bozo", False) and not parsed.entries:
         exc = getattr(parsed, "bozo_exception", None)
         raise RuntimeError(str(exc) if exc else "feed parse failed")

@@ -61,13 +61,17 @@ def collect_topic(
     feeds: list[str] | None = None,
     min_rel: float = 0.0,
     use_curated_feeds: bool = False,
+    extra_queries: list[str] | None = None,
 ) -> dict[str, Any]:
     raw: list[dict] = []
     errors: list[str] = []
     requests: list[dict[str, Any]] = []
     feeds = feeds or []
+    # 本次采集用的检索词 = topic 持久化的 queries + 本次临时 extra_queries (如 LLM 拆解的子角度)。
+    # extra_queries 不写回 topic, 故只影响这一次采集, 不污染后续 (decompose=False 时干净)。
+    search_queries = list(dict.fromkeys([*topic.queries, *(extra_queries or [])]))
 
-    for q in topic.queries:
+    for q in search_queries:
         if gnews:
             request_id = _request_id("gnews", len(requests))
             try:
@@ -75,7 +79,7 @@ def collect_topic(
                 raw += _tag_items(items, request_id)
                 requests.append(_request_stats(request_id, "gnews", q, len(items)))
             except Exception as exc:
-                error = f"gnews {q!r}: {type(exc).__name__}: {exc}"
+                error = f"gnews {q!r}: {type(exc).__name__}: {exc}{_gnews_hint(exc)}"
                 errors.append(error)
                 requests.append(_request_stats(request_id, "gnews", q, 0, error=error))
         if gdelt_on:
@@ -447,6 +451,21 @@ def _parse_date(value: str | None):
 
 def _request_id(kind: str, index: int) -> str:
     return f"{kind}-{index + 1}"
+
+
+def _gnews_hint(exc: Exception) -> str:
+    """gnews 失败时, 若像网络/代理问题, 追加一句可操作的提示。
+
+    Google News 国内直连不通, 必须经代理。连接类错误 (超时/连不上) 多半是
+    VPN 没开或 RSS_PROXY 没配, 提示用户怎么办, 而非只抛裸的 traceback。
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    network_signals = ("timeout", "timed out", "connect", "proxy", "10060",
+                       "feedfetcherror", "ssl", "网络", "连接")
+    if any(sig in text for sig in network_signals):
+        return ("　← Google News 国内需经代理。请确认 VPN 已开, 并在 backend/.env 设 "
+                "RSS_PROXY (如 socks5://127.0.0.1:10808)。")
+    return ""
 
 
 def _request_stats(

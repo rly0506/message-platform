@@ -9,6 +9,39 @@ def test_query_variants_for_chinese_and_english():
     assert topic_ops.query_variants("  ") == []
 
 
+def test_gnews_hint_on_network_error():
+    """网络/代理类错误 -> 追加可操作提示 (开 VPN / 设 RSS_PROXY)。"""
+    from app.collectors.rss import FeedFetchError
+    hint = topic_ops._gnews_hint(FeedFetchError("ConnectTimeout: timed out"))
+    assert "RSS_PROXY" in hint and "VPN" in hint
+    # 非网络错误 (如解析错误) 不追加提示, 避免误导
+    assert topic_ops._gnews_hint(ValueError("bad value")) == ""
+
+
+def test_gnews_network_error_surfaces_hint_in_diagnostics(monkeypatch):
+    """gnews 因网络失败时, 采集诊断里的 error 带上代理提示。"""
+    from app.collectors.rss import FeedFetchError
+    init_db()
+
+    def fail_gnews(query):
+        raise FeedFetchError("ConnectTimeout: proxy unreachable")
+
+    monkeypatch.setattr(topic_ops.rss, "collect_gnews", fail_gnews)
+    with Session(engine) as session:
+        topic = Topic(name="代理失败测试", queries=["代理失败测试"])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        try:
+            stats = topic_ops.collect_topic(session, topic, gnews=True)
+            assert stats["raw"] == 0
+            assert any("RSS_PROXY" in e for e in stats["errors"])
+        finally:
+            session.delete(topic)
+            session.commit()
+
+
+
 def test_collect_topic_returns_request_diagnostics(monkeypatch):
     init_db()
 

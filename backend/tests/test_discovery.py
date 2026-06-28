@@ -241,6 +241,51 @@ def test_annotate_degrades_without_llm(monkeypatch):
     assert annotate.annotate_seeds(seeds) == {}
 
 
+def test_synthesis_degrades_without_llm(monkeypatch):
+    """无 LLM key 时, 综述层返回 "" (优雅降级, 报告仍出清单, 不报错)。"""
+    from app import config
+    from app.discovery import annotate
+    monkeypatch.setattr(config, "LLM_API_KEY", "")
+    seeds = [type("S", (), {"item": _hn("1", "x", 40)})()]
+    assert annotate.synthesize_frontier(seeds) == ""
+    # 无种子也返回 "" (不浪费一次 LLM 调用)
+    assert annotate.synthesize_frontier([]) == ""
+
+
+def test_synthesis_uses_llm_when_available(monkeypatch):
+    """有 LLM key 时, 综述层调用 llm.chat 并返回其正文 (去掉模型自带的一级标题)。"""
+    from app import config
+    from app.discovery import annotate
+    monkeypatch.setattr(config, "LLM_API_KEY", "fake-key")
+
+    captured = {}
+
+    def fake_chat(model, prompt, max_tokens=0, system=""):
+        captured["prompt"] = prompt
+        return "# 综述\n今天前沿的主线是推理加速。"
+
+    import app.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "chat", fake_chat)
+    seeds = [type("S", (), {"item": _hn("1", "Speculative decoding", 90)})()]
+    out = annotate.synthesize_frontier(seeds)
+    assert "推理加速" in out
+    assert not out.startswith("#")  # 模型自带的一级标题被剥掉
+    assert "Speculative decoding" in captured["prompt"]  # 种子标题进了 prompt
+
+
+def test_report_renders_synthesis_section():
+    """build_report 收到 synthesis 时, 在顶部渲染「前沿综述」段; 空则不出该段。"""
+    from app.discovery import report
+    scored = []  # 综述段不依赖具体条目, 只看 synthesis 入参
+    md = report.build_report(scored, run_id="d2", has_history=False,
+                             synthesis="今天主线是推理加速。")
+    assert "📰 前沿综述" in md
+    assert "今天主线是推理加速。" in md
+    # 无综述时不出该段 (降级路径)
+    md2 = report.build_report(scored, run_id="d2", has_history=False, synthesis="")
+    assert "前沿综述" not in md2
+
+
 def test_report_renders_with_annotations(store):
     """带标注时, 报告在种子下渲染 LLM 解读。"""
     from app.discovery import report
@@ -282,3 +327,162 @@ def test_stale_item_ages_out_to_noise(store):
     scored = store.score([paper], run_id="2026-06-28T09:00:00Z", now_iso="2026-06-28T09:00:00Z")
     assert scored[0].age_hours == 72.0
     assert report.categorize(scored[0], has_history=True) == "noise"
+
+
+# ---- 主题拆解 (decompose): 下钻子角度 + 历史先例 ----
+
+def test_decompose_degrades_without_llm(monkeypatch):
+    """无 LLM key 时, 拆解返回空 (调用方退回原 query_variants 行为, 绝不报错)。"""
+    from app import config
+    from app.discovery import decompose
+    monkeypatch.setattr(config, "LLM_API_KEY", "")
+    result = decompose.decompose_topic("中国政府债务")
+    assert result.is_empty
+    assert result.subtopics == []
+    assert result.analogues == []
+
+
+def test_decompose_empty_query_no_llm_call(monkeypatch):
+    """空主题直接返回空, 不浪费一次 LLM 调用。"""
+    from app import config
+    from app.discovery import decompose
+    monkeypatch.setattr(config, "LLM_API_KEY", "fake-key")
+    # 即便有 key, 空 query 也不该触发调用 (这里不打桩 llm.chat, 调到就会真连网)
+    assert decompose.decompose_topic("   ").is_empty
+
+
+def test_decompose_parses_both_lists(monkeypatch):
+    """有 LLM 时, 拆解出 subtopics (下钻) 与 analogues (历史) 两组。"""
+    from app import config
+    from app.discovery import decompose
+    monkeypatch.setattr(config, "LLM_API_KEY", "fake-key")
+
+    def fake_chat(model, prompt, max_tokens=0, system=""):
+        return (
+            '{"subtopics": ["中央政府债务", "地方政府债务", "化债 隐性债务"], '
+            '"analogues": ["2008 雷曼破产", "1997 亚洲金融危机"]}'
+        )
+
+    import app.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "chat", fake_chat)
+    result = decompose.decompose_topic("中国政府债务")
+    assert "中央政府债务" in result.subtopics
+    assert "地方政府债务" in result.subtopics
+    assert "1997 亚洲金融危机" in result.analogues
+
+
+def test_decompose_clean_list_dedups_and_caps():
+    """_clean_list: 去空、去重、限量。"""
+    from app.discovery.decompose import _clean_list
+    out = _clean_list(["a", "a", "", "  b  ", "c", "d", "e", "f", "g", "h", "i"], limit=8)
+    assert out[:3] == ["a", "b", "c"]
+    assert len(out) == 8  # 限到 8
+    assert _clean_list("not a list") == []
+    assert _clean_list(None) == []
+
+
+def test_run_search_caps_expansion_and_never_expands_analogues(monkeypatch):
+    """run_search: 只把前 3 条 subtopics 作为本次 extra_queries; analogues 绝不进采集 (避免旧闻污染)。"""
+    from app.services import search_service
+    from app.discovery.decompose import Decomposition
+    from app.schemas.search import SearchRequest
+
+    monkeypatch.setattr(search_service, "EXPAND_SUBTOPIC_LIMIT", 3, raising=True)
+    import app.discovery.decompose as dec_mod
+    monkeypatch.setattr(
+        dec_mod, "decompose_topic",
+        lambda q, model="": Decomposition(
+            subtopics=["中央债", "地方债", "化债", "城投债", "专项债"],
+            analogues=["1997 亚洲金融危机", "2008 雷曼"],
+        ),
+    )
+
+    captured = {}
+
+    # topic 用真实 query_variants (不含拆解项); 拆解项应只作为 extra_queries 进 collect_topic。
+    def fake_get_or_create_topic(session, name, queries=None):
+        captured["topic_queries"] = queries or []
+        return type("T", (), {"id": 1, "name": name, "queries": queries or []})()
+
+    def fake_collect_topic(session, topic, **kwargs):
+        captured["extra_queries"] = kwargs.get("extra_queries") or []
+        raise RuntimeError("stop-after-collect")  # 截断: 只验 queries 构造
+
+    monkeypatch.setattr(search_service.topic_ops, "get_or_create_topic", fake_get_or_create_topic)
+    monkeypatch.setattr(search_service.topic_ops, "collect_topic", fake_collect_topic)
+
+    with pytest.raises(RuntimeError, match="stop-after-collect"):
+        search_service.run_search(SearchRequest(query="中国政府债务", collect=True))
+
+    # topic 持久化的 queries 只有确定性变体, 绝无拆解项
+    assert "中央债" not in captured["topic_queries"]
+    extra = captured["extra_queries"]
+    # 前 3 条子角度作为本次临时检索词
+    assert extra == ["中央债", "地方债", "化债"]
+    # 第 4、5 条超出 cap, 不进
+    assert "城投债" not in extra and "专项债" not in extra
+    # 历史先例绝不进采集
+    assert "1997 亚洲金融危机" not in extra and "2008 雷曼" not in extra
+
+
+def test_run_search_decompose_off_no_extra_queries(monkeypatch):
+    """decompose=False 时, 不拆解, extra_queries 为空, topic queries 退回原变体。"""
+    from app.services import search_service
+    from app.schemas.search import SearchRequest
+
+    captured = {}
+
+    def fake_get_or_create_topic(session, name, queries=None):
+        captured["topic_queries"] = queries or []
+        return type("T", (), {"id": 1, "name": name, "queries": queries or []})()
+
+    def fake_collect_topic(session, topic, **kwargs):
+        captured["extra_queries"] = kwargs.get("extra_queries") or []
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(search_service.topic_ops, "get_or_create_topic", fake_get_or_create_topic)
+    monkeypatch.setattr(search_service.topic_ops, "collect_topic", fake_collect_topic)
+    with pytest.raises(RuntimeError, match="stop"):
+        search_service.run_search(SearchRequest(query="美伊战争", collect=True, decompose=False))
+
+    assert captured["topic_queries"] == ["美伊战争", "美伊战争 最新 影响"]
+    assert captured["extra_queries"] == []  # 没有拆解项
+
+
+def test_collect_topic_extra_queries_not_persisted(monkeypatch):
+    """关键回归 (GPT 审核发现): extra_queries 只影响本次采集, 绝不写回 topic.queries。
+
+    否则一次拆解后, 后续 decompose=False 也会继续用旧 subtopics 采集。
+    """
+    from app import topic_ops
+    from app.db import Topic, engine, init_db
+    from sqlmodel import Session
+    init_db()
+
+    seen_queries: list[str] = []
+
+    def fake_gnews(query):
+        seen_queries.append(query)
+        return []  # 不需要真数据, 只验证哪些 query 被采集
+
+    monkeypatch.setattr(topic_ops.rss, "collect_gnews", fake_gnews)
+
+    with Session(engine) as session:
+        topic = Topic(name="持久化回归", queries=["持久化回归", "持久化回归 最新 影响"])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        try:
+            topic_ops.collect_topic(session, topic, gnews=True,
+                                    extra_queries=["子角度A", "子角度B"])
+            # extra_queries 参与了本次采集
+            assert "子角度A" in seen_queries and "子角度B" in seen_queries
+            # 但绝没写回 topic.queries (重新读库确认)
+            session.refresh(topic)
+            assert "子角度A" not in topic.queries
+            assert "子角度B" not in topic.queries
+            assert topic.queries == ["持久化回归", "持久化回归 最新 影响"]
+        finally:
+            session.delete(topic)
+            session.commit()
+

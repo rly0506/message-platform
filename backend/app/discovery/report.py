@@ -92,11 +92,13 @@ def categorize(scored: ScoredItem, has_history: bool) -> str:
 
 
 def build_report(scored: list[ScoredItem], run_id: str, has_history: bool,
-                 annotations: dict | None = None) -> str:
+                 annotations: dict | None = None, synthesis: str = "") -> str:
     """渲染 markdown 认知前沿日报。
 
     has_history=False: 首次运行 = 只建基线, 报告说明"明天起才有加速信号"。
     annotations: 可选 {external_id: Annotation}, 有则在种子下渲染 LLM 解读。
+    synthesis: 可选 LLM 综述正文 (markdown), 有则放在报告顶部当导读;
+               空字符串 -> 不出综述段 (无 LLM / 首日基线时的优雅降级)。
     """
     annotations = annotations or {}
     lines: list[str] = []
@@ -105,6 +107,14 @@ def build_report(scored: list[ScoredItem], run_id: str, has_history: bool,
     lines.append(f"源: Hacker News front_page + arXiv ({', '.join(sorted({s.item.category for s in scored if s.item.category}))})")
     lines.append(f"本次拉取 {len(scored)} 条。")
     lines.append("")
+
+    if synthesis.strip():
+        lines.append("## 📰 前沿综述")
+        lines.append("")
+        lines.append(synthesis.strip())
+        lines.append("")
+        lines.append("---")
+        lines.append("")
 
     if not has_history:
         lines.append("> ⚠️ **首次运行 = 仅建立基线。** 发现系统靠'今天 vs 昨天'算加速,")

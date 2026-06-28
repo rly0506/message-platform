@@ -45,15 +45,18 @@ def run_discovery(store: DiscoveryStore | None = None, items=None, run_id: str |
         scored = store.score(items, run_id=run_id, now_iso=run_id)
 
         annotations = None
+        synthesis = ""
         if annotate and has_history:
             # 只标注种子档 (省钱), 且仅在有历史时 (首日只建基线无需标注)
             from app.discovery import annotate as annotate_mod
             from app.discovery.report import categorize
-            seeds = [s for s in scored if categorize(s, has_history) == "seed"]
-            annotations = annotate_mod.annotate_seeds(seeds)
+            seed_items = [s for s in scored if categorize(s, has_history) == "seed"]
+            annotations = annotate_mod.annotate_seeds(seed_items)
+            # 综述: 把种子编织成一篇有叙事的导读 (无 LLM -> 返回 "", 优雅降级)
+            synthesis = annotate_mod.synthesize_frontier(seed_items, annotations)
 
         md = report.build_report(scored, run_id=run_id, has_history=has_history,
-                                 annotations=annotations)
+                                 annotations=annotations, synthesis=synthesis)
         seeds = report.collect_seeds(scored, has_history=has_history, annotations=annotations)
         store.commit_run(items, run_id=run_id, now_iso=run_id)
         return {"markdown": md, "seeds": seeds}
