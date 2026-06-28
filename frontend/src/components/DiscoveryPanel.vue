@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DiscoveryReport, DiscoverySeed } from '../types/dossier'
+import type { DiscoveryReport, DiscoverySeed, TopicSummary } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
 
@@ -18,12 +18,14 @@ defineProps<{
   seedBusy: boolean
   activeSeedUrl: string
   seedNote: string
+  trackedTopics: TopicSummary[]
   stepStatusText: (status: string) => string
 }>()
 
 defineEmits<{
   runDiscovery: []
   analyzeSeed: [seed: DiscoverySeed]
+  trackTopic: [topicId: number]
 }>()
 
 function fmtRunId(runId: string | undefined) {
@@ -34,6 +36,25 @@ function fmtRunId(runId: string | undefined) {
   if (!m) return runId
   return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} UTC`
 }
+
+// 「正在追踪」: 把 latest_published_at 转成"最近变化"的相对天数, 让一眼看出哪个专题在动。
+function freshness(iso: string | null): string {
+  if (!iso) return '暂无报道'
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const days = Math.floor((Date.now() - then) / 86_400_000)
+  if (days <= 0) return '今天有更新'
+  if (days === 1) return '1 天前'
+  if (days <= 30) return `${days} 天前`
+  if (days <= 60) return '1 个月前'
+  return `${Math.floor(days / 30)} 个月前`
+}
+
+function isStale(iso: string | null): boolean {
+  if (!iso) return true
+  const then = new Date(iso).getTime()
+  return Number.isNaN(then) || (Date.now() - then) > 14 * 86_400_000
+}
 </script>
 
 <template>
@@ -41,8 +62,8 @@ function fmtRunId(runId: string | undefined) {
     <section class="wide-panel discovery-panel">
       <div class="pane-header compact">
         <div>
-          <p class="eyebrow">Cognitive Frontier</p>
-          <h2>认知前沿</h2>
+          <p class="eyebrow">Intelligence Desk</p>
+          <h2>今日情报台</h2>
         </div>
         <button type="button" class="cross-primary-button" :disabled="analyzing" @click="$emit('runDiscovery')">
           {{ analyzing ? '分析中...' : '🔄 立即分析（LLM）' }}
@@ -50,9 +71,31 @@ function fmtRunId(runId: string | undefined) {
       </div>
 
       <div class="cross-synthesis-note">
-        <strong>全局视角：从注意力前沿（Hacker News + arXiv + 智库）里捞出还没出圈、但在加速的"种子"</strong>
-        <span>每天中午自动跑一份基线日报；点上面的按钮则即时跑一轮带 LLM 标注的深读（给每条种子标"这是什么/为何重要"）。</span>
-        <span>看到值得追的种子，点它的「🔍 深入分析」——系统会把它提炼成话题词，送进事件分析台跨媒体追踪。</span>
+        <strong>鸟瞰：下面是你正在追踪的专题，以及今日注意力前沿里还没出圈、但在加速的"种子"</strong>
+        <span>「正在追踪」点任一专题即跳进事件分析台看它的最新档案；「今日前沿」每天中午自动跑基线，点上面按钮即时跑带 LLM 标注的深读。</span>
+        <span>看到值得追的种子，点「🔍 深入分析」——系统提炼成话题词，送进事件分析台跨媒体追踪。</span>
+      </div>
+
+      <div v-if="trackedTopics.length" class="tracking-block">
+        <div class="tracking-head">
+          <strong>📌 正在追踪（{{ trackedTopics.length }}）</strong>
+          <span>点一个跳进分析台看最新进展</span>
+        </div>
+        <ol class="tracking-list">
+          <li
+            v-for="topic in trackedTopics"
+            :key="topic.id"
+            class="tracking-row"
+            :class="{ stale: isStale(topic.latest_published_at) }"
+          >
+            <button type="button" class="tracking-main" @click="$emit('trackTopic', topic.id)">
+              <span class="tracking-name">{{ topic.name }}</span>
+              <span class="tracking-meta">
+                {{ topic.article_count }} 篇 · {{ topic.source_count }} 源 · {{ freshness(topic.latest_published_at) }}
+              </span>
+            </button>
+          </li>
+        </ol>
       </div>
 
       <p v-if="activeJobId" class="search-message">发现任务：{{ activeJobId.slice(0, 8) }}</p>
@@ -71,7 +114,7 @@ function fmtRunId(runId: string | undefined) {
 
         <div v-if="seeds.length" class="seed-stream">
           <div class="seed-stream-head">
-            <strong>🌱 可追踪的种子（{{ seeds.length }}）</strong>
+            <strong>🌱 今日前沿种子（{{ seeds.length }}）</strong>
             <span>一眼扫过去，看到值得追的点「深入」送进事件分析台</span>
           </div>
           <p v-if="seedNote" class="seed-note">{{ seedNote }}</p>
@@ -121,6 +164,92 @@ function fmtRunId(runId: string | undefined) {
   margin: 0 0 0.75rem;
   font-size: 0.85rem;
   color: var(--muted, #6b7280);
+}
+
+/* 正在追踪: 已建专题的鸟瞰, 点一个跳进分析台 */
+.tracking-block {
+  margin: 0 0 1.25rem;
+  padding: 12px 14px;
+  border: 1px solid #d7e0e4;
+  border-radius: 10px;
+  background: #fafcfd;
+}
+
+.tracking-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tracking-head strong {
+  color: #155a6e;
+}
+
+.tracking-head span {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.tracking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tracking-row {
+  border-radius: 8px;
+}
+
+.tracking-main {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: none;
+  border-left: 3px solid #27ae60;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.tracking-main:hover {
+  background: #eef7f9;
+}
+
+/* 14 天没新报道 = 转冷, 左轨变灰、文字变淡, 一眼区分"在动 vs 沉寂" */
+.tracking-row.stale .tracking-main {
+  border-left-color: #c2cdd2;
+}
+
+.tracking-row.stale .tracking-name {
+  color: #8593a0;
+}
+
+.tracking-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  color: #1c2329;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracking-meta {
+  flex-shrink: 0;
+  font-size: 0.76rem;
+  color: #6b7280;
+  white-space: nowrap;
 }
 
 .seed-stream {

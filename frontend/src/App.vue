@@ -34,7 +34,7 @@ type AppMode = 'workbench' | 'discovery'
 const appMode = ref<AppMode>('workbench')
 const appModes = [
   { key: 'workbench', label: '事件分析台' },
-  { key: 'discovery', label: '认知前沿' },
+  { key: 'discovery', label: '今日情报台' },
 ] as const
 
 const {
@@ -249,6 +249,12 @@ async function analyzeSeed(seed: DiscoverySeed) {
   }
 }
 
+// 情报台「正在追踪」: 点已建专题 -> 切到事件分析台并选中它 (watch(selectedTopicId) 自动加载档案)。
+function trackTopic(topicId: number) {
+  selectedTopicId.value = topicId
+  appMode.value = 'workbench'
+}
+
 watch(selectedTopicId, async (id) => {
   if (id) {
     localData.value = null
@@ -417,7 +423,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
     <section class="topbar">
       <div>
         <p class="eyebrow">Dossier Intelligence</p>
-        <h1>{{ appMode === 'discovery' ? '认知前沿日报' : '事件搜索与发展时间轴' }}</h1>
+        <h1>{{ appMode === 'discovery' ? '今日情报台' : '事件搜索与发展时间轴' }}</h1>
       </div>
       <div class="topbar-controls">
         <nav class="mode-switch" aria-label="顶层视图切换">
@@ -455,9 +461,11 @@ function countryCoverageNote(country: CountryCompareCountry) {
       :seed-busy="seedBusy"
       :active-seed-url="activeSeedUrl"
       :seed-note="seedNote"
+      :tracked-topics="topics"
       :step-status-text="discoveryStepStatusText"
       @run-discovery="runDiscovery"
       @analyze-seed="analyzeSeed"
+      @track-topic="trackTopic"
     />
 
     <template v-else>
