@@ -177,6 +177,50 @@ def test_enrich_topic_articles_processes_articles_with_local_stance_but_no_llm_e
         assert all(article.enriched for article in articles)
 
 
+def test_enrich_topic_articles_backfills_substance_for_already_enriched_links(monkeypatch):
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+    seen_items = []
+
+    def fake_enrich_batch(topic_name, description, items):
+        seen_items.extend(items)
+        return {
+            item["id"]: {
+                "relevant": True,
+                "relevance": 0.88,
+                "stance": "LLM 绔嬪満",
+                "stance_summary": "LLM 瀵屽寲鎽樿",
+                "substance_score": 76,
+                "substance_note": "鍚叿浣撴暟瀛椾笌鏃堕棿",
+            }
+            for item in items
+        }
+
+    monkeypatch.setattr(topic_ops.enrichp, "enrich_batch", fake_enrich_batch)
+
+    with Session(engine) as session:
+        for article_id in article_ids:
+            article = session.get(Article, article_id)
+            article.enriched = True
+            article.title_zh = f"鏃ф爣棰?{article_id}"
+            article.snippet_zh = f"鏃ф憳瑕?{article_id}"
+            session.add(article)
+        session.commit()
+
+        topic = session.get(Topic, topic_id)
+        stats = topic_ops.enrich_topic_articles(session, topic, limit=2)
+
+        assert stats["processed"] == 2
+        assert {item["id"] for item in seen_items} == set(article_ids)
+
+        links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic_id)).all()
+        assert all(link.substance_score == 76 for link in links)
+        assert all(link.substance_note == "鍚叿浣撴暟瀛椾笌鏃堕棿" for link in links)
+
+        articles = session.exec(select(Article).where(Article.id.in_(article_ids))).all()
+        assert all(article.enriched for article in articles)
+        assert {article.title_zh for article in articles} == {f"鏃ф爣棰?{article_id}" for article_id in article_ids}
+
+
 def test_deep_analysis_api_endpoint_uses_background_job(monkeypatch):
     topic_id, _article_ids = _seed_deep_analysis_case(article_count=1)
     started = []

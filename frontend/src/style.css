@@ -637,6 +637,32 @@ button:disabled {
   color: #b5651d;
 }
 
+.substance-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.substance-summary span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef2f4;
+  color: #5a6b75;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.substance-summary .substance-high {
+  background: #e6f5ec;
+  color: #1e7e44;
+}
+
+.substance-summary .substance-low {
+  background: #fdeede;
+  color: #b5651d;
+}
+
 .article-row h3 a {
   text-decoration: none;
 }

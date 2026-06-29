@@ -252,7 +252,7 @@ def enrich_topic_articles(
         select(TopicArticle, Article)
         .where(TopicArticle.article_id == Article.id)
         .where(TopicArticle.topic_id == topic.id)
-        .where(Article.enriched == False)  # noqa: E712
+        .where((Article.enriched == False) | (TopicArticle.substance_score < 0))  # noqa: E712
     ).all()
     pending = pending[: max(0, limit)]
     stats = {

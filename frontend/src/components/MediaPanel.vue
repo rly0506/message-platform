@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type {
   Article,
   CountryCompare,
@@ -18,7 +19,7 @@ type SelectOption = { key: string; label: string }
 type ArticleGroup = { category: string; items: Article[] }
 type StanceGroup = { name: string; count: number }
 
-defineProps<{
+const props = defineProps<{
   query: string
   sourceTierFilter: string
   sourceMatrixSort: string
@@ -69,6 +70,22 @@ defineProps<{
   showEarliestSources: () => void
   showMostCoveredSources: () => void
 }>()
+
+const substanceStats = computed(() => {
+  const stats = { scored: 0, high: 0, mid: 0, low: 0, unscored: 0 }
+  for (const article of props.articles) {
+    const score = article.substance_score
+    if (score === undefined || score < 0) {
+      stats.unscored += 1
+    } else {
+      stats.scored += 1
+      if (score >= 70) stats.high += 1
+      else if (score <= 35) stats.low += 1
+      else stats.mid += 1
+    }
+  }
+  return stats
+})
 
 const emit = defineEmits<{
   'update:query': [value: string]
@@ -443,7 +460,7 @@ function substanceClass(score: number) {
     <details class="media-collapse article-feed-collapse">
       <summary>
         <strong>原始报道流</strong>
-        <span>{{ totalArticles }} 篇</span>
+        <span>{{ totalArticles }} 篇 · 已评分 {{ substanceStats.scored }}/{{ articles.length }}</span>
       </summary>
       <div class="collapse-body">
         <div class="section-divider">
@@ -451,6 +468,13 @@ function substanceClass(score: number) {
             <p class="eyebrow">News Feed</p>
             <h2>原始报道流</h2>
           </div>
+        </div>
+
+        <div class="substance-summary" aria-label="干货密度分布">
+          <span class="substance-high">高干货 {{ substanceStats.high }}</span>
+          <span class="substance-mid">中等 {{ substanceStats.mid }}</span>
+          <span class="substance-low">低干货 {{ substanceStats.low }}</span>
+          <span>未评分 {{ substanceStats.unscored }}</span>
         </div>
 
         <div class="mini-chart" aria-label="立场分布">

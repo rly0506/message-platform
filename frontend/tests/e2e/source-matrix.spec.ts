@@ -167,6 +167,8 @@ const articles = {
       enriched: false,
       relevance: 0.9,
       relevant: true,
+      substance_score: 82,
+      substance_note: 'specific numbers and timing',
       stance: '冲突/安全',
       stance_summary: '',
       category: '触发事件',
@@ -187,6 +189,8 @@ const articles = {
       enriched: false,
       relevance: 0.8,
       relevant: true,
+      substance_score: 45,
+      substance_note: 'some checkable detail',
       stance: '影响/后果',
       stance_summary: '',
       category: '影响后果',
@@ -259,6 +263,8 @@ test('groups original articles by report category', async ({ page }) => {
   await page.goto('/')
 
   await page.locator('details.article-feed-collapse > summary').click()
+  await expect(page.locator('details.article-feed-collapse > summary')).toContainText('2/3')
+  await expect(page.locator('.substance-summary')).toContainText('1')
   await expect(page.locator('.article-group').filter({ hasText: '触发事件' })).toBeVisible()
   await expect(page.locator('.article-group').filter({ hasText: '影响后果' })).toBeVisible()
 
