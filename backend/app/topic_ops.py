@@ -302,6 +302,8 @@ def enrich_topic_articles(
             topic_article.relevance = float(row.get("relevance", topic_article.relevance) or 0)
             topic_article.stance = row.get("stance") or "中立"
             topic_article.stance_summary = row.get("stance_summary", "")
+            topic_article.substance_score = _clamp_score(row.get("substance_score"))
+            topic_article.substance_note = str(row.get("substance_note", ""))[:60]
             stats["processed"] += 1
             stats["relevant"] += int(topic_article.relevant)
         session.commit()
@@ -451,6 +453,18 @@ def _parse_date(value: str | None):
 
 def _request_id(kind: str, index: int) -> str:
     return f"{kind}-{index + 1}"
+
+
+def _clamp_score(value: object) -> int:
+    """把 LLM 返回的干货分钳到 0~100; 缺失/非法 -> -1 (未评分, 前端不显示徽标)。
+
+    审核共识: junk 落 -1 而非中性 50, 避免显示一个"没有真依据"的悬空徽标
+    (守住"每个判断可追溯")。排序侧把 -1 当中性 50, 故不影响排序。
+    """
+    try:
+        return max(0, min(100, int(value)))
+    except (TypeError, ValueError):
+        return -1
 
 
 def _gnews_hint(exc: Exception) -> str:

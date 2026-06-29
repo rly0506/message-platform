@@ -51,6 +51,8 @@ class TopicArticle(SQLModel, table=True):
     relevant: bool = True          # LLM 是否判定真正相关 (默认 True, 富化后修正)
     stance: str = ""               # 单篇立场标签 (LLM 富化填充)
     stance_summary: str = ""       # 该篇相对主题的一句话立场摘要
+    substance_score: int = -1      # 干货密度 0~100 (可证伪事实 vs 空话情绪); -1=未评分
+    substance_note: str = ""       # 一句话说明评分依据 (让分数可追溯, 不悬空)
 
 
 class Paper(SQLModel, table=True):
@@ -161,6 +163,8 @@ def _migrate() -> None:
             ("relevant", "INTEGER DEFAULT 1"),
             ("stance", "VARCHAR DEFAULT ''"),
             ("stance_summary", "VARCHAR DEFAULT ''"),
+            ("substance_score", "INTEGER DEFAULT -1"),
+            ("substance_note", "VARCHAR DEFAULT ''"),
         ],
         "sentimentpost": [
             ("kind", "VARCHAR DEFAULT 'post'"),

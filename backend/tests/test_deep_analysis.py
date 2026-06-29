@@ -18,6 +18,16 @@ from app.db import (
 from app.services import search_service
 
 
+def test_clamp_score_handles_bad_values():
+    """_clamp_score: 钳到 0~100; 缺失/非法 -> -1 (未评分, 前端不显示徽标, 守可追溯)。"""
+    assert topic_ops._clamp_score(82) == 82
+    assert topic_ops._clamp_score(150) == 100
+    assert topic_ops._clamp_score(-5) == 0
+    assert topic_ops._clamp_score(None) == -1   # 缺失 -> 未评分
+    assert topic_ops._clamp_score("garbage") == -1  # 非法 -> 未评分
+    assert topic_ops._clamp_score("73") == 73  # 数字字符串可解
+
+
 def test_run_deep_analysis_enriches_synthesizes_and_persists(monkeypatch):
     topic_id, article_ids = _seed_deep_analysis_case(article_count=3)
     steps = []
@@ -31,6 +41,8 @@ def test_run_deep_analysis_enriches_synthesizes_and_persists(monkeypatch):
                 "relevance": 0.9,
                 "stance": "支持行动",
                 "stance_summary": "认为事件会升级",
+                "substance_score": 82,
+                "substance_note": "含具体金额与时间",
             }
             for item in items
         }
@@ -82,6 +94,13 @@ def test_run_deep_analysis_enriches_synthesizes_and_persists(monkeypatch):
         articles = session.exec(select(Article).where(Article.id.in_(article_ids[:2]))).all()
         assert all(article.enriched for article in articles)
         assert all(article.title_zh.startswith("译文") for article in articles)
+
+        # 干货密度写回 TopicArticle (A: 事前筛水文)
+        links = session.exec(
+            select(TopicArticle).where(TopicArticle.article_id.in_(article_ids[:2]))
+        ).all()
+        assert all(link.substance_score == 82 for link in links)
+        assert all(link.substance_note == "含具体金额与时间" for link in links)
 
         timeline = session.exec(select(TimelineEvent).where(TimelineEvent.topic_id == topic_id)).all()
         framing = session.exec(select(SourceFraming).where(SourceFraming.topic_id == topic_id)).all()

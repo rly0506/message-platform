@@ -614,6 +614,29 @@ button:disabled {
   border-right: 0;
 }
 
+/* 干货密度徽标: 绿=干货 / 灰=中 / 橙=水文警示 */
+.substance-badge {
+  border-right: 0 !important;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px !important;
+}
+
+.substance-badge.substance-high {
+  background: #e6f5ec;
+  color: #1e7e44;
+}
+
+.substance-badge.substance-mid {
+  background: #eef2f4;
+  color: #5a6b75;
+}
+
+.substance-badge.substance-low {
+  background: #fdeede;
+  color: #b5651d;
+}
+
 .article-row h3 a {
   text-decoration: none;
 }

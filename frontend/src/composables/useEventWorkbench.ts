@@ -134,7 +134,11 @@ export function useEventWorkbench(options: UseEventWorkbenchOptions) {
       groups.get(key)?.push(article)
     }
     return [...groups.entries()]
-      .map(([category, items]) => ({ category, items }))
+      .map(([category, items]) => ({
+        category,
+        // 组内按干货密度降序: 干货浮顶、水文沉底 (A=事前筛)。未评分按中性 50, 不全沉底。
+        items: [...items].sort((a, b) => substanceKey(b) - substanceKey(a)),
+      }))
       .sort((a, b) => b.items.length - a.items.length || a.category.localeCompare(b.category, 'zh-CN'))
   })
 
@@ -274,4 +278,10 @@ function tierRank(tier: string) {
   const order = ['wire', 'official', 'professional', 'mainstream', 'aggregator', 'other']
   const index = order.indexOf(tier || 'other')
   return index >= 0 ? index : order.length
+}
+
+// 干货排序键: 已评分用其分数, 未评分(-1/缺失)按中性 50, 避免未富化的文章全沉底。
+function substanceKey(article: Article) {
+  const score = article.substance_score
+  return score === undefined || score < 0 ? 50 : score
 }

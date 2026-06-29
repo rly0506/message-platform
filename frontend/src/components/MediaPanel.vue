@@ -92,6 +92,13 @@ function updateSourceMatrixSort(event: Event) {
 function updateArticleCategoryFilter(event: Event) {
   emit('update:articleCategoryFilter', (event.target as HTMLSelectElement).value)
 }
+
+// 干货密度配色: 高=绿(干货), 中=灰, 低=橙(水文警示)
+function substanceClass(score: number) {
+  if (score >= 70) return 'substance-high'
+  if (score <= 35) return 'substance-low'
+  return 'substance-mid'
+}
 </script>
 
 <template>
@@ -488,6 +495,14 @@ function updateArticleCategoryFilter(event: Event) {
                 <span>{{ article.source_lang || '未知语言' }}</span>
                 <span>{{ article.collector }}</span>
                 <span>{{ article.category || '行动进展' }}</span>
+                <span
+                  v-if="article.substance_score !== undefined && article.substance_score >= 0"
+                  class="substance-badge"
+                  :class="substanceClass(article.substance_score)"
+                  :title="article.substance_note || '干货密度：可证伪事实 vs 空话情绪'"
+                >
+                  干货 {{ article.substance_score }}
+                </span>
               </div>
               <h3>
                 <a :href="article.url" target="_blank" rel="noreferrer">{{ titleFor(article) }}</a>

@@ -186,6 +186,8 @@ export type Article = {
   relevant: boolean
   stance: string
   stance_summary: string
+  substance_score?: number
+  substance_note?: string
   category?: string
   category_reason?: string
 }
