@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from app.db import (
     Analysis,
     Article,
+    CognitionMark,
     SentimentPost,
     SourceFraming,
     TimelineEvent,
@@ -21,7 +22,7 @@ from app.db import (
     init_db,
 )
 from app.pipeline import local_analyze, narrative_signals
-from app.schemas.search import AcademicAnalysisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
+from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
 from app.services import article_perspective, country_compare, payloads, search_service
 from app.pipeline import academic, cross_synthesis, sentiment
 
@@ -292,9 +293,90 @@ def distill_discovery_seed(payload: DiscoveryDistillRequest) -> dict[str, Any]:
     return discovery_annotate.distill_topic(payload.title, payload.domain or "")
 
 
+@app.put("/api/cognition/marks")
+def upsert_cognition_mark(payload: CognitionMarkRequest) -> dict[str, Any]:
+    with Session(engine) as session:
+        mark = session.exec(
+            select(CognitionMark)
+            .where(CognitionMark.target_type == payload.target_type)
+            .where(CognitionMark.target_id == payload.target_id)
+            .where(CognitionMark.topic_id == payload.topic_id)
+        ).first()
+        if not mark:
+            mark = CognitionMark(
+                target_type=payload.target_type,
+                target_id=payload.target_id,
+                topic_id=payload.topic_id,
+            )
+        mark.label = payload.label
+        mark.updated_at = datetime.utcnow()
+        session.add(mark)
+        session.commit()
+        session.refresh(mark)
+        return cognition_mark_payload(mark)
+
+
+@app.get("/api/cognition/marks")
+def list_cognition_marks(
+    topic_id: int | None = Query(default=None),
+    target_type: str | None = Query(default=None),
+) -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        statement = select(CognitionMark).order_by(CognitionMark.updated_at.desc())
+        if topic_id is not None:
+            statement = statement.where(CognitionMark.topic_id == topic_id)
+        if target_type:
+            statement = statement.where(CognitionMark.target_type == target_type)
+        return [cognition_mark_payload(mark) for mark in session.exec(statement).all()]
+
+
+@app.get("/api/cognition/marks/summary")
+def cognition_mark_summary() -> dict[str, Any]:
+    with Session(engine) as session:
+        marks = session.exec(select(CognitionMark).order_by(CognitionMark.updated_at.desc())).all()
+        counts: dict[str, int] = {}
+        for mark in marks:
+            counts[mark.label] = counts.get(mark.label, 0) + 1
+        return {
+            "counts": counts,
+            "recent": [cognition_mark_payload(mark) for mark in marks[:20]],
+            "unfamiliar_topics": cognition_unfamiliar_topics(session, marks),
+        }
+
+
 @app.get("/api/search/jobs/{job_id}")
 def get_search_job(job_id: str) -> dict[str, Any]:
     return search_service.job_snapshot(job_id)
+
+
+def cognition_mark_payload(mark: CognitionMark) -> dict[str, Any]:
+    return {
+        "id": mark.id,
+        "target_type": mark.target_type,
+        "target_id": mark.target_id,
+        "topic_id": mark.topic_id,
+        "label": mark.label,
+        "updated_at": payloads.iso(mark.updated_at),
+    }
+
+
+def cognition_unfamiliar_topics(session: Session, marks: list[CognitionMark]) -> list[dict[str, Any]]:
+    counts: dict[int, int] = {}
+    for mark in marks:
+        if mark.label == "unfamiliar" and mark.topic_id:
+            counts[mark.topic_id] = counts.get(mark.topic_id, 0) + 1
+    if not counts:
+        return []
+
+    topics = {
+        topic.id: topic.name
+        for topic in session.exec(select(Topic).where(Topic.id.in_(counts.keys()))).all()
+        if topic.id is not None
+    }
+    return [
+        {"topic_id": topic_id, "topic": topics.get(topic_id, f"#{topic_id}"), "count": count}
+        for topic_id, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+    ]
 
 
 def parse_article_ids(values: list[str] | None) -> list[int] | None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,13 @@ class SentimentAnalysisRequest(BaseModel):
 class DiscoveryDistillRequest(BaseModel):
     title: str = Field(min_length=1, max_length=400)
     domain: str = Field(default="", max_length=40)
+
+
+class CognitionMarkRequest(BaseModel):
+    target_type: Literal["topic", "article", "event", "seed"]
+    target_id: int = Field(ge=1)
+    label: Literal["known", "unexpected", "doubtful", "unfamiliar"]
+    topic_id: int | None = Field(default=None, ge=1)
 
 
 class SearchStep(BaseModel):

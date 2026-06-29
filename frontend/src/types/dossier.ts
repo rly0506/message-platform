@@ -206,6 +206,23 @@ export type ArticlePerspective = {
   source_error: string
 }
 
+export type CognitionLabel = 'known' | 'unexpected' | 'doubtful' | 'unfamiliar'
+
+export type CognitionMark = {
+  id: number
+  target_type: string
+  target_id: number
+  topic_id: number | null
+  label: CognitionLabel
+  updated_at: string | null
+}
+
+export type CognitionSummary = {
+  counts: Partial<Record<CognitionLabel, number>>
+  recent: CognitionMark[]
+  unfamiliar_topics: { topic_id: number; topic: string; count: number }[]
+}
+
 export type TimelineEvent = {
   id: number
   date: string | null

@@ -255,8 +255,53 @@ async function mockApi(page: Page) {
       },
     })
   })
+  await page.route('**/api/cognition/marks?**', async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 7,
+          target_type: 'article',
+          target_id: 1,
+          topic_id: 101,
+          label: 'doubtful',
+          updated_at: '2026-06-20T09:00:00',
+        },
+      ],
+    })
+  })
+  await page.route('**/api/cognition/marks/summary', async (route) => {
+    await route.fulfill({
+      json: {
+        counts: { doubtful: 1, unexpected: 1 },
+        recent: [
+          {
+            id: 7,
+            target_type: 'article',
+            target_id: 1,
+            topic_id: 101,
+            label: 'doubtful',
+            updated_at: '2026-06-20T09:00:00',
+          },
+        ],
+        unfamiliar_topics: [],
+      },
+    })
+  })
   await page.route('**/api/topics/101/local-events', async (route) => {
     await route.fulfill({ json: localEvents })
+  })
+  await page.route('**/api/cognition/marks', async (route) => {
+    const body = route.request().postDataJSON()
+    await route.fulfill({
+      json: {
+        id: 1,
+        target_type: body.target_type,
+        target_id: body.target_id,
+        topic_id: body.topic_id,
+        label: body.label,
+        updated_at: '2026-06-20T10:00:00',
+      },
+    })
   })
 }
 
@@ -298,6 +343,12 @@ test('groups original articles by report category', async ({ page }) => {
   await expect(page.locator('.article-perspective')).toContainText('摘要透视')
   await expect(page.locator('.article-perspective')).toContainText('strike risk')
   await expect(page.locator('.article-perspective')).toContainText('market panic is everywhere')
+  await page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).getByRole('button', { name: '意外' }).click()
+  await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).locator('.cognition-chip.active')).toContainText('意外')
+  await page.reload()
+  await page.locator('details.article-feed-collapse > summary').click()
+  await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).locator('.cognition-chip.active')).toContainText('存疑')
+  await expect(page.locator('.cognition-overview')).toContainText('存疑 1')
 
   await page.getByLabel('报道功能分类筛选').selectOption('影响后果')
   const articleGroups = page.locator('.article-group')

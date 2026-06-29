@@ -111,6 +111,16 @@ class CrossSynthesis(SQLModel, table=True):
     generated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
+class CognitionMark(SQLModel, table=True):
+    """One-click user cognition marker. Labels are signals, not facts."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    target_type: str = Field(index=True)
+    target_id: int = Field(index=True)
+    topic_id: Optional[int] = Field(default=None, foreign_key="topic.id", index=True)
+    label: str = Field(index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 # --- 以下为 LLM 综合产出表，Phase 1 步骤 5 才会写入 ---
 
 class TimelineEvent(SQLModel, table=True):

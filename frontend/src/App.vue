@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { fetchArticlePerspective, fetchCountryCompare } from './api/dossierApi'
+import {
+  fetchArticlePerspective,
+  fetchCognitionMarks,
+  fetchCognitionSummary,
+  fetchCountryCompare,
+  saveCognitionMark,
+} from './api/dossierApi'
 import AcademicPanel from './components/AcademicPanel.vue'
 import CrossPanel from './components/CrossPanel.vue'
 import DiscoveryPanel from './components/DiscoveryPanel.vue'
@@ -16,6 +22,9 @@ import type {
   AcademicPaper,
   Article,
   ArticlePerspective,
+  CognitionLabel,
+  CognitionMark,
+  CognitionSummary,
   CountryCompare,
   CountryCompareCountry,
   DiscoverySeed,
@@ -33,6 +42,9 @@ const countryCompareEventKey = ref('')
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
+const articleCognitionMarks = ref<Record<number, CognitionMark>>({})
+const cognitionSummary = ref<CognitionSummary | null>(null)
+const cognitionMarkError = ref('')
 
 type AppMode = 'workbench' | 'discovery'
 const appMode = ref<AppMode>('workbench')
@@ -270,6 +282,8 @@ watch(selectedTopicId, async (id) => {
     articlePerspectives.value = {}
     articlePerspectiveLoading.value = {}
     articlePerspectiveErrors.value = {}
+    articleCognitionMarks.value = {}
+    cognitionMarkError.value = ''
     await Promise.all([
       loadTopic(id),
       loadArticles(id),
@@ -277,6 +291,7 @@ watch(selectedTopicId, async (id) => {
       loadCrossSynthesisLayer(id),
       loadAcademicLayer(id),
       loadSentimentLayer(id),
+      loadCognitionState(id),
     ])
   }
 })
@@ -351,6 +366,46 @@ async function loadArticlePerspective(article: Article) {
     articlePerspectiveErrors.value = { ...articlePerspectiveErrors.value, [article.id]: readableError(err) }
   } finally {
     articlePerspectiveLoading.value = { ...articlePerspectiveLoading.value, [article.id]: false }
+  }
+}
+
+async function markArticleCognition(article: Article, label: CognitionLabel) {
+  if (!selectedTopicId.value) return
+  try {
+    const mark = await saveCognitionMark({
+      target_type: 'article',
+      target_id: article.id,
+      topic_id: selectedTopicId.value,
+      label,
+    })
+    articleCognitionMarks.value = { ...articleCognitionMarks.value, [article.id]: mark }
+    cognitionMarkError.value = ''
+    await refreshCognitionSummary()
+  } catch (err) {
+    cognitionMarkError.value = readableError(err)
+  }
+}
+
+async function loadCognitionState(topicId: number) {
+  try {
+    const [marks, summary] = await Promise.all([fetchCognitionMarks(topicId), fetchCognitionSummary()])
+    const byArticle: Record<number, CognitionMark> = {}
+    for (const mark of marks) {
+      if (mark.target_type === 'article') byArticle[mark.target_id] = mark
+    }
+    articleCognitionMarks.value = byArticle
+    cognitionSummary.value = summary
+    cognitionMarkError.value = ''
+  } catch (err) {
+    cognitionMarkError.value = readableError(err)
+  }
+}
+
+async function refreshCognitionSummary() {
+  try {
+    cognitionSummary.value = await fetchCognitionSummary()
+  } catch (err) {
+    cognitionMarkError.value = readableError(err)
   }
 }
 
@@ -719,6 +774,9 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :article-perspectives="articlePerspectives"
           :article-perspective-loading="articlePerspectiveLoading"
           :article-perspective-errors="articlePerspectiveErrors"
+          :article-cognition-marks="articleCognitionMarks"
+          :cognition-summary="cognitionSummary"
+          :cognition-mark-error="cognitionMarkError"
           :keyword-size="keywordSize"
           :toggle-timeline-event="toggleTimelineEvent"
           :load-country-compare-for-selected-event="loadCountryCompareForSelectedEvent"
@@ -726,6 +784,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :show-earliest-sources="showEarliestSources"
           :show-most-covered-sources="showMostCoveredSources"
           :load-article-perspective="loadArticlePerspective"
+          :mark-article-cognition="markArticleCognition"
         />
         <CrossPanel
           v-else-if="activeWorkspaceTab === 'cross'"
