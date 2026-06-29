@@ -42,3 +42,72 @@ This project is indexed by GitNexus as **message-platform** (2010 symbols, 3797 
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+# Project Map
+
+## One Sentence Goal
+
+Build a personal intelligence workbench that helps the user track international events, compare evidence across sources, and broaden cognition without requiring LLM access for the core path.
+
+## Project Structure
+
+- `backend/`: FastAPI + SQLModel + SQLite backend for collection, persistence, local analysis, LLM enrichment, discovery, sentiment, academic, and cross-synthesis jobs.
+- `backend/app/api.py`: HTTP API surface.
+- `backend/app/db.py`: database models, SQLite engine, and lightweight migrations.
+- `backend/app/topic_ops.py`: topic creation, collection, enrichment, local analysis, and synthesis orchestration.
+- `backend/app/collectors/`: RSS/GNews/GDELT/Reddit/Hacker News and related source collectors.
+- `backend/app/pipeline/`: no-LLM local analysis, enrichment prompts, synthesis, prefiltering, clustering, scoring, entities, and categorization.
+- `backend/app/services/`: job runners, API payload shaping, country comparison, and shared service helpers.
+- `backend/tests/`: backend regression tests. Tests must use the isolated temp DB from `backend/tests/conftest.py`, not `backend/dossier.db`.
+- `frontend/`: Vue 3 + TypeScript + Vite frontend.
+- `frontend/src/App.vue`: top-level workbench composition.
+- `frontend/src/components/`: tab/panel rendering components.
+- `frontend/src/composables/`: frontend state orchestration and job polling.
+- `frontend/src/types/dossier.ts`: frontend DTOs matching API payloads.
+- `frontend/tests/e2e/`: Playwright checks for core reading workflows.
+- `spec/`: project harness specs, acceptance gates, and reproducible review standards.
+
+## Non-Negotiable Constraints
+
+- Core collection and local analysis must run without an LLM key.
+- Any LLM feature must fail soft: record an error or return an empty optional result, never break the core workflow.
+- Do not write the real `backend/dossier.db` during tests or reviews.
+- Do not commit `backend/.env`, real API keys, real proxy ports, or local database files.
+- Treat sentiment/community layers as signals, not facts.
+- Prefer small, reversible changes. Do not add speculative abstractions or dependencies.
+- Before editing code symbols, run GitNexus impact analysis for the touched symbol and report high/critical risk.
+- Before committing code changes, run GitNexus `detect-changes` and confirm the affected scope is expected.
+
+## Verification Commands
+
+Run the smallest command that proves the change. For release-quality or cross-layer changes, use the full gate:
+
+```powershell
+cd backend
+..\venv\Scripts\python.exe -m pytest -q
+
+cd ..\frontend
+npm run build
+npm run test:e2e
+
+cd ..
+git diff --check
+node .gitnexus/run.cjs status
+node .gitnexus/run.cjs detect-changes --scope all
+```
+
+If `node .gitnexus/run.cjs status` reports a stale index, run:
+
+```powershell
+node .gitnexus/run.cjs analyze
+```
+
+## Harness Specs
+
+Read these before planning or reviewing non-trivial work:
+
+- `spec/README.md`: how to use the harness.
+- `spec/project.md`: product goal, architecture, and current scope.
+- `spec/development.md`: development rules and safety constraints.
+- `spec/acceptance.md`: reproducible acceptance checklist and report template.
+- `spec/CHANGELOG.md`: dated log of spec and harness changes.
