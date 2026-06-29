@@ -481,7 +481,7 @@ function substanceClass(score: number) {
     <details class="media-collapse article-feed-collapse">
       <summary>
         <strong>原始报道流</strong>
-        <span>{{ totalArticles }} 篇 · 已评分 {{ substanceStats.scored }}/{{ articles.length }}</span>
+        <span>{{ totalArticles }} 篇 · 已评分 {{ substanceStats.scored }}/{{ articles.length }} · 含认知标记</span>
       </summary>
       <div class="collapse-body">
         <div class="section-divider">

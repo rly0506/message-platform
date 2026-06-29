@@ -4,6 +4,8 @@ type StepState = { key: string; label: string; status: string }
 defineProps<{
   hasLlmAnalysis: boolean
   deepAnalyzing: boolean
+  academicAnalyzing: boolean
+  sentimentAnalyzing: boolean
   activeDeepJobId: string
   deepMessage: string
   deepSteps: StepState[]
@@ -27,8 +29,8 @@ defineEmits<{
         </div>
         <div class="event-actions">
           <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-          <button type="button" :disabled="deepAnalyzing" @click="$emit('runDeepAnalysis')">
-            {{ deepAnalyzing ? '深度分析中...' : '深度分析（LLM）' }}
+          <button type="button" :disabled="deepAnalyzing || academicAnalyzing || sentimentAnalyzing" @click="$emit('runDeepAnalysis')">
+            {{ deepAnalyzing || academicAnalyzing || sentimentAnalyzing ? 'LLM 分析中...' : '深度分析（LLM）' }}
           </button>
         </div>
       </div>

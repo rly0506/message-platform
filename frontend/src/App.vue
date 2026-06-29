@@ -386,6 +386,14 @@ async function markArticleCognition(article: Article, label: CognitionLabel) {
   }
 }
 
+async function runLlmAnalysisBundle() {
+  await Promise.allSettled([
+    runDeepAnalysis(),
+    runAcademicAnalysis(),
+    runSentimentAnalysis(),
+  ])
+}
+
 async function loadCognitionState(topicId: number) {
   try {
     const [marks, summary] = await Promise.all([fetchCognitionMarks(topicId), fetchCognitionSummary()])
@@ -651,8 +659,8 @@ function countryCoverageNote(country: CountryCompareCountry) {
             <button type="button" class="ghost-button" :disabled="sentimentAnalyzing" @click="runSentimentAnalysis">
               {{ sentimentAnalyzing ? '民间情绪分析中...' : '民间情绪' }}
             </button>
-            <button type="button" :disabled="deepAnalyzing" @click="runDeepAnalysis">
-              {{ deepAnalyzing ? '深度分析中...' : '深度分析（LLM）' }}
+            <button type="button" :disabled="deepAnalyzing || academicAnalyzing || sentimentAnalyzing" @click="runLlmAnalysisBundle">
+              {{ deepAnalyzing || academicAnalyzing || sentimentAnalyzing ? 'LLM 分析中...' : '深度分析（LLM）' }}
             </button>
             <span>{{ hasLlmAnalysis ? '当前展示 LLM 生成结果' : '当前展示本地规则结果' }}</span>
           </div>
@@ -853,13 +861,15 @@ function countryCoverageNote(country: CountryCompareCountry) {
           v-else-if="activeWorkspaceTab === 'llm'"
           :has-llm-analysis="hasLlmAnalysis"
           :deep-analyzing="deepAnalyzing"
+          :academic-analyzing="academicAnalyzing"
+          :sentiment-analyzing="sentimentAnalyzing"
           :active-deep-job-id="activeDeepJobId"
           :deep-message="deepMessage"
           :deep-steps="deepSteps"
           :safe-analysis-html="safeAnalysisHtml"
           :display-analysis-text="displayAnalysisText"
           :step-status-text="stepStatusText"
-          @run-deep-analysis="runDeepAnalysis"
+          @run-deep-analysis="runLlmAnalysisBundle"
         />
       </section>
     </template>

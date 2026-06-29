@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 
+let startedJobs: string[] = []
+
 const topic = {
   id: 101,
   name: '美伊战争',
@@ -232,6 +234,7 @@ const articles = {
 }
 
 async function mockApi(page: Page) {
+  startedJobs = []
   await page.route('**/api/topics', async (route) => {
     await route.fulfill({ json: [topic] })
   })
@@ -303,6 +306,79 @@ async function mockApi(page: Page) {
       },
     })
   })
+  await page.route('**/api/topics/101/deep-analysis/jobs', async (route) => {
+    startedJobs.push('deep')
+    await route.fulfill({ json: analysisJob('deep-job', 'deep') })
+  })
+  await page.route('**/api/topics/101/academic/jobs', async (route) => {
+    startedJobs.push('academic')
+    await route.fulfill({ json: analysisJob('academic-job', 'academic') })
+  })
+  await page.route('**/api/topics/101/sentiment/jobs', async (route) => {
+    startedJobs.push('sentiment')
+    await route.fulfill({ json: analysisJob('sentiment-job', 'sentiment') })
+  })
+  await page.route('**/api/search/jobs/*', async (route) => {
+    const url = route.request().url()
+    if (url.includes('deep-job')) {
+      await route.fulfill({ json: analysisJob('deep-job', 'deep') })
+    } else if (url.includes('academic-job')) {
+      await route.fulfill({ json: analysisJob('academic-job', 'academic') })
+    } else {
+      await route.fulfill({ json: analysisJob('sentiment-job', 'sentiment') })
+    }
+  })
+}
+
+function analysisJob(id: string, kind: 'deep' | 'academic' | 'sentiment') {
+  const base = {
+    id,
+    query: '',
+    status: kind === 'sentiment' ? 'empty' : 'done',
+    steps: [{ key: 'done', label: 'done', status: 'done' }],
+    created_at: '2026-06-20T10:00:00',
+    updated_at: '2026-06-20T10:00:00',
+    error: '',
+  }
+  if (kind === 'deep') {
+    return {
+      ...base,
+      result: {
+        topic_id: 101,
+        topic_name: topic.name,
+        enrich: { limit: 30, pending: 0, processed: 1, relevant: 1, batches: 1, calls: 1, errors: [] },
+        synthesize: { input_articles: 1, timeline: 1, framing: 1, analysis_chars: 20, calls: 1 },
+        timeline: [],
+        framing: [],
+        analysis_md: 'LLM done',
+      },
+    }
+  }
+  if (kind === 'academic') {
+    return {
+      ...base,
+      result: {
+        topic_id: 101,
+        topic_name: topic.name,
+        papers: [],
+        graph: { nodes: [], edges: [] },
+        schools: [],
+        foundational_papers: [],
+        summary_md: '',
+      },
+    }
+  }
+  return {
+    ...base,
+    result: {
+      topic_id: 101,
+      topic_name: topic.name,
+      platform: 'reddit',
+      warning: '',
+      posts: [],
+      summary_md: '',
+    },
+  }
 }
 
 test.beforeEach(async ({ page }) => {
@@ -371,6 +447,7 @@ test('keeps secondary media panels collapsed with count summaries by default', a
 
   await expect(page.getByRole('heading', { name: '事件发展轴' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '美国与伊朗冲突进入关键节点' })).toBeVisible()
+  await expect(page.locator('details.article-feed-collapse > summary')).toContainText('含认知标记')
 
   const collapsedPanels = [
     {
@@ -406,4 +483,12 @@ test('keeps secondary media panels collapsed with count summaries by default', a
     await toggle.click()
     await expect(page.getByText(panel.hiddenText)).toBeVisible()
   }
+})
+
+test('starts academic and sentiment jobs with LLM analysis', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '深度分析（LLM）' }).click()
+
+  await expect.poll(() => startedJobs.sort()).toEqual(['academic', 'deep', 'sentiment'])
 })
