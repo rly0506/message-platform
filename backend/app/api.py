@@ -20,7 +20,7 @@ from app.db import (
     engine,
     init_db,
 )
-from app.pipeline import local_analyze
+from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
 from app.services import article_perspective, country_compare, payloads, search_service
 from app.pipeline import academic, cross_synthesis, sentiment
@@ -167,6 +167,7 @@ def local_events(topic_id: int) -> dict[str, Any]:
             "entities": data["entities"],
             "entity_groups": data["entity_groups"],
             "criteria": data["criteria"],
+            "narrative_signals": narrative_signals.detect_narrative_signals(article_rows),
         }
 
 

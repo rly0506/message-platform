@@ -11,6 +11,7 @@ import type {
   EvidenceArticle,
   Keyword,
   LocalEvent,
+  NarrativeSignal,
   SourceFraming,
   SourceMatrixItem,
   StanceEvolution,
@@ -53,6 +54,7 @@ const props = defineProps<{
   keywords: Keyword[]
   entityGroups: EntityGroup[]
   stancePeriods: StanceEvolution[]
+  narrativeSignals: NarrativeSignal[]
   fmtDate: (value: string | null, withTime?: boolean) => string
   importanceText: (event: LocalEvent) => string
   coverageText: (event: LocalEvent) => string
@@ -646,4 +648,24 @@ function substanceClass(score: number) {
       </div>
     </details>
   </aside>
+
+  <details class="media-collapse narrative-panel">
+    <summary>
+      <strong>叙事趋同信号</strong>
+      <span>{{ narrativeSignals.length }} 条</span>
+    </summary>
+    <div class="collapse-body">
+      <article v-for="signal in narrativeSignals" :key="signal.claim" class="narrative-signal">
+        <div>
+          <strong>{{ signal.claim }}</strong>
+          <span>{{ signal.source_count }} 源 · {{ signal.article_count }} 篇</span>
+        </div>
+        <p>{{ signal.sources.join('、') }}</p>
+        <ul>
+          <li v-for="title in signal.representative_titles" :key="title">{{ title }}</li>
+        </ul>
+      </article>
+      <p v-if="!narrativeSignals.length" class="muted">当前主题内还没有足够多源重复说法。</p>
+    </div>
+  </details>
 </template>

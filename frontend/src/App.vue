@@ -704,6 +704,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :keywords="keywords"
           :entity-groups="entityGroups"
           :stance-periods="stancePeriods"
+          :narrative-signals="localData?.narrative_signals || []"
           :fmt-date="fmtDate"
           :importance-text="importanceText"
           :coverage-text="coverageText"

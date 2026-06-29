@@ -334,6 +334,17 @@ export type StanceEvolution = {
   article_ids: number[]
 }
 
+export type NarrativeSignal = {
+  claim: string
+  source_count: number
+  article_count: number
+  first_seen: string | null
+  last_seen: string | null
+  sources: string[]
+  article_ids: number[]
+  representative_titles: string[]
+}
+
 export type LocalEventsPayload = {
   events: LocalEvent[]
   framing: SourceFraming[]
@@ -343,6 +354,7 @@ export type LocalEventsPayload = {
   entities: Keyword[]
   entity_groups: EntityGroup[]
   criteria: Criterion[]
+  narrative_signals?: NarrativeSignal[]
 }
 
 export type SearchResponse = LocalEventsPayload & {

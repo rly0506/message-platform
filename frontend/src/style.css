@@ -1686,6 +1686,45 @@ button:disabled {
   margin: 0;
 }
 
+.narrative-panel {
+  grid-column: 1 / -1;
+}
+
+.narrative-signal {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #dbe5e9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.narrative-signal + .narrative-signal {
+  margin-top: 10px;
+}
+
+.narrative-signal > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.narrative-signal span {
+  color: #6b7b84;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.narrative-signal p,
+.narrative-signal ul {
+  margin: 0;
+  color: #53636e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .event-reason {
   margin-top: 10px;
   color: #53636e;

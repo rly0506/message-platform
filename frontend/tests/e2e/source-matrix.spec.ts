@@ -147,6 +147,18 @@ const localEvents = {
   criteria: [
     { key: 'authority', label: '权威来源', description: '是否由权威来源报道。', weight: 0.22 },
   ],
+  narrative_signals: [
+    {
+      claim: 'ai capex boom',
+      source_count: 3,
+      article_count: 3,
+      first_seen: '2026-06-01T00:00:00',
+      last_seen: '2026-06-03T00:00:00',
+      sources: ['Reuters', 'Financial Times', 'Bloomberg'],
+      article_ids: [1, 2, 3],
+      representative_titles: ['AI capex boom reshapes market'],
+    },
+  ],
 }
 
 const articles = {
@@ -329,6 +341,10 @@ test('keeps secondary media panels collapsed with count summaries by default', a
     {
       name: /态度随时间变化.*1 期/,
       hiddenText: '2026-06',
+    },
+    {
+      name: /叙事趋同信号.*1 条/,
+      hiddenText: 'Reuters、Financial Times、Bloomberg',
     },
   ]
 
