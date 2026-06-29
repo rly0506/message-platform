@@ -64,7 +64,7 @@ defineEmits<{
       <p v-else-if="sentimentError" class="country-compare-error">{{ sentimentError }}</p>
 
       <template v-else>
-          <div class="academic-metrics sentiment-metrics">
+        <div class="academic-metrics sentiment-metrics sentiment-overview">
           <div>
             <strong>{{ sentimentPostItems.length }}</strong>
             <span>平台帖子</span>
@@ -74,8 +74,12 @@ defineEmits<{
             <span>高赞评论</span>
           </div>
           <div>
-            <strong>{{ sentimentPlatformLabels || '待生成' }}</strong>
+            <strong>{{ sentimentPlatformGroups.length || 0 }}</strong>
             <span>覆盖平台</span>
+          </div>
+          <div>
+            <strong>{{ sentimentLayer?.errors?.length || 0 }}</strong>
+            <span>暂不可用</span>
           </div>
           <div>
             <strong>{{ sentimentLayer?.queries?.reddit || sentimentLayer?.query || '待生成' }}</strong>
@@ -112,8 +116,12 @@ defineEmits<{
                 <span>{{ group.posts.length }} 条</span>
               </div>
               <div class="sentiment-post-list">
-                <article v-for="post in group.posts" :key="`${post.platform}-${post.url}-${post.title}`" class="sentiment-post">
-                  <div>
+                <article
+                  v-for="post in group.posts"
+                  :key="`${post.platform}-${post.url}-${post.title}`"
+                  class="sentiment-post sentiment-sample-card"
+                >
+                  <div class="sentiment-card-meta">
                     <span>{{ sentimentCommunityLabel(post) }}</span>
                     <b>{{ post.score }} 赞</b>
                     <b>{{ post.num_comments }} 评论</b>
@@ -123,7 +131,7 @@ defineEmits<{
                     <a :href="post.url" target="_blank" rel="noreferrer">{{ post.title || '未命名讨论' }}</a>
                   </h3>
                   <p>{{ sentimentSnippet(post) }}</p>
-                  <small>作者：{{ post.author || 'unknown' }} · {{ group.label }} 情绪样本，非事实来源</small>
+                  <small>作者：{{ post.author || 'unknown' }} · {{ group.label }} · 情绪样本，非事实来源</small>
                   <details v-if="sentimentCommentsForPost(post).length" class="sentiment-comments">
                     <summary>{{ sentimentCommentsForPost(post).length }} 条高赞评论</summary>
                     <article

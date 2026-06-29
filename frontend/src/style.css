@@ -1494,7 +1494,7 @@ button:disabled {
 }
 
 .sentiment-metrics {
-  grid-template-columns: 0.7fr 0.7fr 1.1fr 1.4fr 1.4fr;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
 .sentiment-metrics strong {
@@ -1551,6 +1551,11 @@ button:disabled {
   background: #fff;
 }
 
+.sentiment-sample-card {
+  border-color: #cfdde2;
+  box-shadow: 0 1px 0 rgba(16, 39, 52, 0.04);
+}
+
 .sentiment-post > div {
   display: flex;
   flex-wrap: wrap;
@@ -1558,6 +1563,19 @@ button:disabled {
   align-items: center;
   color: #71808a;
   font-size: 12px;
+}
+
+.sentiment-card-meta span,
+.sentiment-card-meta b {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef6f8;
+  color: #24515f;
+}
+
+.sentiment-card-meta b {
+  background: #f4f0e7;
+  color: #725723;
 }
 
 .sentiment-post h3 a {
