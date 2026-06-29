@@ -12,6 +12,7 @@ from app.db import (
     Analysis,
     Article,
     CognitionMark,
+    CognitionProfile,
     SentimentPost,
     SourceFraming,
     TimelineEvent,
@@ -26,6 +27,19 @@ from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, De
 from app.services import article_perspective, country_compare, payloads, search_service
 from app.pipeline import academic, cross_synthesis, sentiment
 
+DEFAULT_COGNITION_PROFILE = [
+    ("ai_infra", "AI / 算力基础设施", "partial", "知晓 CPU、GPU、CPO、算力中心、大模型等词，但不懂具体机制与实现。"),
+    ("geopolitics", "地缘政治基础", "partial", "主要来自中国教科书和文科背景。"),
+    ("finance", "金融 / 经济 / 公司财务", "strong_partial", "修过货币银行学、微观、宏观、公司理财、会计、财报分析、国际商务与国际金融。"),
+    ("energy", "能源 / 核能 / 新能源", "unfamiliar", "只在身边新闻中听说，没有主动了解。"),
+    ("biotech", "生物科技", "unfamiliar", "一窍不通。"),
+    ("open_source", "开源社区", "partial", "主要知道 GitHub。"),
+    ("crypto", "加密 / 稳定币", "unfamiliar", "听说过稳定币、比特币、以太币，但没有持有、交易或亲眼所见。"),
+    ("middle_east_security", "中东安全 / 国际冲突", "partial", "主要来自 B 站时政博主分析。"),
+    ("industrial_policy", "产业政策", "unfamiliar", "只在身边新闻中有所耳闻。"),
+    ("social_mood", "社会情绪", "partial", "能通过社交媒体感受到一些。"),
+]
+
 app = FastAPI(
     title="Dossier API",
     version="0.1.0",
@@ -38,7 +52,7 @@ app.add_middleware(
     # 避免端口漂移导致前端跨域报"无法连接后端"。仅匹配本地回环, 不放行外部来源。
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -295,20 +309,30 @@ def distill_discovery_seed(payload: DiscoveryDistillRequest) -> dict[str, Any]:
 
 @app.put("/api/cognition/marks")
 def upsert_cognition_mark(payload: CognitionMarkRequest) -> dict[str, Any]:
+    if payload.target_type == "seed" and not payload.target_key:
+        raise HTTPException(status_code=422, detail="seed mark requires target_key")
+    if payload.target_type != "seed" and payload.target_id < 1:
+        raise HTTPException(status_code=422, detail="target_id must be >= 1")
     with Session(engine) as session:
-        mark = session.exec(
-            select(CognitionMark)
-            .where(CognitionMark.target_type == payload.target_type)
-            .where(CognitionMark.target_id == payload.target_id)
-            .where(CognitionMark.topic_id == payload.topic_id)
-        ).first()
+        statement = select(CognitionMark).where(CognitionMark.target_type == payload.target_type)
+        if payload.target_type == "seed":
+            statement = statement.where(CognitionMark.target_key == payload.target_key)
+        else:
+            statement = (
+                statement
+                .where(CognitionMark.target_id == payload.target_id)
+                .where(CognitionMark.topic_id == payload.topic_id)
+            )
+        mark = session.exec(statement).first()
         if not mark:
             mark = CognitionMark(
                 target_type=payload.target_type,
                 target_id=payload.target_id,
+                target_key=payload.target_key,
                 topic_id=payload.topic_id,
             )
         mark.label = payload.label
+        mark.note = payload.note.strip()
         mark.updated_at = datetime.utcnow()
         session.add(mark)
         session.commit()
@@ -344,6 +368,29 @@ def cognition_mark_summary() -> dict[str, Any]:
         }
 
 
+@app.get("/api/cognition/profile")
+def cognition_profile() -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        return [cognition_profile_payload(item) for item in ensure_cognition_profile(session)]
+
+
+@app.put("/api/cognition/profile")
+def update_cognition_profile(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        existing = {item.domain_key: item for item in ensure_cognition_profile(session)}
+        for row in items:
+            key = str(row.get("domain_key", "")).strip()
+            if key not in existing:
+                continue
+            item = existing[key]
+            item.level = str(row.get("level", item.level)).strip() or item.level
+            item.note = str(row.get("note", item.note)).strip()
+            item.updated_at = datetime.utcnow()
+            session.add(item)
+        session.commit()
+        return [cognition_profile_payload(item) for item in ensure_cognition_profile(session)]
+
+
 @app.get("/api/search/jobs/{job_id}")
 def get_search_job(job_id: str) -> dict[str, Any]:
     return search_service.job_snapshot(job_id)
@@ -354,9 +401,37 @@ def cognition_mark_payload(mark: CognitionMark) -> dict[str, Any]:
         "id": mark.id,
         "target_type": mark.target_type,
         "target_id": mark.target_id,
+        "target_key": mark.target_key,
         "topic_id": mark.topic_id,
         "label": mark.label,
+        "note": mark.note,
         "updated_at": payloads.iso(mark.updated_at),
+    }
+
+
+def ensure_cognition_profile(session: Session) -> list[CognitionProfile]:
+    rows = session.exec(select(CognitionProfile).order_by(CognitionProfile.id)).all()
+    if rows:
+        return rows
+    for domain_key, domain_label, level, note in DEFAULT_COGNITION_PROFILE:
+        session.add(CognitionProfile(
+            domain_key=domain_key,
+            domain_label=domain_label,
+            level=level,
+            note=note,
+        ))
+    session.commit()
+    return session.exec(select(CognitionProfile).order_by(CognitionProfile.id)).all()
+
+
+def cognition_profile_payload(item: CognitionProfile) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "domain_key": item.domain_key,
+        "domain_label": item.domain_label,
+        "level": item.level,
+        "note": item.note,
+        "updated_at": payloads.iso(item.updated_at),
     }
 
 

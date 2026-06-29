@@ -115,9 +115,21 @@ class CognitionMark(SQLModel, table=True):
     """One-click user cognition marker. Labels are signals, not facts."""
     id: Optional[int] = Field(default=None, primary_key=True)
     target_type: str = Field(index=True)
-    target_id: int = Field(index=True)
+    target_id: int = Field(default=0, index=True)
+    target_key: str = Field(default="", index=True)
     topic_id: Optional[int] = Field(default=None, foreign_key="topic.id", index=True)
     label: str = Field(index=True)
+    note: str = ""
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class CognitionProfile(SQLModel, table=True):
+    """Local baseline for choosing cognition-boundary seeds."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    domain_key: str = Field(unique=True, index=True)
+    domain_label: str = ""
+    level: str = Field(index=True)
+    note: str = ""
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
@@ -179,6 +191,10 @@ def _migrate() -> None:
         "sentimentpost": [
             ("kind", "VARCHAR DEFAULT 'post'"),
             ("parent_post_id", "VARCHAR DEFAULT ''"),
+        ],
+        "cognitionmark": [
+            ("target_key", "VARCHAR DEFAULT ''"),
+            ("note", "VARCHAR DEFAULT ''"),
         ],
     }
     with engine.connect() as conn:

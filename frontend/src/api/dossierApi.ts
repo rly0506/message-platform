@@ -5,7 +5,7 @@ import type {
   ArticlePerspective,
   CognitionLabel,
   CognitionMark,
-  CognitionSummary,
+  CognitionProfileItem,
   CountryCompare,
   CrossSynthesis,
   DiscoveryReport,
@@ -45,23 +45,25 @@ export async function fetchArticlePerspective(topicId: number, articleId: number
 
 export async function saveCognitionMark(payload: {
   target_type: 'topic' | 'article' | 'event' | 'seed'
-  target_id: number
+  target_id?: number
+  target_key?: string
   label: CognitionLabel
   topic_id?: number | null
+  note?: string
 }) {
   const res = await axios.put<CognitionMark>(`${API_BASE}/api/cognition/marks`, payload)
   return res.data
 }
 
-export async function fetchCognitionMarks(topicId: number, targetType = 'article') {
+export async function fetchCognitionMarks(topicId?: number | null, targetType = 'article') {
   const res = await axios.get<CognitionMark[]>(`${API_BASE}/api/cognition/marks`, {
-    params: { topic_id: topicId, target_type: targetType },
+    params: { ...(topicId ? { topic_id: topicId } : {}), target_type: targetType },
   })
   return res.data
 }
 
-export async function fetchCognitionSummary() {
-  const res = await axios.get<CognitionSummary>(`${API_BASE}/api/cognition/marks/summary`)
+export async function fetchCognitionProfile() {
+  const res = await axios.get<CognitionProfileItem[]>(`${API_BASE}/api/cognition/profile`)
   return res.data
 }
 

@@ -61,6 +61,57 @@ def test_cognition_mark_rejects_unknown_label():
     assert response.status_code == 422
 
 
+def test_seed_cognition_mark_uses_target_key_and_note():
+    client = TestClient(api.app)
+    payload = {
+        "target_type": "seed",
+        "target_key": "https://example.com/frontier-seed",
+        "label": "unfamiliar",
+        "note": "能源领域只听过新闻，没有主动了解",
+    }
+
+    create = client.put("/api/cognition/marks", json=payload)
+    assert create.status_code == 200
+    body = create.json()
+    assert body["target_type"] == "seed"
+    assert body["target_key"] == payload["target_key"]
+    assert body["target_id"] == 0
+    assert body["label"] == "unfamiliar"
+    assert body["note"] == payload["note"]
+
+    update = client.put("/api/cognition/marks", json={**payload, "label": "doubtful", "note": "需要再核对"})
+    assert update.status_code == 200
+    assert update.json()["id"] == body["id"]
+    assert update.json()["label"] == "doubtful"
+    assert update.json()["note"] == "需要再核对"
+
+    marks = client.get("/api/cognition/marks?target_type=seed").json()
+    assert len([mark for mark in marks if mark["target_key"] == payload["target_key"]]) == 1
+
+
+def test_cognition_profile_initializes_default_boundaries():
+    response = TestClient(api.app).get("/api/cognition/profile")
+
+    assert response.status_code == 200
+    profile = response.json()
+    assert len(profile) == 10
+    by_key = {item["domain_key"]: item for item in profile}
+    assert by_key["ai_infra"]["level"] == "partial"
+    assert "CPU" in by_key["ai_infra"]["note"]
+    assert by_key["energy"]["level"] == "unfamiliar"
+    assert by_key["finance"]["level"] == "strong_partial"
+
+
+def test_cognition_mark_put_cors_preflight_is_allowed():
+    response = TestClient(api.app).options("/api/cognition/marks", headers={
+        "Origin": "http://127.0.0.1:5173",
+        "Access-Control-Request-Method": "PUT",
+    })
+
+    assert response.status_code == 200
+    assert "PUT" in response.headers["access-control-allow-methods"]
+
+
 def _seed_mark_case() -> tuple[int, int]:
     init_db()
     with Session(engine) as session:

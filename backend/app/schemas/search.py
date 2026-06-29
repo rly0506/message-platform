@@ -33,9 +33,11 @@ class DiscoveryDistillRequest(BaseModel):
 
 class CognitionMarkRequest(BaseModel):
     target_type: Literal["topic", "article", "event", "seed"]
-    target_id: int = Field(ge=1)
+    target_id: int = Field(default=0, ge=0)
+    target_key: str = Field(default="", max_length=500)
     label: Literal["known", "unexpected", "doubtful", "unfamiliar"]
     topic_id: int | None = Field(default=None, ge=1)
+    note: str = Field(default="", max_length=300)
 
 
 class SearchStep(BaseModel):

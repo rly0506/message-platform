@@ -758,38 +758,6 @@ button:disabled {
   color: #155a6e;
 }
 
-.cognition-overview {
-  margin-top: 16px;
-}
-
-.cognition-counts,
-.cognition-unfamiliar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.cognition-counts span,
-.cognition-unfamiliar span {
-  padding: 4px 8px;
-  border: 1px solid #d5e1e5;
-  border-radius: 999px;
-  background: #fff;
-  color: #526771;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.cognition-unfamiliar {
-  margin-top: 10px;
-}
-
-.cognition-unfamiliar strong {
-  width: 100%;
-  color: #25343c;
-  font-size: 13px;
-}
-
 .article-row aside {
   display: flex;
   min-width: 0;

@@ -3,9 +3,6 @@ import { computed } from 'vue'
 import type {
   Article,
   ArticlePerspective,
-  CognitionLabel,
-  CognitionMark,
-  CognitionSummary,
   CountryCompare,
   CountryCompareCountry,
   CountryFirstReporter,
@@ -72,9 +69,6 @@ const props = defineProps<{
   articlePerspectives: Record<number, ArticlePerspective>
   articlePerspectiveLoading: Record<number, boolean>
   articlePerspectiveErrors: Record<number, string>
-  articleCognitionMarks: Record<number, CognitionMark>
-  cognitionSummary: CognitionSummary | null
-  cognitionMarkError: string
   keywordSize: (keyword: Keyword) => string
   toggleTimelineEvent: (index: number) => void
   loadCountryCompareForSelectedEvent: () => void
@@ -82,15 +76,7 @@ const props = defineProps<{
   showEarliestSources: () => void
   showMostCoveredSources: () => void
   loadArticlePerspective: (article: Article) => void
-  markArticleCognition: (article: Article, label: CognitionLabel) => void
 }>()
-
-const cognitionLabels = [
-  { key: 'known', label: '已知' },
-  { key: 'unexpected', label: '意外' },
-  { key: 'doubtful', label: '存疑' },
-  { key: 'unfamiliar', label: '陌生' },
-] as const
 
 const substanceStats = computed(() => {
   const stats = { scored: 0, high: 0, mid: 0, low: 0, unscored: 0 }
@@ -481,7 +467,7 @@ function substanceClass(score: number) {
     <details class="media-collapse article-feed-collapse">
       <summary>
         <strong>原始报道流</strong>
-        <span>{{ totalArticles }} 篇 · 已评分 {{ substanceStats.scored }}/{{ articles.length }} · 含认知标记</span>
+        <span>{{ totalArticles }} 篇 · 已评分 {{ substanceStats.scored }}/{{ articles.length }}</span>
       </summary>
       <div class="collapse-body">
         <div class="section-divider">
@@ -561,17 +547,6 @@ function substanceClass(score: number) {
               >
                 {{ articlePerspectiveLoading[article.id] ? '透视中...' : '透视' }}
               </button>
-              <div class="cognition-mark-row" aria-label="认知标记">
-                <button
-                  v-for="mark in cognitionLabels"
-                  :key="mark.key"
-                  type="button"
-                  :class="['cognition-chip', { active: articleCognitionMarks[article.id]?.label === mark.key }]"
-                  @click="markArticleCognition(article, mark.key)"
-                >
-                  {{ mark.label }}
-                </button>
-              </div>
               <p v-if="articlePerspectiveErrors[article.id]" class="country-compare-error">
                 {{ articlePerspectiveErrors[article.id] }}
               </p>
@@ -601,27 +576,6 @@ function substanceClass(score: number) {
       </div>
     </details>
 
-    <details class="media-collapse cognition-overview">
-      <summary>
-        <strong>认知积累</strong>
-        <span>{{ cognitionSummary?.recent.length || 0 }} 条最近标记</span>
-      </summary>
-      <div class="collapse-body">
-        <p v-if="cognitionMarkError" class="country-compare-error">{{ cognitionMarkError }}</p>
-        <div class="cognition-counts">
-          <span v-for="mark in cognitionLabels" :key="mark.key">
-            {{ mark.label }} {{ cognitionSummary?.counts?.[mark.key] || 0 }}
-          </span>
-        </div>
-        <div v-if="cognitionSummary?.unfamiliar_topics.length" class="cognition-unfamiliar">
-          <strong>陌生领域排行</strong>
-          <span v-for="item in cognitionSummary.unfamiliar_topics" :key="item.topic_id">
-            {{ item.topic }} {{ item.count }}
-          </span>
-        </div>
-        <p v-else class="muted">先用一键标记积累你的判断，地图以后再画。</p>
-      </div>
-    </details>
   </section>
 
   <aside class="insight-pane">

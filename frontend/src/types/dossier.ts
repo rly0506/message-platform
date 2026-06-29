@@ -212,8 +212,10 @@ export type CognitionMark = {
   id: number
   target_type: string
   target_id: number
+  target_key: string
   topic_id: number | null
   label: CognitionLabel
+  note: string
   updated_at: string | null
 }
 
@@ -221,6 +223,15 @@ export type CognitionSummary = {
   counts: Partial<Record<CognitionLabel, number>>
   recent: CognitionMark[]
   unfamiliar_topics: { topic_id: number; topic: string; count: number }[]
+}
+
+export type CognitionProfileItem = {
+  id: number
+  domain_key: string
+  domain_label: string
+  level: 'partial' | 'strong_partial' | 'unfamiliar' | string
+  note: string
+  updated_at: string | null
 }
 
 export type TimelineEvent = {

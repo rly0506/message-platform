@@ -4,6 +4,30 @@
 
 ### Added
 
+- Moved cognition marking from the media article feed to today's intelligence desk:
+  - added a local cognition profile initialized from the user's 10 boundary-test answers;
+  - added seed-level cognition marks with stable `target_key` URLs and optional notes;
+  - added a small cognition-boundary queue in `DiscoveryPanel`;
+  - removed article-level cognition sorting from the original article feed while keeping substance-score visibility;
+  - allowed `PUT` in local CORS so browser saves can pass preflight.
+
+### Reason
+
+The cognition labels are useful for new frontier items, not for forcing the user to classify 100+ raw reports. V1 now collects low-friction judgement data from a small queue before any larger cognition map exists.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `5 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `153 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `14 passed`
+- `git diff --check` -> exit 0
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+- `git check-ignore -v backend/.env backend/dossier.db` -> both ignored by `.gitignore`
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk medium, affected processes 3
+
+### Added
+
 - Implemented the readable-cognition roadmap in five small commits:
   - surfaced article substance-score coverage in the media feed;
   - rendered community sentiment as compact readable sample cards;

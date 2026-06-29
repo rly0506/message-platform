@@ -3,7 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import {
   fetchArticlePerspective,
   fetchCognitionMarks,
-  fetchCognitionSummary,
+  fetchCognitionProfile,
   fetchCountryCompare,
   saveCognitionMark,
 } from './api/dossierApi'
@@ -24,7 +24,7 @@ import type {
   ArticlePerspective,
   CognitionLabel,
   CognitionMark,
-  CognitionSummary,
+  CognitionProfileItem,
   CountryCompare,
   CountryCompareCountry,
   DiscoverySeed,
@@ -42,8 +42,8 @@ const countryCompareEventKey = ref('')
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
-const articleCognitionMarks = ref<Record<number, CognitionMark>>({})
-const cognitionSummary = ref<CognitionSummary | null>(null)
+const seedCognitionMarks = ref<Record<string, CognitionMark>>({})
+const cognitionProfile = ref<CognitionProfileItem[]>([])
 const cognitionMarkError = ref('')
 
 type AppMode = 'workbench' | 'discovery'
@@ -232,6 +232,9 @@ watch(appMode, (mode) => {
   if (mode === 'discovery' && !discoveryLoaded.value) {
     loadLatestDiscovery()
   }
+  if (mode === 'discovery') {
+    loadSeedCognitionState()
+  }
 })
 
 // 发现 -> 分析闭环: 点种子 -> LLM 提炼成话题词 -> 切到事件分析台 -> 自动搜索。
@@ -282,7 +285,6 @@ watch(selectedTopicId, async (id) => {
     articlePerspectives.value = {}
     articlePerspectiveLoading.value = {}
     articlePerspectiveErrors.value = {}
-    articleCognitionMarks.value = {}
     cognitionMarkError.value = ''
     await Promise.all([
       loadTopic(id),
@@ -291,7 +293,6 @@ watch(selectedTopicId, async (id) => {
       loadCrossSynthesisLayer(id),
       loadAcademicLayer(id),
       loadSentimentLayer(id),
-      loadCognitionState(id),
     ])
   }
 })
@@ -369,18 +370,17 @@ async function loadArticlePerspective(article: Article) {
   }
 }
 
-async function markArticleCognition(article: Article, label: CognitionLabel) {
-  if (!selectedTopicId.value) return
+async function markSeedCognition(seed: DiscoverySeed, label: CognitionLabel, note = '') {
   try {
     const mark = await saveCognitionMark({
-      target_type: 'article',
-      target_id: article.id,
-      topic_id: selectedTopicId.value,
+      target_type: 'seed',
+      target_id: 0,
+      target_key: seed.url,
       label,
+      note,
     })
-    articleCognitionMarks.value = { ...articleCognitionMarks.value, [article.id]: mark }
+    seedCognitionMarks.value = { ...seedCognitionMarks.value, [seed.url]: mark }
     cognitionMarkError.value = ''
-    await refreshCognitionSummary()
   } catch (err) {
     cognitionMarkError.value = readableError(err)
   }
@@ -394,24 +394,19 @@ async function runLlmAnalysisBundle() {
   ])
 }
 
-async function loadCognitionState(topicId: number) {
+async function loadSeedCognitionState() {
   try {
-    const [marks, summary] = await Promise.all([fetchCognitionMarks(topicId), fetchCognitionSummary()])
-    const byArticle: Record<number, CognitionMark> = {}
+    const [marks, profile] = await Promise.all([
+      fetchCognitionMarks(null, 'seed'),
+      fetchCognitionProfile(),
+    ])
+    const bySeed: Record<string, CognitionMark> = {}
     for (const mark of marks) {
-      if (mark.target_type === 'article') byArticle[mark.target_id] = mark
+      if (mark.target_type === 'seed' && mark.target_key) bySeed[mark.target_key] = mark
     }
-    articleCognitionMarks.value = byArticle
-    cognitionSummary.value = summary
+    seedCognitionMarks.value = { ...bySeed, ...seedCognitionMarks.value }
+    cognitionProfile.value = profile
     cognitionMarkError.value = ''
-  } catch (err) {
-    cognitionMarkError.value = readableError(err)
-  }
-}
-
-async function refreshCognitionSummary() {
-  try {
-    cognitionSummary.value = await fetchCognitionSummary()
   } catch (err) {
     cognitionMarkError.value = readableError(err)
   }
@@ -546,10 +541,14 @@ function countryCoverageNote(country: CountryCompareCountry) {
       :active-seed-url="activeSeedUrl"
       :seed-note="seedNote"
       :tracked-topics="topics"
+      :seed-cognition-marks="seedCognitionMarks"
+      :cognition-profile="cognitionProfile"
+      :cognition-mark-error="cognitionMarkError"
       :step-status-text="discoveryStepStatusText"
       @run-discovery="runDiscovery"
       @analyze-seed="analyzeSeed"
       @track-topic="trackTopic"
+      @mark-seed-cognition="markSeedCognition"
     />
 
     <template v-else>
@@ -782,9 +781,6 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :article-perspectives="articlePerspectives"
           :article-perspective-loading="articlePerspectiveLoading"
           :article-perspective-errors="articlePerspectiveErrors"
-          :article-cognition-marks="articleCognitionMarks"
-          :cognition-summary="cognitionSummary"
-          :cognition-mark-error="cognitionMarkError"
           :keyword-size="keywordSize"
           :toggle-timeline-event="toggleTimelineEvent"
           :load-country-compare-for-selected-event="loadCountryCompareForSelectedEvent"
@@ -792,7 +788,6 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :show-earliest-sources="showEarliestSources"
           :show-most-covered-sources="showMostCoveredSources"
           :load-article-perspective="loadArticlePerspective"
-          :mark-article-cognition="markArticleCognition"
         />
         <CrossPanel
           v-else-if="activeWorkspaceTab === 'cross'"

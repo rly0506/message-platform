@@ -419,12 +419,10 @@ test('groups original articles by report category', async ({ page }) => {
   await expect(page.locator('.article-perspective')).toContainText('摘要透视')
   await expect(page.locator('.article-perspective')).toContainText('strike risk')
   await expect(page.locator('.article-perspective')).toContainText('market panic is everywhere')
-  await page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).getByRole('button', { name: '意外' }).click()
-  await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).locator('.cognition-chip.active')).toContainText('意外')
+  await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).getByRole('button', { name: '意外' })).toHaveCount(0)
   await page.reload()
   await page.locator('details.article-feed-collapse > summary').click()
-  await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).locator('.cognition-chip.active')).toContainText('存疑')
-  await expect(page.locator('.cognition-overview')).toContainText('存疑 1')
+  await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).locator('.cognition-chip')).toHaveCount(0)
 
   await page.getByLabel('报道功能分类筛选').selectOption('影响后果')
   const articleGroups = page.locator('.article-group')
@@ -447,7 +445,7 @@ test('keeps secondary media panels collapsed with count summaries by default', a
 
   await expect(page.getByRole('heading', { name: '事件发展轴' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '美国与伊朗冲突进入关键节点' })).toBeVisible()
-  await expect(page.locator('details.article-feed-collapse > summary')).toContainText('含认知标记')
+  await expect(page.locator('details.article-feed-collapse > summary')).toContainText('已评分 2/3')
 
   const collapsedPanels = [
     {

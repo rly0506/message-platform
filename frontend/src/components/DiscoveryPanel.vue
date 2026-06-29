@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { DiscoveryReport, DiscoverySeed, TopicSummary } from '../types/dossier'
+import { computed, ref } from 'vue'
+import type { CognitionLabel, CognitionMark, CognitionProfileItem, DiscoveryReport, DiscoverySeed, TopicSummary } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
+type BoundarySeed = { seed: DiscoverySeed; reason: string; profile: CognitionProfileItem | null }
 
-defineProps<{
+const props = defineProps<{
   report: DiscoveryReport | null
   loading: boolean
   analyzing: boolean
@@ -19,6 +21,9 @@ defineProps<{
   activeSeedUrl: string
   seedNote: string
   trackedTopics: TopicSummary[]
+  seedCognitionMarks: Record<string, CognitionMark>
+  cognitionProfile: CognitionProfileItem[]
+  cognitionMarkError: string
   stepStatusText: (status: string) => string
 }>()
 
@@ -26,7 +31,24 @@ defineEmits<{
   runDiscovery: []
   analyzeSeed: [seed: DiscoverySeed]
   trackTopic: [topicId: number]
+  markSeedCognition: [seed: DiscoverySeed, label: CognitionLabel, note?: string]
 }>()
+
+const cognitionLabels = [
+  { key: 'known', label: '已知' },
+  { key: 'unexpected', label: '意外' },
+  { key: 'doubtful', label: '存疑' },
+  { key: 'unfamiliar', label: '陌生' },
+] as const
+
+const noteDrafts = ref<Record<string, string>>({})
+
+const boundaryQueue = computed<BoundarySeed[]>(() => {
+  return props.seeds
+    .map((seed) => ({ seed, ...boundaryReason(seed) }))
+    .sort((a, b) => reasonRank(a.reason) - reasonRank(b.reason) || b.seed.signal - a.seed.signal)
+    .slice(0, 10)
+})
 
 function fmtRunId(runId: string | undefined) {
   if (!runId) return ''
@@ -54,6 +76,34 @@ function isStale(iso: string | null): boolean {
   if (!iso) return true
   const then = new Date(iso).getTime()
   return Number.isNaN(then) || (Date.now() - then) > 14 * 86_400_000
+}
+
+function boundaryReason(seed: DiscoverySeed): { reason: string; profile: CognitionProfileItem | null } {
+  const profile = profileForSeed(seed)
+  if (profile?.level === 'unfamiliar') return { reason: '边界外', profile }
+  if (profile?.level === 'partial') return { reason: '机制缺口', profile }
+  if (profile?.level === 'strong_partial') return { reason: '课程相关', profile }
+  return { reason: seed.is_new ? '新信号' : '加速信号', profile: null }
+}
+
+function profileForSeed(seed: DiscoverySeed) {
+  const text = `${seed.domain} ${seed.domain_label} ${seed.title} ${seed.what} ${seed.why}`.toLowerCase()
+  const wanted = [
+    ['energy', ['energy', 'nuclear', '新能源', '核能', '能源']],
+    ['ai_infra', ['gpu', 'cpu', 'cpo', 'compute', '算力', '大模型']],
+    ['finance', ['finance', 'credit', 'market', '银行', '金融', '融资']],
+    ['crypto', ['crypto', 'stablecoin', 'bitcoin', 'ethereum', '稳定币', '比特币']],
+    ['biotech', ['bio', 'drug', 'gene', '生物', '基因']],
+    ['open_source', ['github', 'open source', '开源']],
+    ['industrial_policy', ['industrial policy', '产业政策']],
+    ['geopolitics', ['geopolitics', 'war', '地缘', '冲突']],
+  ]
+  const match = wanted.find(([, words]) => (words as string[]).some((word) => text.includes(word)))
+  return props.cognitionProfile.find((item) => item.domain_key === match?.[0]) || null
+}
+
+function reasonRank(reason: string) {
+  return ['边界外', '机制缺口', '课程相关'].indexOf(reason) + 1 || 9
 }
 </script>
 
@@ -108,11 +158,26 @@ function isStale(iso: string | null): boolean {
 
       <p v-if="loading" class="muted">正在读取最新日报...</p>
       <p v-else-if="error" class="country-compare-error">{{ error }}</p>
+      <p v-if="cognitionMarkError" class="country-compare-error">{{ cognitionMarkError }}</p>
 
       <template v-else-if="hasReport">
         <p v-if="report?.run_id" class="discovery-meta">报告时间：{{ fmtRunId(report.run_id) }}</p>
 
         <div v-if="seeds.length" class="seed-stream">
+          <div class="boundary-queue">
+            <div class="seed-stream-head">
+              <strong>认知边界队列（{{ boundaryQueue.length }}）</strong>
+              <span>最多 10 条，先看陌生区和机制缺口</span>
+            </div>
+            <ol class="boundary-list">
+              <li v-for="item in boundaryQueue" :key="`boundary-${item.seed.url}`">
+                <span>{{ item.reason }}</span>
+                <strong>{{ item.seed.title }}</strong>
+                <em v-if="item.profile">{{ item.profile.domain_label }}</em>
+              </li>
+            </ol>
+          </div>
+
           <div class="seed-stream-head">
             <strong>🌱 今日前沿种子（{{ seeds.length }}）</strong>
             <span>一眼扫过去，看到值得追的点「深入」送进事件分析台</span>
@@ -136,6 +201,35 @@ function isStale(iso: string | null): boolean {
                 <span v-if="seed.is_new" class="sig sig-new">新</span>
                 <span v-else-if="seed.delta > 0" class="sig sig-up">↑{{ seed.delta }}</span>
                 <span class="sig sig-heat" :title="`关注度信号 ${seed.signal}`">🔥{{ seed.signal }}</span>
+              </div>
+              <div class="cognition-mark-row seed-mark-row" aria-label="认知边界标记">
+                <button
+                  v-for="mark in cognitionLabels"
+                  :key="mark.key"
+                  type="button"
+                  :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === mark.key }]"
+                  @click="$emit('markSeedCognition', seed, mark.key)"
+                >
+                  {{ mark.label }}
+                </button>
+                <div v-if="seedCognitionMarks[seed.url]" class="seed-note-editor">
+                  <input
+                    v-model="noteDrafts[seed.url]"
+                    type="text"
+                    placeholder="写一句选择理由"
+                    :aria-label="`${seed.title} 选择理由`"
+                  />
+                  <button
+                    type="button"
+                    class="stream-go"
+                    @click="$emit('markSeedCognition', seed, seedCognitionMarks[seed.url].label, noteDrafts[seed.url] || seedCognitionMarks[seed.url].note)"
+                  >
+                    保存理由
+                  </button>
+                </div>
+                <p v-if="seedCognitionMarks[seed.url]?.note" class="stream-note seed-saved-note">
+                  {{ seedCognitionMarks[seed.url].note }}
+                </p>
               </div>
               <button
                 type="button"
@@ -256,6 +350,53 @@ function isStale(iso: string | null): boolean {
   margin: 0 0 1.25rem;
 }
 
+.boundary-queue {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #d7e0e4;
+  border-radius: 10px;
+  background: #f8fbfc;
+}
+
+.boundary-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.boundary-list li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: #53636e;
+  font-size: 0.78rem;
+}
+
+.boundary-list span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff4e0;
+  color: #8a5a00;
+  font-weight: 800;
+}
+
+.boundary-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #1c2329;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boundary-list em {
+  color: #71808a;
+  font-style: normal;
+  white-space: nowrap;
+}
+
 .seed-stream-head {
   display: flex;
   align-items: baseline;
@@ -295,12 +436,41 @@ function isStale(iso: string | null): boolean {
 .stream-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 7px 12px;
   border-top: 1px solid #eef2f4;
   border-left: 3px solid #cbd5db;
   background: #fff;
   transition: background 0.12s;
+}
+
+.seed-mark-row {
+  flex: 0 0 240px;
+  margin-top: 0;
+}
+
+.seed-note-editor {
+  display: flex;
+  flex-basis: 100%;
+  gap: 6px;
+}
+
+.seed-note-editor input {
+  min-width: 0;
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid #cbd5db;
+  border-radius: 6px;
+  padding: 0 8px;
+}
+
+.seed-note-editor .stream-go {
+  min-height: 30px;
+}
+
+.seed-saved-note {
+  flex-basis: 100%;
 }
 
 .stream-row:first-child {
