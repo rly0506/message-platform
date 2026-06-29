@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { fetchCountryCompare } from './api/dossierApi'
+import { fetchArticlePerspective, fetchCountryCompare } from './api/dossierApi'
 import AcademicPanel from './components/AcademicPanel.vue'
 import CrossPanel from './components/CrossPanel.vue'
 import DiscoveryPanel from './components/DiscoveryPanel.vue'
@@ -15,6 +15,7 @@ import type {
   AcademicFoundationalPaper,
   AcademicPaper,
   Article,
+  ArticlePerspective,
   CountryCompare,
   CountryCompareCountry,
   DiscoverySeed,
@@ -29,6 +30,9 @@ const countryCompareLoading = ref(false)
 const countryCompare = ref<CountryCompare | null>(null)
 const countryCompareError = ref('')
 const countryCompareEventKey = ref('')
+const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
+const articlePerspectiveLoading = ref<Record<number, boolean>>({})
+const articlePerspectiveErrors = ref<Record<number, string>>({})
 
 type AppMode = 'workbench' | 'discovery'
 const appMode = ref<AppMode>('workbench')
@@ -263,6 +267,9 @@ watch(selectedTopicId, async (id) => {
     resetAcademicState()
     resetSentimentState()
     resetSelectedEvent()
+    articlePerspectives.value = {}
+    articlePerspectiveLoading.value = {}
+    articlePerspectiveErrors.value = {}
     await Promise.all([
       loadTopic(id),
       loadArticles(id),
@@ -331,6 +338,20 @@ function titleFor(article: Article) {
 
 function snippetFor(article: Article) {
   return article.snippet_zh || article.snippet || article.stance_summary || '暂无摘要'
+}
+
+async function loadArticlePerspective(article: Article) {
+  if (!selectedTopicId.value || articlePerspectiveLoading.value[article.id]) return
+  articlePerspectiveLoading.value = { ...articlePerspectiveLoading.value, [article.id]: true }
+  articlePerspectiveErrors.value = { ...articlePerspectiveErrors.value, [article.id]: '' }
+  try {
+    const result = await fetchArticlePerspective(selectedTopicId.value, article.id)
+    articlePerspectives.value = { ...articlePerspectives.value, [article.id]: result }
+  } catch (err) {
+    articlePerspectiveErrors.value = { ...articlePerspectiveErrors.value, [article.id]: readableError(err) }
+  } finally {
+    articlePerspectiveLoading.value = { ...articlePerspectiveLoading.value, [article.id]: false }
+  }
 }
 
 function keywordSize(keyword: Keyword) {
@@ -694,12 +715,16 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :country-coverage-note="countryCoverageNote"
           :title-for="titleFor"
           :snippet-for="snippetFor"
+          :article-perspectives="articlePerspectives"
+          :article-perspective-loading="articlePerspectiveLoading"
+          :article-perspective-errors="articlePerspectiveErrors"
           :keyword-size="keywordSize"
           :toggle-timeline-event="toggleTimelineEvent"
           :load-country-compare-for-selected-event="loadCountryCompareForSelectedEvent"
           :show-authority-sources="showAuthoritySources"
           :show-earliest-sources="showEarliestSources"
           :show-most-covered-sources="showMostCoveredSources"
+          :load-article-perspective="loadArticlePerspective"
         />
         <CrossPanel
           v-else-if="activeWorkspaceTab === 'cross'"

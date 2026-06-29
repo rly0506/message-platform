@@ -22,7 +22,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze
 from app.schemas.search import AcademicAnalysisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import country_compare, payloads, search_service
+from app.services import article_perspective, country_compare, payloads, search_service
 from app.pipeline import academic, cross_synthesis, sentiment
 
 app = FastAPI(
@@ -113,6 +113,16 @@ def list_articles(
             "offset": offset,
             "items": [payloads.article_payload(topic_article, article) for topic_article, article in page],
         }
+
+
+@app.get("/api/topics/{topic_id}/articles/{article_id}/perspective")
+def article_perspective_view(topic_id: int, article_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        link = session.get(TopicArticle, (topic_id, article_id))
+        article = session.get(Article, article_id) if link else None
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found in topic")
+        return article_perspective.analyze_article(article)
 
 
 @app.get("/api/topics/{topic_id}/local-events")

@@ -229,6 +229,20 @@ async function mockApi(page: Page) {
   await page.route('**/api/topics/101/articles**', async (route) => {
     await route.fulfill({ json: articles })
   })
+  await page.route('**/api/topics/101/articles/1/perspective', async (route) => {
+    await route.fulfill({
+      json: {
+        article_id: 1,
+        mode: 'summary',
+        items: [
+          { sentence: 'strike risk', kind: 'substance', reason: 'checkable claim' },
+          { sentence: 'market panic is everywhere', kind: 'emotion', reason: 'loaded wording' },
+        ],
+        error: '',
+        source_error: 'fetch failed',
+      },
+    })
+  })
   await page.route('**/api/topics/101/local-events', async (route) => {
     await route.fulfill({ json: localEvents })
   })
@@ -267,6 +281,11 @@ test('groups original articles by report category', async ({ page }) => {
   await expect(page.locator('.substance-summary')).toContainText('1')
   await expect(page.locator('.article-group').filter({ hasText: '触发事件' })).toBeVisible()
   await expect(page.locator('.article-group').filter({ hasText: '影响后果' })).toBeVisible()
+
+  await page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).getByRole('button', { name: '透视' }).click()
+  await expect(page.locator('.article-perspective')).toContainText('摘要透视')
+  await expect(page.locator('.article-perspective')).toContainText('strike risk')
+  await expect(page.locator('.article-perspective')).toContainText('market panic is everywhere')
 
   await page.getByLabel('报道功能分类筛选').selectOption('影响后果')
   const articleGroups = page.locator('.article-group')

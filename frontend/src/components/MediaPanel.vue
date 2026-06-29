@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type {
   Article,
+  ArticlePerspective,
   CountryCompare,
   CountryCompareCountry,
   CountryFirstReporter,
@@ -63,12 +64,16 @@ const props = defineProps<{
   countryCoverageNote: (country: CountryCompareCountry) => string
   titleFor: (article: Article) => string
   snippetFor: (article: Article) => string
+  articlePerspectives: Record<number, ArticlePerspective>
+  articlePerspectiveLoading: Record<number, boolean>
+  articlePerspectiveErrors: Record<number, string>
   keywordSize: (keyword: Keyword) => string
   toggleTimelineEvent: (index: number) => void
   loadCountryCompareForSelectedEvent: () => void
   showAuthoritySources: () => void
   showEarliestSources: () => void
   showMostCoveredSources: () => void
+  loadArticlePerspective: (article: Article) => void
 }>()
 
 const substanceStats = computed(() => {
@@ -532,6 +537,33 @@ function substanceClass(score: number) {
                 <a :href="article.url" target="_blank" rel="noreferrer">{{ titleFor(article) }}</a>
               </h3>
               <p>{{ snippetFor(article) }}</p>
+              <button
+                type="button"
+                class="ghost-button article-perspective-trigger"
+                :disabled="articlePerspectiveLoading[article.id]"
+                @click="loadArticlePerspective(article)"
+              >
+                {{ articlePerspectiveLoading[article.id] ? '透视中...' : '透视' }}
+              </button>
+              <p v-if="articlePerspectiveErrors[article.id]" class="country-compare-error">
+                {{ articlePerspectiveErrors[article.id] }}
+              </p>
+              <div v-if="articlePerspectives[article.id]" class="article-perspective">
+                <strong>{{ articlePerspectives[article.id].mode === 'fulltext' ? '全文透视' : '摘要透视' }}</strong>
+                <span v-if="articlePerspectives[article.id].source_error">
+                  全文不可用，已降级
+                </span>
+                <article
+                  v-for="item in articlePerspectives[article.id].items"
+                  :key="`${item.kind}-${item.sentence}`"
+                  :class="`perspective-${item.kind}`"
+                >
+                  <b>{{ item.kind === 'substance' ? '干货' : '情绪' }}</b>
+                  <p>{{ item.sentence }}</p>
+                  <small>{{ item.reason }}</small>
+                </article>
+                <p v-if="!articlePerspectives[article.id].items.length" class="muted">暂无可标出的句子。</p>
+              </div>
             </div>
             <aside>
               <strong>{{ percent(article.relevance) }}</strong>

@@ -681,6 +681,59 @@ button:disabled {
   -webkit-line-clamp: 2;
 }
 
+.article-perspective-trigger {
+  justify-self: start;
+  margin-top: 8px;
+}
+
+.article-perspective {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #d8e4e7;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+
+.article-perspective > strong {
+  color: #173342;
+  font-size: 13px;
+}
+
+.article-perspective > span {
+  color: #7a5b25;
+  font-size: 12px;
+}
+
+.article-perspective article {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.article-perspective article p {
+  display: block;
+  margin: 0;
+  overflow: visible;
+  -webkit-line-clamp: initial;
+}
+
+.article-perspective b,
+.article-perspective small {
+  font-size: 12px;
+}
+
+.perspective-substance b {
+  color: #1e7e44;
+}
+
+.perspective-emotion b {
+  color: #b14b37;
+}
+
 .article-row aside {
   display: flex;
   min-width: 0;

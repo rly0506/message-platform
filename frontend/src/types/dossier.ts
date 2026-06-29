@@ -192,6 +192,20 @@ export type Article = {
   category_reason?: string
 }
 
+export type ArticlePerspectiveItem = {
+  sentence: string
+  kind: 'substance' | 'emotion'
+  reason: string
+}
+
+export type ArticlePerspective = {
+  article_id: number
+  mode: 'summary' | 'fulltext'
+  items: ArticlePerspectiveItem[]
+  error: string
+  source_error: string
+}
+
 export type TimelineEvent = {
   id: number
   date: string | null

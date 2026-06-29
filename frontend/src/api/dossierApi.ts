@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
   AcademicLayer,
   Article,
+  ArticlePerspective,
   CountryCompare,
   CrossSynthesis,
   DiscoveryReport,
@@ -28,6 +29,13 @@ export async function fetchArticles(id: number, limit: number) {
   const res = await axios.get<{ total: number; items: Article[] }>(
     `${API_BASE}/api/topics/${id}/articles`,
     { params: { limit } },
+  )
+  return res.data
+}
+
+export async function fetchArticlePerspective(topicId: number, articleId: number) {
+  const res = await axios.get<ArticlePerspective>(
+    `${API_BASE}/api/topics/${topicId}/articles/${articleId}/perspective`,
   )
   return res.data
 }
