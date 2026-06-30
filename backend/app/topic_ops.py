@@ -345,8 +345,15 @@ def enrich_topic_articles(
             topic_article.stance_summary = row.get("stance_summary", "")
             topic_article.substance_score = _clamp_score(row.get("substance_score"))
             topic_article.substance_note = str(row.get("substance_note", ""))[:60]
-            topic_article.emotion_score = _clamp_score(row.get("emotion_score"))
-            topic_article.emotion_note = str(row.get("emotion_note", ""))[:60]
+            # 红线兜底: 没抓到正文就强制情绪未评分, 不信任 LLM 自觉返回 -1。
+            # 实测 LLM 会无视 prompt 拿标题+摘要硬打情绪分(伪判断), 故在代码层焊死:
+            # 无 body -> emotion 一律 -1, 前端不显示徽标。干货分不收紧(标题/摘要可保守估)。
+            if bodies.get(article.url):
+                topic_article.emotion_score = _clamp_score(row.get("emotion_score"))
+                topic_article.emotion_note = str(row.get("emotion_note", ""))[:60]
+            else:
+                topic_article.emotion_score = -1
+                topic_article.emotion_note = ""
             stats["processed"] += 1
             stats["relevant"] += int(topic_article.relevant)
         session.commit()

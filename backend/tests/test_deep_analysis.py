@@ -305,6 +305,52 @@ def test_enrich_topic_articles_fulltext_failure_keeps_emotion_unscored(monkeypat
         assert all(link.substance_score == 60 for link in links)
 
 
+def test_enrich_emotion_forced_minus1_when_llm_scores_without_body(monkeypatch):
+    """红线兜底: 没抓到正文时, 即使 LLM 硬返回情绪分(62), 代码层也强制写 -1。
+
+    实测 LLM 会无视 prompt 拿标题+摘要硬打情绪分(伪判断), 必须在代码层焊死,
+    不能信任 prompt。干货分不受影响, 照常入库。
+    """
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+
+    # 全文抓取失败 (无 body)。
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_proxied",
+        lambda url: topic_ops.fulltext.Extracted(url=url, ok=False, error="fetch failed"),
+    )
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", True)
+
+    def fake_enrich_batch(topic_name, description, items):
+        # LLM 不听话: 没 body 也硬返回情绪分 62。
+        return {
+            item["id"]: {
+                "relevant": True,
+                "relevance": 0.9,
+                "stance": "中立",
+                "stance_summary": "测试",
+                "substance_score": 55,
+                "substance_note": "标题摘要估计",
+                "emotion_score": 62,            # LLM 硬打分
+                "emotion_note": "用'全线爆发'强化情绪",  # 还带了像样的备注
+            }
+            for item in items
+        }
+
+    monkeypatch.setattr(topic_ops.enrichp, "enrich_batch", fake_enrich_batch)
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        topic_ops.enrich_topic_articles(session, topic, limit=2)
+
+        links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic_id)).all()
+        # 关键: LLM 返回 62, 但无 body, 代码层强制 -1, 备注也清空。
+        assert all(link.emotion_score == -1 for link in links)
+        assert all(link.emotion_note == "" for link in links)
+        # 干货分不受影响, 照常入库。
+        assert all(link.substance_score == 55 for link in links)
+
+
 def test_fetch_bodies_disabled_by_config(monkeypatch):
     """ENRICH_FETCH_FULLTEXT=0 时不抓全文 (省钱/省时), 返回空, 不发请求。"""
     monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", False)
