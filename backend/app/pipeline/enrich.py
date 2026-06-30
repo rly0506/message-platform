@@ -19,17 +19,25 @@ _SYSTEM = (
     "只输出 JSON，不要任何解释或 markdown 围栏。"
 )
 
+# 喂给 LLM 的单篇正文上限 (字符)。够判修辞结构, 又不把 token 撑爆。
+BODY_CHARS = 1800
+
 
 def _prompt(topic_name: str, topic_desc: str, items: list[dict]) -> str:
-    listing = "\n".join(
-        json.dumps({"id": it["id"], "lang": it["lang"], "title": it["title"],
-                    "snippet": it["snippet"][:300]}, ensure_ascii=False)
-        for it in items
-    )
+    def _one(it: dict) -> dict:
+        obj = {"id": it["id"], "lang": it["lang"], "title": it["title"],
+               "snippet": it["snippet"][:300]}
+        body = (it.get("body") or "").strip()
+        if body:
+            obj["body"] = body[:BODY_CHARS]   # 抓到正文才带; 否则只有标题+摘要
+        return obj
+
+    listing = "\n".join(json.dumps(_one(it), ensure_ascii=False) for it in items)
     return f"""主题: {topic_name}
 主题说明: {topic_desc or "(无)"}
 
-下面是若干报道。对每一篇，返回一个对象，字段:
+下面是若干报道。有 body 字段的, 以 body (正文) 为准判断; 没有 body 的只有标题+摘要, 信息有限。
+对每一篇，返回一个对象，字段:
 - id: 原样回传
 - relevant: 布尔, 是否真正与主题相关 (蹭关键词但实质无关 -> false)
 - relevance: 0~1 的相关度
@@ -40,8 +48,14 @@ def _prompt(topic_name: str, topic_desc: str, items: list[dict]) -> str:
 - substance_score: 0~100 的"干货密度"。判据钉死在一条: **一句话能否被证伪/查证**。
     高分(70+): 多为可证伪的具体事实——数字、时间、地点、具名引述、可查的事件。
     低分(30-): 多为不可证伪的空话——"将深刻重塑格局""未来已来""业内普遍认为""某种程度上"等模糊断言、情绪渲染、口号。
-    只据标题/摘要这点信息保守估计即可, 不确定给中间值 50。
+    有 body 则据正文判断; 只有标题/摘要时保守估计, 不确定给中间值 50。
 - substance_note: 一句话说明打这个分的依据 (中文, <=30字, 让分数可追溯, 例: "含具体金额与时间" 或 "多为趋势空话无数据")
+- emotion_score: 0~100 的"情绪操控强度"。判据: **这篇是否靠煽动情绪/修辞压力推动读者, 而非靠事实**。
+    高分(70+): 大量情绪化措辞、恐吓/亢奋渲染、立场预设、"先带情绪后空泛", 事实占比低。
+    低分(30-): 克制陈述、就事论事、让事实说话。
+    **此项必须基于正文修辞结构判断**: 仅凭标题/摘要无法可靠判断整篇修辞 ->
+    **没有 body 字段时一律返回 -1 (表示信息不足, 不评分)**, 不要硬猜。
+- emotion_note: 一句话说明情绪评分依据 (中文, <=30字, 例: "通篇渲染恐慌少事实"); 返回 -1 时可留空
 
 报道列表 (每行一个 JSON):
 {listing}

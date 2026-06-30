@@ -22,7 +22,7 @@ def test_clamp_score_handles_bad_values():
     """_clamp_score: 钳到 0~100; 缺失/非法 -> -1 (未评分, 前端不显示徽标, 守可追溯)。"""
     assert topic_ops._clamp_score(82) == 82
     assert topic_ops._clamp_score(150) == 100
-    assert topic_ops._clamp_score(-5) == 0
+    assert topic_ops._clamp_score(-5) == -1   # 负数 -> 未评分 (情绪约定: 正文不足返回 -1, 不能钳成 0)
     assert topic_ops._clamp_score(None) == -1   # 缺失 -> 未评分
     assert topic_ops._clamp_score("garbage") == -1  # 非法 -> 未评分
     assert topic_ops._clamp_score("73") == 73  # 数字字符串可解
@@ -219,6 +219,191 @@ def test_enrich_topic_articles_backfills_substance_for_already_enriched_links(mo
         articles = session.exec(select(Article).where(Article.id.in_(article_ids))).all()
         assert all(article.enriched for article in articles)
         assert {article.title_zh for article in articles} == {f"鏃ф爣棰?{article_id}" for article_id in article_ids}
+
+
+def test_enrich_topic_articles_fulltext_success_writes_emotion(monkeypatch):
+    """抓到正文时: body 进入 LLM 输入, 情绪分被写回。"""
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+    seen_items = []
+
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_proxied",
+        lambda url: topic_ops.fulltext.Extracted(url=url, full_text="抓到的正文" * 50, ok=True),
+    )
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", True)
+
+    def fake_enrich_batch(topic_name, description, items):
+        seen_items.extend(items)
+        return {
+            item["id"]: {
+                "relevant": True,
+                "relevance": 0.9,
+                "stance": "中立",
+                "stance_summary": "测试",
+                "substance_score": 80,
+                "substance_note": "含具体事实",
+                "emotion_score": 72,
+                "emotion_note": "通篇渲染少事实",
+            }
+            for item in items
+        }
+
+    monkeypatch.setattr(topic_ops.enrichp, "enrich_batch", fake_enrich_batch)
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        stats = topic_ops.enrich_topic_articles(session, topic, limit=2)
+
+        assert stats["processed"] == 2
+        assert stats["fulltext_hits"] == 2
+        assert all(item.get("body") for item in seen_items)
+        links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic_id)).all()
+        assert all(link.emotion_score == 72 for link in links)
+        assert all(link.emotion_note == "通篇渲染少事实" for link in links)
+
+
+def test_enrich_topic_articles_fulltext_failure_keeps_emotion_unscored(monkeypatch):
+    """抓不到正文时: enrich 不崩, 情绪分保持 -1 (不伪造判断), 干货仍可评。"""
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+    seen_items = []
+
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_proxied",
+        lambda url: topic_ops.fulltext.Extracted(url=url, ok=False, error="fetch failed"),
+    )
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", True)
+
+    def fake_enrich_batch(topic_name, description, items):
+        seen_items.extend(items)
+        return {
+            item["id"]: {
+                "relevant": True,
+                "relevance": 0.9,
+                "stance": "中立",
+                "stance_summary": "测试",
+                "substance_score": 60,
+                "substance_note": "标题摘要保守估计",
+                "emotion_score": -1,
+                "emotion_note": "",
+            }
+            for item in items
+        }
+
+    monkeypatch.setattr(topic_ops.enrichp, "enrich_batch", fake_enrich_batch)
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        stats = topic_ops.enrich_topic_articles(session, topic, limit=2)
+
+        assert stats["processed"] == 2
+        assert stats["fulltext_hits"] == 0
+        assert all(not item.get("body") for item in seen_items)
+        links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic_id)).all()
+        assert all(link.emotion_score == -1 for link in links)
+        assert all(link.substance_score == 60 for link in links)
+
+
+def test_fetch_bodies_disabled_by_config(monkeypatch):
+    """ENRICH_FETCH_FULLTEXT=0 时不抓全文 (省钱/省时), 返回空, 不发请求。"""
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", False)
+    called = []
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_proxied",
+        lambda url: called.append(url),
+    )
+    result = topic_ops._fetch_bodies(["https://example.com/a", "https://example.com/b"])
+    assert result == {}
+    assert called == []
+
+
+def test_enrich_topic_articles_backfills_emotion_for_already_enriched_with_substance(monkeypatch):
+    """旧主题: 已 enriched + 已有干货分 + emotion=-1, 重跑深度分析应补上情绪分。
+
+    守住用户"前端看不到效果"的老痛点: 新加的情绪字段对旧文章也要能补。
+    """
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_proxied",
+        lambda url: topic_ops.fulltext.Extracted(url=url, full_text="正文" * 60, ok=True),
+    )
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", True)
+
+    def fake_enrich_batch(topic_name, description, items):
+        return {
+            item["id"]: {
+                "relevant": True,
+                "relevance": 0.9,
+                "stance": "中立",
+                "stance_summary": "测试",
+                "substance_score": 70,
+                "substance_note": "已有事实",
+                "emotion_score": 55,
+                "emotion_note": "补上的情绪分",
+            }
+            for item in items
+        }
+
+    monkeypatch.setattr(topic_ops.enrichp, "enrich_batch", fake_enrich_batch)
+
+    with Session(engine) as session:
+        # 模拟旧库状态: 已富化、已有干货分, 但情绪分还是默认 -1。
+        for article_id in article_ids:
+            article = session.get(Article, article_id)
+            article.enriched = True
+            session.add(article)
+            link = session.get(TopicArticle, (topic_id, article_id))
+            link.substance_score = 70
+            link.emotion_score = -1
+            session.add(link)
+        session.commit()
+
+        topic = session.get(Topic, topic_id)
+        stats = topic_ops.enrich_topic_articles(session, topic, limit=2)
+
+        # 关键: 尽管已 enriched 且有干货分, emotion=-1 让它们仍进入 enrich。
+        assert stats["processed"] == 2
+        links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic_id)).all()
+        assert all(link.emotion_score == 55 for link in links)
+
+
+def test_enrich_emotion_not_retried_when_fulltext_disabled(monkeypatch):
+    """全文关闭时: emotion=-1 的旧文章不应为补情绪而重跑 LLM (否则永不收敛、白花钱)。"""
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+    called = []
+
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", False)
+
+    def fake_enrich_batch(topic_name, description, items):
+        called.append(items)
+        return {item["id"]: {"relevant": True, "relevance": 0.9, "stance": "中立",
+                             "stance_summary": "x", "substance_score": 70,
+                             "substance_note": "y"} for item in items}
+
+    monkeypatch.setattr(topic_ops.enrichp, "enrich_batch", fake_enrich_batch)
+
+    with Session(engine) as session:
+        # 旧库: 已富化、已有干货分, 仅 emotion 缺 (=-1)。
+        for article_id in article_ids:
+            article = session.get(Article, article_id)
+            article.enriched = True
+            session.add(article)
+            link = session.get(TopicArticle, (topic_id, article_id))
+            link.substance_score = 70
+            link.emotion_score = -1
+            session.add(link)
+        session.commit()
+
+        topic = session.get(Topic, topic_id)
+        stats = topic_ops.enrich_topic_articles(session, topic, limit=2)
+
+        # 全文关 -> 不为 emotion=-1 重跑, 没有 pending, enrich_batch 不被调用。
+        assert stats["processed"] == 0
+        assert called == []
 
 
 def test_deep_analysis_api_endpoint_uses_background_job(monkeypatch):

@@ -89,3 +89,42 @@ def extract_from_html(html: str, url: str = "") -> Extracted:
         )
     except Exception as exc:
         return Extracted(url=url, ok=False, error=f"{type(exc).__name__}: {exc}")
+
+
+def extract_url_proxied(url: str) -> Extracted:
+    """抓取单个 URL 的正文, 走项目已验证的代理路径 (SOCKS5/trust_env)。
+
+    为什么不用 extract_url(): trafilatura 自带的 fetch_url() 不读 RSS_PROXY,
+    境外站从国内直连必然大量失败; 且其超时常量从未真正传入。这里改用 httpx
+    (与 rss.py 同一套代理+超时配置, 实战已验证) 抓 HTML, 再交给 extract_from_html
+    抽正文 —— 绕开 trafilatura 坏掉的下载器, 复用已跑通的代理。
+
+    软失败: 任何网络/解析错误都返回 ok=False, 不抛异常, 不阻断调用方。
+    """
+    if not url:
+        return Extracted(url=url, ok=False, error="empty url")
+    # 惰性导入: httpx 不可用或没装 socks 时也优雅降级。
+    try:
+        import httpx
+    except Exception:
+        return Extracted(url=url, ok=False, error="httpx unavailable")
+
+    from app import config
+
+    client_kwargs: dict = {
+        "timeout": config.FULLTEXT_FETCH_TIMEOUT,
+        "trust_env": True,
+        "follow_redirects": True,
+        "headers": {"User-Agent": config.RSS_USER_AGENT},
+    }
+    if config.RSS_PROXY:
+        client_kwargs["proxy"] = config.RSS_PROXY
+    try:
+        with httpx.Client(**client_kwargs) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            html = resp.text
+    except Exception as exc:
+        return Extracted(url=url, ok=False, error=f"{type(exc).__name__}: {str(exc)[:80]}")
+    res = extract_from_html(html, url=url)
+    return res

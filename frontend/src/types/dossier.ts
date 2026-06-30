@@ -188,6 +188,8 @@ export type Article = {
   stance_summary: string
   substance_score?: number
   substance_note?: string
+  emotion_score?: number
+  emotion_note?: string
   category?: string
   category_reason?: string
 }

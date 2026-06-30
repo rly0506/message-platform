@@ -637,6 +637,29 @@ button:disabled {
   color: #b5651d;
 }
 
+/* 情绪操控徽标: 与干货反向——高=红色警示(靠煽动) / 中=橙 / 低=灰(克制,不强调) */
+.emotion-badge {
+  border-right: 0 !important;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px !important;
+}
+
+.emotion-badge.emotion-high {
+  background: #fdecec;
+  color: #c0392b;
+}
+
+.emotion-badge.emotion-mid {
+  background: #fdeede;
+  color: #b5651d;
+}
+
+.emotion-badge.emotion-low {
+  background: #eef2f4;
+  color: #5a6b75;
+}
+
 .substance-summary {
   display: flex;
   flex-wrap: wrap;

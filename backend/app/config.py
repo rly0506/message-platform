@@ -48,6 +48,11 @@ RSS_FETCH_TIMEOUT = float(os.getenv("RSS_FETCH_TIMEOUT", "12"))  # 单次连接/
 RSS_FETCH_RETRIES = int(os.getenv("RSS_FETCH_RETRIES", "1"))     # 失败后额外重试次数 (轻重试)
 RSS_PROXY = os.getenv("RSS_PROXY", "").strip()                   # 显式代理 URL, 空则回退到环境变量
 
+# 全文抓取 (供 enrich 干货/情绪判分用更长正文)。软依赖: 抓不到就降级回标题+摘要, 绝不阻断深度分析。
+# 超时比 RSS 更短 —— 深度分析逐篇等不起, 抓得到就用、抓不到快速放弃。
+FULLTEXT_FETCH_TIMEOUT = float(os.getenv("FULLTEXT_FETCH_TIMEOUT", "8"))  # 单篇全文抓取超时 (秒)
+ENRICH_FETCH_FULLTEXT = os.getenv("ENRICH_FETCH_FULLTEXT", "1").strip() not in ("0", "false", "False", "")  # 关掉则省钱省时, 退回纯标题+摘要判分
+
 # Google News RSS 的多语种 locale: (hl, gl, ceid)
 # 用于跨语言围绕主题做检索式 RSS。
 GNEWS_LOCALES = [

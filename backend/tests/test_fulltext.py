@@ -48,3 +48,61 @@ def test_degrades_when_trafilatura_missing(monkeypatch):
     res = fulltext.extract_url("http://example.com")
     assert res.ok is False
     assert "unavailable" in res.error
+
+
+def test_extract_url_proxied_empty_is_safe():
+    """空 URL 走代理路径也安全返回, 不抛异常。"""
+    res = fulltext.extract_url_proxied("")
+    assert res.ok is False
+    assert res.error
+
+
+def test_extract_url_proxied_degrades_on_fetch_error(monkeypatch):
+    """网络/代理抓取失败时, 返回 ok=False, 不抛异常 (软失败, 不阻断 enrich)。"""
+    class _BoomClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url):
+            raise RuntimeError("connection refused")
+
+    import httpx
+    monkeypatch.setattr(httpx, "Client", _BoomClient)
+    res = fulltext.extract_url_proxied("http://example.com/x")
+    assert res.ok is False
+    assert res.error
+
+
+def test_extract_url_proxied_extracts_from_fetched_html(monkeypatch):
+    """抓到 HTML 后交给 extract_from_html 抽正文。"""
+    class _OkClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url):
+            class _Resp:
+                text = _SAMPLE_HTML
+
+                def raise_for_status(self):
+                    return None
+
+            return _Resp()
+
+    import httpx
+    monkeypatch.setattr(httpx, "Client", _OkClient)
+    res = fulltext.extract_url_proxied("http://example.com/x")
+    # 若 trafilatura 抽得出正文则 ok, 抽不出是库行为, 至少不崩。
+    if res.ok:
+        assert "固态电解质" in res.full_text

@@ -123,6 +123,13 @@ function substanceClass(score: number) {
   if (score <= 35) return 'substance-low'
   return 'substance-mid'
 }
+
+// 情绪操控与干货语义相反: 高分=警示(橙/红)，低分=克制(不强调)。
+function emotionClass(score: number) {
+  if (score >= 70) return 'emotion-high'
+  if (score <= 35) return 'emotion-low'
+  return 'emotion-mid'
+}
 </script>
 
 <template>
@@ -533,6 +540,14 @@ function substanceClass(score: number) {
                   :title="article.substance_note || '干货密度：可证伪事实 vs 空话情绪'"
                 >
                   干货 {{ article.substance_score }}
+                </span>
+                <span
+                  v-if="article.emotion_score !== undefined && article.emotion_score >= 0"
+                  class="emotion-badge"
+                  :class="emotionClass(article.emotion_score)"
+                  :title="article.emotion_note || '情绪操控强度：靠煽动/修辞 vs 靠事实（需正文判断）'"
+                >
+                  情绪 {{ article.emotion_score }}
                 </span>
               </div>
               <h3>

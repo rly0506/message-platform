@@ -72,6 +72,8 @@ def article_payload(topic_article: TopicArticle, article: Article) -> dict[str, 
         "stance_summary": topic_article.stance_summary,
         "substance_score": topic_article.substance_score,
         "substance_note": topic_article.substance_note,
+        "emotion_score": topic_article.emotion_score,
+        "emotion_note": topic_article.emotion_note,
         "category": category,
         "category_reason": local_analyze.report_category_reason(category, title, snippet),
     }

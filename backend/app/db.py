@@ -53,6 +53,8 @@ class TopicArticle(SQLModel, table=True):
     stance_summary: str = ""       # 该篇相对主题的一句话立场摘要
     substance_score: int = -1      # 干货密度 0~100 (可证伪事实 vs 空话情绪); -1=未评分
     substance_note: str = ""       # 一句话说明评分依据 (让分数可追溯, 不悬空)
+    emotion_score: int = -1        # 情绪操控强度 0~100 (高=煽动/修辞压力重); -1=正文不足未评分
+    emotion_note: str = ""         # 一句话说明情绪评分依据 (让分数可追溯, 不悬空)
 
 
 class Paper(SQLModel, table=True):
@@ -187,6 +189,8 @@ def _migrate() -> None:
             ("stance_summary", "VARCHAR DEFAULT ''"),
             ("substance_score", "INTEGER DEFAULT -1"),
             ("substance_note", "VARCHAR DEFAULT ''"),
+            ("emotion_score", "INTEGER DEFAULT -1"),
+            ("emotion_note", "VARCHAR DEFAULT ''"),
         ],
         "sentimentpost": [
             ("kind", "VARCHAR DEFAULT 'post'"),

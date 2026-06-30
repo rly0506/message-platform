@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlmodel import Session, select
 
-from app import feed_registry
+from app import config, feed_registry
 from app.collectors import gdelt, rss
 from app.db import Analysis, Article, SourceFraming, TimelineEvent, Topic, TopicArticle
 from app.pipeline import enrich as enrichp
+from app.pipeline import fulltext
 from app.pipeline import local_analyze, prefilter
 from app.pipeline import synthesize as synthp
 
@@ -241,6 +243,36 @@ def run_deep_analysis(
     }
 
 
+def _fetch_bodies(urls: list[str]) -> dict[str, str]:
+    """并发抓取一批 URL 的正文, 返回 {url: 正文}。
+
+    软依赖: 任何抓取失败 (墙/超时/无 trafilatura) 都静默跳过, 该 url 不进结果,
+    调用方据此回退到标题+摘要。并发 + 短超时 (config.FULLTEXT_FETCH_TIMEOUT),
+    避免逐篇串行把深度分析拖垮。ENRICH_FETCH_FULLTEXT=0 时直接返回空 (省钱/省时)。
+    """
+    if not config.ENRICH_FETCH_FULLTEXT:
+        return {}
+    urls = [u for u in dict.fromkeys(urls) if u]  # 去重去空
+    if not urls:
+        return {}
+    out: dict[str, str] = {}
+
+    def _one(url: str) -> tuple[str, str]:
+        res = fulltext.extract_url_proxied(url)
+        return url, (res.full_text if res.ok else "")
+
+    # 并发度收敛: 不超过批大小, 也别开太多连接。
+    workers = min(len(urls), max(1, enrichp.BATCH))
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for url, body in pool.map(_one, urls):
+                if body:
+                    out[url] = body
+    except Exception:  # pragma: no cover - 线程池本身异常也不该阻断 enrich
+        return out
+    return out
+
+
 def enrich_topic_articles(
     session: Session,
     topic: Topic,
@@ -248,11 +280,17 @@ def enrich_topic_articles(
     limit: int = 30,
     on_step: Any | None = None,
 ) -> dict[str, Any]:
+    # 未富化 / 缺干货分 总是要跑。情绪分仅在"全文抓取开启"时才补 ——
+    # 关掉全文时没有 body, emotion 必然返回 -1 永不收敛, 若也纳入 pending 会
+    # 每次深度分析白打 LLM, 与"关全文=省钱"自相矛盾。故按开关分流。
+    pending_filter = (Article.enriched == False) | (TopicArticle.substance_score < 0)  # noqa: E712
+    if config.ENRICH_FETCH_FULLTEXT:
+        pending_filter = pending_filter | (TopicArticle.emotion_score < 0)
     pending = session.exec(
         select(TopicArticle, Article)
         .where(TopicArticle.article_id == Article.id)
         .where(TopicArticle.topic_id == topic.id)
-        .where((Article.enriched == False) | (TopicArticle.substance_score < 0))  # noqa: E712
+        .where(pending_filter)
     ).all()
     pending = pending[: max(0, limit)]
     stats = {
@@ -275,12 +313,15 @@ def enrich_topic_articles(
         chunk = pending[i:i + enrichp.BATCH]
         stats["batches"] += 1
         stats["calls"] += 1
+        bodies = _fetch_bodies([article.url for _, article in chunk])
+        stats["fulltext_hits"] = stats.get("fulltext_hits", 0) + len(bodies)
         items = [
             {
                 "id": article.id,
                 "lang": article.source_lang,
                 "title": article.title,
                 "snippet": article.snippet,
+                "body": bodies.get(article.url, ""),
             }
             for _, article in chunk
         ]
@@ -304,6 +345,8 @@ def enrich_topic_articles(
             topic_article.stance_summary = row.get("stance_summary", "")
             topic_article.substance_score = _clamp_score(row.get("substance_score"))
             topic_article.substance_note = str(row.get("substance_note", ""))[:60]
+            topic_article.emotion_score = _clamp_score(row.get("emotion_score"))
+            topic_article.emotion_note = str(row.get("emotion_note", ""))[:60]
             stats["processed"] += 1
             stats["relevant"] += int(topic_article.relevant)
         session.commit()
@@ -456,15 +499,21 @@ def _request_id(kind: str, index: int) -> str:
 
 
 def _clamp_score(value: object) -> int:
-    """把 LLM 返回的干货分钳到 0~100; 缺失/非法 -> -1 (未评分, 前端不显示徽标)。
+    """把 LLM 返回的分数钳到 0~100; 缺失/非法/负数 -> -1 (未评分, 前端不显示徽标)。
 
     审核共识: junk 落 -1 而非中性 50, 避免显示一个"没有真依据"的悬空徽标
     (守住"每个判断可追溯")。排序侧把 -1 当中性 50, 故不影响排序。
+
+    负数也映射到 -1: 情绪分约定"正文不足时 LLM 返回 -1"表示未评分, 不能被钳成 0
+    (否则会显示一个伪造的"情绪 0"徽标)。
     """
     try:
-        return max(0, min(100, int(value)))
+        n = int(value)
     except (TypeError, ValueError):
         return -1
+    if n < 0:
+        return -1
+    return min(100, n)
 
 
 def _gnews_hint(exc: Exception) -> str:
