@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SentimentLayer, SentimentPost, TopicSummary } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
 type SentimentPlatformGroup = { platform: string; label: string; posts: SentimentPost[] }
 
-defineProps<{
+const props = defineProps<{
   sentimentAnalyzing: boolean
   hasSentimentLayer: boolean
   activeSentimentJobId: string
@@ -31,6 +32,35 @@ defineProps<{
 defineEmits<{
   runSentimentAnalysis: []
 }>()
+
+const browserPlatforms = new Set(['bilibili', 'xiaohongshu', 'xueqiu'])
+
+const platformCoverage = computed(() => {
+  const platforms = new Set<string>(props.sentimentLayer?.platforms || [])
+  for (const group of props.sentimentPlatformGroups) platforms.add(group.platform)
+  for (const error of props.sentimentLayer?.errors || []) platforms.add(error.platform)
+
+  const platformsWithPosts = new Set(props.sentimentPlatformGroups.map((group) => group.platform))
+  const failedPlatforms = new Set((props.sentimentLayer?.errors || []).map((error) => error.platform))
+
+  return [...platforms].sort((a, b) => platformRank(a) - platformRank(b)).map((platform) => ({
+    platform,
+    label: props.sentimentPlatformLabel(platform),
+    status: platformsWithPosts.has(platform) ? '有样本' : failedPlatforms.has(platform) ? '暂不可用' : '已尝试无样本',
+    note: platform === 'hackernews' ? '公开 API' : browserPlatforms.has(platform) ? '需 Chrome 登录态' : '',
+  }))
+})
+
+function platformRank(platform: string) {
+  const ranks: Record<string, number> = {
+    reddit: 1,
+    hackernews: 2,
+    bilibili: 3,
+    xiaohongshu: 4,
+    xueqiu: 5,
+  }
+  return ranks[platform] || 99
+}
 </script>
 
 <template>
@@ -89,6 +119,24 @@ defineEmits<{
             <strong>{{ sentimentLayer?.queries?.chinese || selectedTopic.name }}</strong>
             <span>中文平台查询</span>
           </div>
+        </div>
+
+        <div v-if="platformCoverage.length" class="sentiment-platform-coverage" aria-label="平台覆盖">
+          <strong>平台覆盖</strong>
+          <span
+            v-for="item in platformCoverage"
+            :key="item.platform"
+            class="sentiment-platform-chip"
+            :class="{
+              'is-ok': item.status === '有样本',
+              'is-empty': item.status === '已尝试无样本',
+              'is-failed': item.status === '暂不可用',
+            }"
+          >
+            <b>{{ item.label }}</b>
+            <em>{{ item.status }}</em>
+            <small v-if="item.note">{{ item.note }}</small>
+          </span>
         </div>
 
         <div v-if="sentimentLayer?.errors?.length" class="sentiment-platform-errors">

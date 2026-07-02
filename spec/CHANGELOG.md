@@ -4,6 +4,22 @@
 
 ### Added
 
+- Added platform coverage status to the Sentiment tab:
+  - shows attempted community platforms as compact chips: `有样本`, `暂不可用`, or `已尝试无样本`;
+  - labels Hacker News as public API and Chinese OpenCLI platforms as requiring Chrome login state;
+  - keeps community samples framed as sentiment signals, not facts, with no backend/API changes.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/SentimentPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- sentiment-panel` -> RED before implementation, missing `.sentiment-platform-coverage`
+- `cd frontend && npm run test:e2e -- sentiment-panel` -> `2 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `20 passed`
+
+### Added
+
 - Documented the no-LLM local capability boundary:
   - added `spec/local-capability-boundary.md`;
   - linked it from `spec/README.md`;

@@ -31,10 +31,13 @@ const sentiment = {
   query: 'AI hardware cycle',
   queries: { reddit: 'AI hardware cycle', chinese: 'AI hardware cycle' },
   platform: 'multi',
-  platforms: ['reddit', 'hackernews'],
+  platforms: ['reddit', 'hackernews', 'bilibili', 'xiaohongshu', 'xueqiu'],
   warning: 'community samples are not facts',
   summary_md: '## Sentiment summary\nCommunity attention is rising.',
-  errors: [{ platform: 'xiaohongshu', error: 'browser unavailable' }],
+  errors: [
+    { platform: 'xiaohongshu', error: 'browser unavailable' },
+    { platform: 'xueqiu', error: 'login expired' },
+  ],
   posts: [
     {
       id: 'r1',
@@ -108,6 +111,17 @@ test('renders sentiment as scannable sample cards', async ({ page }) => {
   await expect(page.locator('.sentiment-overview')).toContainText('2')
   await expect(page.locator('.sentiment-overview')).toContainText('2')
   await expect(page.locator('.sentiment-overview')).toContainText('1')
+  const coverage = page.locator('.sentiment-platform-coverage')
+  await expect(coverage).toContainText('平台覆盖')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: 'Reddit' })).toContainText('有样本')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: 'Hacker News' })).toContainText('有样本')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: 'Hacker News' })).toContainText('公开 API')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: 'B站' })).toContainText('已尝试无样本')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: 'B站' })).toContainText('需 Chrome 登录态')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: '小红书' })).toContainText('暂不可用')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: '小红书' })).toContainText('需 Chrome 登录态')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: '雪球' })).toContainText('暂不可用')
+  await expect(coverage.locator('.sentiment-platform-chip').filter({ hasText: '雪球' })).toContainText('需 Chrome 登录态')
   await expect(page.locator('.sentiment-sample-card')).toHaveCount(2)
   await expect(page.locator('.sentiment-sample-card').first()).toContainText('GPU shortage is back')
   await expect(page.locator('.sentiment-sample-card').first()).toContainText('情绪样本，非事实来源')
