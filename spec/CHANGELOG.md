@@ -2,6 +2,21 @@
 
 ## 2026-07-02
 
+### Added
+
+- Implemented academic priority-reading signals in the Academic tab:
+  - added a compact `优先阅读信号` summary for high-citation, recent, sample-foundational, and low-information paper counts;
+  - added neutral paper badges: `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`;
+  - kept the logic frontend-derived from existing OpenAlex payload fields, with no backend/API/LLM changes and no paper hiding or ranking claims.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/AcademicPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- academic-panel` -> `2 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `18 passed`
+
 ### Planning
 
 - Added `spec/academic-filtering-design.md`:

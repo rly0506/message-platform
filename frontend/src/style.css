@@ -1469,6 +1469,48 @@ button:disabled {
   font-size: 12px;
 }
 
+.academic-signal-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #dbe5e9;
+  border-radius: 8px;
+  background: #f8fbfc;
+  color: #53636e;
+  font-size: 12px;
+}
+
+.academic-signal-summary > strong {
+  margin-right: 4px;
+  color: #1f3a46;
+  font-size: 13px;
+}
+
+.academic-signal-summary span,
+.academic-signal-badge {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid #d5e1e5;
+  border-radius: 999px;
+  background: #fff;
+  color: #526771;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.academic-signal-summary b {
+  color: #1c6b82;
+}
+
+.academic-signal-badge {
+  background: #f9fbfc;
+}
+
 .academic-summary {
   padding: 12px;
   border: 1px solid #e0e8eb;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { AcademicFoundationalPaper, AcademicPaper } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
@@ -11,7 +12,7 @@ type AcademicSchool = {
 }
 type AcademicCitationEdge = { citing_openalex_id: string; cited_openalex_id: string }
 
-defineProps<{
+const props = defineProps<{
   academicAnalyzing: boolean
   hasAcademicLayer: boolean
   activeAcademicJobId: string
@@ -35,6 +36,56 @@ defineProps<{
 defineEmits<{
   runAcademicAnalysis: []
 }>()
+
+type AcademicSignal = '高引用' | '新近' | '样本内奠基' | 'venue明确' | '低信息'
+
+const currentYear = new Date().getFullYear()
+
+const highCitationCutoff = computed(() => {
+  const positiveCitations = props.academicPapers
+    .map((paper) => paper.cited_by_count || 0)
+    .filter((count) => count > 0)
+    .sort((a, b) => b - a)
+  if (!positiveCitations.length) return Number.POSITIVE_INFINITY
+  const index = Math.max(0, Math.ceil(positiveCitations.length * 0.25) - 1)
+  return positiveCitations[index]
+})
+
+function hasClearVenue(paper: AcademicPaper) {
+  const venue = props.academicVenue(paper).trim().toLowerCase()
+  return Boolean(venue) && venue !== 'unknown venue'
+}
+
+function isRecentPaper(paper: AcademicPaper) {
+  return Boolean(paper.year && paper.year >= currentYear - 3)
+}
+
+function isLowInformationPaper(paper: AcademicPaper) {
+  const abstract = (paper.abstract || '').trim()
+  return !hasClearVenue(paper) && abstract.length < 80
+}
+
+function academicSignals(paper: AcademicPaper): AcademicSignal[] {
+  const signals: AcademicSignal[] = []
+  if (props.isFoundationalPaper(paper)) signals.push('样本内奠基')
+  if ((paper.cited_by_count || 0) > 0 && (paper.cited_by_count || 0) >= highCitationCutoff.value) signals.push('高引用')
+  if (isRecentPaper(paper)) signals.push('新近')
+  if (hasClearVenue(paper)) signals.push('venue明确')
+  if (isLowInformationPaper(paper)) signals.push('低信息')
+  return signals
+}
+
+const academicSignalSummary = computed(() => {
+  const counts = { high: 0, recent: 0, foundational: 0, lowInfo: 0 }
+  for (const paper of props.academicPapers) {
+    const signals = academicSignals(paper)
+    if (signals.includes('高引用')) counts.high += 1
+    if (signals.includes('新近')) counts.recent += 1
+    if (signals.includes('样本内奠基')) counts.foundational += 1
+    if (signals.includes('低信息')) counts.lowInfo += 1
+  }
+  return counts
+})
 </script>
 
 <template>
@@ -79,6 +130,14 @@ defineEmits<{
             <strong>{{ academicFoundationalPapers.length }}</strong>
             <span>奠基论文</span>
           </div>
+        </div>
+
+        <div v-if="academicPapers.length" class="academic-signal-summary" aria-label="优先阅读信号">
+          <strong>优先阅读信号</strong>
+          <span><b>{{ academicSignalSummary.high }}</b> 高引用</span>
+          <span><b>{{ academicSignalSummary.recent }}</b> 新近</span>
+          <span><b>{{ academicSignalSummary.foundational }}</b> 样本内奠基</span>
+          <span><b>{{ academicSignalSummary.lowInfo }}</b> 低信息</span>
         </div>
 
         <p v-if="!academicPapers.length" class="muted">
@@ -159,6 +218,9 @@ defineEmits<{
                 <b>{{ paper.year || '未知年份' }}</b>
                 <b>被引 {{ paper.cited_by_count }}</b>
                 <span>{{ academicVenue(paper) }}</span>
+                <span v-for="signal in academicSignals(paper)" :key="signal" class="academic-signal-badge">
+                  {{ signal }}
+                </span>
               </div>
               <h3>
                 <a :href="academicPaperUrl(paper)" target="_blank" rel="noreferrer">{{ paper.title }}</a>
