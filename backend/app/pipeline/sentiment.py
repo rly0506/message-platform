@@ -175,7 +175,12 @@ def sentiment_post_from_dict(topic_id: int, post: dict[str, Any]) -> SentimentPo
     )
 
 
-def sentiment_payload_from_db(session: Session, topic: Topic, summary_md: str = "") -> dict[str, Any]:
+def sentiment_payload_from_db(
+    session: Session,
+    topic: Topic,
+    summary_md: str = "",
+    errors: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
     rows = session.exec(
         select(SentimentPost)
         .where(SentimentPost.topic_id == topic.id)
@@ -187,6 +192,7 @@ def sentiment_payload_from_db(session: Session, topic: Topic, summary_md: str = 
         summary_md=summary_md,
         query="",
         queries={},
+        errors=errors,
     )
 
 

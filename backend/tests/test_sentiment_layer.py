@@ -293,6 +293,36 @@ def test_sentiment_view_returns_latest_sentiment_job_summary():
     assert payload["summary_md"] == "new sentiment"
 
 
+def test_sentiment_view_surfaces_platform_errors_after_reload():
+    """#8: 平台失败信息(小红书/雪球不可用)在重载后仍可见, 不静默变'没声音'。"""
+    topic_id = _seed_topic(name="Sentiment Errors Topic")
+    ts = datetime(2026, 1, 2, 10, 0, 0)
+    errs = [
+        {"platform": "xiaohongshu", "error": "OpenCLI search failed: Chrome 未登录"},
+        {"platform": "xueqiu", "error": "OpenCLI search timed out after 45s."},
+    ]
+    with Session(engine) as session:
+        session.add(
+            SearchJob(
+                id="sentiment-with-errors",
+                query="sentiment:Sentiment Errors Topic",
+                status="done",
+                steps=[],
+                payload={"topic_id": topic_id, "kind": "sentiment_analysis"},
+                result={"summary_md": "s", "errors": errs},
+                created_at=ts,
+                updated_at=ts,
+            )
+        )
+        session.commit()
+
+    payload = TestClient(api.app).get(f"/api/topics/{topic_id}/sentiment").json()
+
+    assert payload["errors"] == errs
+    platforms_with_errors = {e["platform"] for e in payload["errors"]}
+    assert platforms_with_errors == {"xiaohongshu", "xueqiu"}
+
+
 def _seed_topic(name: str = "Sentiment Topic") -> int:
     init_db()
     with Session(engine) as session:

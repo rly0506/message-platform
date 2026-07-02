@@ -222,6 +222,7 @@ def sentiment_view(topic_id: int) -> dict[str, Any]:
             session,
             topic,
             summary_md=latest_sentiment_summary(session, topic),
+            errors=latest_sentiment_errors(session, topic),
         )
 
 
@@ -508,3 +509,25 @@ def latest_sentiment_summary(session: Session, topic: Topic) -> str:
         if isinstance(summary, str) and summary.strip():
             return summary
     return ""
+
+
+def latest_sentiment_errors(session: Session, topic: Topic) -> list[dict[str, str]]:
+    """从最近一次民间情绪 job 取平台失败信息, 让"某平台不可用"在重载后仍可见,
+    而不是静默变成"没声音"(用户困惑: 开了 Chrome 仍看不到小红书/雪球)。"""
+    jobs = session.exec(
+        select(SearchJob)
+        .where(SearchJob.status == "done")
+        .where(SearchJob.query == f"sentiment:{topic.name}")
+        .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
+    ).all()
+    for job in jobs:
+        payload = job.payload or {}
+        if payload.get("kind") != "sentiment_analysis":
+            continue
+        if int(payload.get("topic_id") or 0) != topic.id:
+            continue
+        result = job.result or {}
+        errors = result.get("errors")
+        if isinstance(errors, list):
+            return errors
+    return []
