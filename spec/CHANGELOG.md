@@ -4,6 +4,23 @@
 
 ### Added
 
+- Documented the no-LLM local capability boundary:
+  - added `spec/local-capability-boundary.md`;
+  - linked it from `spec/README.md`;
+  - added a compact local capability note to the LLM tab when no LLM analysis exists.
+- Updated `spec/roadmap.md` so the next planned candidate is community readability / sentiment evidence cards.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/LlmPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- llm-panel` -> RED before implementation, missing `.local-capability-note`
+- `cd frontend && npm run test:e2e -- llm-panel` -> `2 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `20 passed`
+
+### Added
+
 - Implemented academic priority-reading signals in the Academic tab:
   - added a compact `优先阅读信号` summary for high-citation, recent, sample-foundational, and low-information paper counts;
   - added neutral paper badges: `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`;

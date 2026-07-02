@@ -4,23 +4,23 @@ This roadmap records the current product direction after the July 2026 readabili
 
 ## Current Priority
 
-Next planned implementation candidate: academic filtering / priority-reading signals.
+Next planned implementation candidate: community readability / sentiment evidence cards.
 
-Goal: make the academic layer answer which papers are better first reads without pretending to rank journals formally.
+Goal: keep improving the community layer as readable sentiment samples while preserving the boundary that community sentiment is signal, not fact.
 
-Design reference: `spec/academic-filtering-design.md`.
+Reference notes: `spec/local-capability-boundary.md` for no-LLM boundaries, and `spec/academic-filtering-design.md` for the completed academic-filtering design.
 
 Implementation default:
 
-- derive signals from existing OpenAlex fields: venue, year, cited_by_count, concepts, internal citations
-- use neutral labels like `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`
-- do not claim `权威`, `顶刊`, or `中上等刊物` in V1
-- prefer frontend-derived labels before changing backend payloads
+- keep failures as compact warnings, not dominant content
+- keep HN / Reddit / Chinese platform samples visually distinct
+- do not turn sentiment samples into factual claims
+- avoid new backend dependencies unless existing collector output is insufficient
 
 ## Near-Term
 
-- Academic filtering: turn the design into a small UI iteration in the Academic tab.
-- Local capability note: write a short product note explaining what the no-LLM path can and cannot do.
+- Community readability: tune the sentiment tab around platform coverage, failure clarity, and compact evidence cards.
+- Academic filtering: observe the new priority-reading signals in real use before adding sorting.
 - Cognition-boundary cards: continue tuning card wording only after real use.
 
 ## Mid-Term
@@ -33,6 +33,7 @@ Implementation default:
 - Event tree: design a text-first structure for root issue -> branches -> supporting evidence before attempting a visual tree.
 - Academic literature graph: design the reading task first, then decide whether a visual graph is useful.
 - Cognition map: keep collecting low-friction cognition marks before drawing a map.
+- Local capability boundary: documented in `spec/local-capability-boundary.md`; revise only when the no-LLM core path changes.
 
 ## Deferred
 

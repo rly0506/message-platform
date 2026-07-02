@@ -43,6 +43,21 @@ defineEmits<{
         </span>
       </div>
 
+      <div v-if="!hasLlmAnalysis" class="local-capability-note" aria-label="无 LLM 本地能力边界">
+        <div>
+          <strong>本地可用</strong>
+          <span>采集、去重、时间线、来源矩阵、学界/民间样本与认知队列基础浏览。</span>
+        </div>
+        <div>
+          <strong>LLM 增强</strong>
+          <span>深度分析、单篇富化、前沿综述、seed 提炼；失败时回到本地路径。</span>
+        </div>
+        <div>
+          <strong>边界提醒</strong>
+          <span>本地结果不等同于全文事实核查，也不声称理解你的认知。</span>
+        </div>
+      </div>
+
       <div v-if="safeAnalysisHtml" class="analysis markdown-body llm-analysis-body" v-html="safeAnalysisHtml" />
       <div v-else-if="displayAnalysisText" class="analysis llm-analysis-body">
         <p>{{ displayAnalysisText }}</p>

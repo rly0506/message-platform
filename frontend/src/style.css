@@ -1610,6 +1610,32 @@ button:disabled {
   background: #fff;
 }
 
+.local-capability-note {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.local-capability-note div {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid #dbe5e9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.local-capability-note strong {
+  color: #102734;
+  font-size: 13px;
+}
+
+.local-capability-note span {
+  color: #53636e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .sentiment-warning {
   display: grid;
   gap: 4px;
@@ -2413,7 +2439,8 @@ button:disabled {
 
   .academic-metrics,
   .academic-paper-grid,
-  .academic-school-grid {
+  .academic-school-grid,
+  .local-capability-note {
     grid-template-columns: 1fr;
   }
 }
