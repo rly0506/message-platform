@@ -88,6 +88,24 @@ function boundaryReason(seed: DiscoverySeed): { reason: string; profile: Cogniti
   return { reason: seed.is_new ? '新信号' : '加速信号', profile: null }
 }
 
+function recommendationText(item: BoundarySeed) {
+  if (item.reason === '边界外') return '你的画像里这块较陌生，适合放进认知边界。'
+  if (item.reason === '机制缺口') return '你知道相关名词，但机制仍有缺口。'
+  if (item.reason === '课程相关') return '它接近你的课程背景，但可能给出新的应用场景。'
+  if (item.reason === '新信号') return '这是新出现的前沿信号，值得先看一眼。'
+  return '这个方向正在加速，适合判断是否继续追踪。'
+}
+
+function challengeText(item: BoundarySeed) {
+  if (item.profile?.note) return `${item.profile.domain_label}：${item.profile.note}`
+  return item.seed.why || item.seed.what || '先看它是否补上你当前信息版图里的空白。'
+}
+
+function nextActionText(item: BoundarySeed) {
+  if (item.seed.what) return `深入分析：${item.seed.what}`
+  return '深入分析：送进事件分析台做跨媒体追踪。'
+}
+
 function profileForSeed(seed: DiscoverySeed) {
   const text = `${seed.domain} ${seed.domain_label} ${seed.title} ${seed.what} ${seed.why}`.toLowerCase()
   const wanted = [
@@ -174,11 +192,35 @@ function reasonRank(reason: string) {
             <ol class="boundary-list">
               <li v-for="item in boundaryQueue" :key="`boundary-${item.seed.url}`">
                 <div class="boundary-main">
-                  <span class="boundary-reason">{{ item.reason }}</span>
-                  <strong>{{ item.seed.title }}</strong>
-                  <em v-if="item.profile">{{ item.profile.domain_label }}</em>
+                  <div class="boundary-title-row">
+                    <span class="boundary-reason">{{ item.reason }}</span>
+                    <strong>{{ item.seed.title }}</strong>
+                    <em v-if="item.profile">{{ item.profile.domain_label }}</em>
+                  </div>
+                  <dl class="boundary-card-notes">
+                    <div>
+                      <dt>推荐原因</dt>
+                      <dd>{{ recommendationText(item) }}</dd>
+                    </div>
+                    <div>
+                      <dt>挑战点</dt>
+                      <dd>{{ challengeText(item) }}</dd>
+                    </div>
+                    <div>
+                      <dt>下一步</dt>
+                      <dd>{{ nextActionText(item) }}</dd>
+                    </div>
+                  </dl>
                 </div>
                 <div class="boundary-actions">
+                  <button
+                    type="button"
+                    class="boundary-deep"
+                    :disabled="seedBusy"
+                    @click="$emit('analyzeSeed', item.seed)"
+                  >
+                    {{ seedBusy && activeSeedUrl === item.seed.url ? '…' : '深入' }}
+                  </button>
                   <button
                     type="button"
                     class="boundary-got-it"
@@ -387,8 +429,8 @@ function reasonRank(reason: string) {
 
 .boundary-list li {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
   color: #53636e;
@@ -396,10 +438,16 @@ function reasonRank(reason: string) {
 }
 
 .boundary-main {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.boundary-title-row {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
 }
@@ -419,6 +467,7 @@ function reasonRank(reason: string) {
   flex-shrink: 0;
 }
 
+.boundary-deep,
 .boundary-got-it,
 .boundary-doubt {
   padding: 3px 10px;
@@ -429,6 +478,22 @@ function reasonRank(reason: string) {
   font-size: 0.74rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.boundary-deep {
+  border-color: #8fb8c8;
+  background: #eef7f9;
+  color: #155a6e;
+}
+
+.boundary-deep:hover:not(:disabled) {
+  background: #dff0f5;
+  border-color: #155a6e;
+}
+
+.boundary-deep:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .boundary-got-it:hover {
@@ -453,6 +518,31 @@ function reasonRank(reason: string) {
   color: #71808a;
   font-style: normal;
   white-space: nowrap;
+}
+
+.boundary-card-notes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.boundary-card-notes div {
+  min-width: 0;
+}
+
+.boundary-card-notes dt {
+  margin: 0 0 2px;
+  color: #6f7f89;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.boundary-card-notes dd {
+  margin: 0;
+  color: #2c3a44;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .seed-stream-head {
@@ -628,5 +718,15 @@ function reasonRank(reason: string) {
 
 .rest-seeds[open] .rest-seeds-summary::before {
   content: '▾ ';
+}
+
+@media (max-width: 720px) {
+  .boundary-card-notes {
+    grid-template-columns: 1fr;
+  }
+
+  .boundary-actions {
+    width: 100%;
+  }
 }
 </style>

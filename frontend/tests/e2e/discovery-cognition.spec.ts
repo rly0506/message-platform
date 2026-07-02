@@ -110,8 +110,13 @@ test('marks a frontier seed as known from the cognition boundary queue and close
   await expect(page.locator('.boundary-queue')).toContainText('机制缺口')
   await expect(page.locator('.seed-stream').getByText('🔥', { exact: false })).toHaveCount(0)
 
-  // 在队列里一键「我懂了」: 复用 seed mark 的 known。
   const queueItem = page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })
+  await expect(queueItem).toContainText('推荐原因')
+  await expect(queueItem).toContainText('挑战点')
+  await expect(queueItem).toContainText('下一步')
+  await expect(queueItem.getByRole('button', { name: '深入' })).toBeVisible()
+
+  // 在队列里一键「我懂了」: 复用 seed mark 的 known。
   await queueItem.getByRole('button', { name: '我懂了' }).click()
 
   // 闭环可见: 点完后该条从队列消失, 计数降为 1。(先等 UI 闭环, 再断言 POST 内容, 避免竞态)

@@ -2,6 +2,23 @@
 
 ## 2026-07-02
 
+### Added
+
+- Enhanced the cognition-boundary queue cards in the intelligence desk:
+  - each boundary seed now shows `推荐原因`, `挑战点`, and `下一步`;
+  - the boundary card reuses existing seed/profile data and does not change backend APIs;
+  - the boundary card now includes a visible `深入` action that reuses the existing seed analysis flow.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact boundaryReason -d upstream --include-tests` -> risk LOW
+- `node .gitnexus/run.cjs impact -u "Function:frontend/src/components/DiscoveryPanel.vue:boundaryQueue" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `4 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk MEDIUM, 2 files, 2 symbols, 1 expected boundary queue flow
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
 ### Planning
 
 - Added `spec/roadmap.md` to record the next iteration direction:
