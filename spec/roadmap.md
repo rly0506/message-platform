@@ -4,34 +4,35 @@ This roadmap records the current product direction after the July 2026 readabili
 
 ## Current Priority
 
-Next planned implementation candidate: community readability / sentiment evidence cards.
+Next planned design candidate: event tree / academic literature graph.
 
-Goal: keep improving the community layer as readable sentiment samples while preserving the boundary that community sentiment is signal, not fact.
+Goal: design how the workbench can show topic structure before implementing another visual feature. The next code iteration should choose either text-first event tree V1 or academic reading-map V1, not both at once.
 
-Reference notes: `spec/local-capability-boundary.md` for no-LLM boundaries, and `spec/academic-filtering-design.md` for the completed academic-filtering design.
+Reference notes: `spec/event-tree-literature-graph-design.md` for the design boundary, `spec/local-capability-boundary.md` for no-LLM limits, and `spec/academic-filtering-design.md` for academic priority-reading signals.
 
 Implementation default:
 
-- keep failures as compact warnings, not dominant content
-- keep HN / Reddit / Chinese platform samples visually distinct
-- do not turn sentiment samples into factual claims
-- avoid new backend dependencies unless existing collector output is insufficient
+- text-first before visual canvas
+- keep every branch or group linked back to evidence
+- avoid causal claims such as "root cause" unless evidence supports a weaker label
+- do not add a graph library, vector database, or backend dependency in V1
 
 ## Near-Term
 
-- Community readability: tune the sentiment tab around platform coverage, failure clarity, and compact evidence cards.
+- Event tree V1 candidate: collapsed Media-tab structure showing root issue, triggers, branches, consequences, and unresolved questions from existing local analysis data.
+- Academic reading-map V1 candidate: collapsed Academic-tab structure grouping foundational, recent, high-citation, school/concept, and low-information papers from existing OpenAlex fields.
+- Community readability: observe the platform coverage and sentiment sample cards in real use before adding another redesign pass.
 - Academic filtering: observe the new priority-reading signals in real use before adding sorting.
 - Cognition-boundary cards: continue tuning card wording only after real use.
 
 ## Mid-Term
 
 - Community readability: continue improving the sentiment layer as compact evidence cards, while keeping community sentiment clearly labeled as signal rather than fact.
-- Narrative convergence: keep the feature framed as topic-local similarity signals with evidence, not as a claim of manipulation.
+- Narrative convergence: V1 evidence cards are implemented; revisit only if real topics show unreadable or misleading clusters.
 
 ## Design-First
 
-- Event tree: design a text-first structure for root issue -> branches -> supporting evidence before attempting a visual tree.
-- Academic literature graph: design the reading task first, then decide whether a visual graph is useful.
+- Event tree / academic literature graph: captured in `spec/event-tree-literature-graph-design.md`; implementation must pick one small V1.
 - Cognition map: keep collecting low-friction cognition marks before drawing a map.
 - Local capability boundary: documented in `spec/local-capability-boundary.md`; revise only when the no-LLM core path changes.
 

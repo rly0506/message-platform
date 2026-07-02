@@ -13,7 +13,8 @@ Read in this order:
 5. `spec/roadmap.md` to understand the current iteration direction.
 6. `spec/local-capability-boundary.md` to understand what works without LLM access.
 7. `spec/academic-filtering-design.md` when working on the academic layer filtering iteration.
-8. `spec/CHANGELOG.md` to understand recent spec changes.
+8. `spec/event-tree-literature-graph-design.md` before planning event-tree or academic graph work.
+9. `spec/CHANGELOG.md` to understand recent spec changes.
 
 ## What Counts As Done
 

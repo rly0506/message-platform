@@ -2,6 +2,37 @@
 
 ## 2026-07-02
 
+### Planning
+
+- Added `spec/event-tree-literature-graph-design.md`:
+  - separates event tree, academic literature graph, and cognition map;
+  - defines text-first V1 shapes before any visual graph work;
+  - lists existing data sources for media event structure and academic reading maps;
+  - keeps V1 no-LLM, no new backend/API, and no graph library by default.
+- Updated `spec/README.md` to link the new design note.
+- Updated `spec/roadmap.md` so the next direction is design-first event tree / academic literature graph planning.
+
+### Verification
+
+- `git diff --check` -> exit 0
+- `git status --short` -> only `spec/` documents changed after the narrative-convergence commit
+
+### Committed
+
+- Committed `4e25c38` (`feat(media): clarify narrative convergence signals`):
+  - media narrative-convergence signals now render as compact evidence cards;
+  - the panel uses neutral `相似说法` wording and keeps a boundary note that these are similarity signals, not truth or manipulation judgements;
+  - no backend/API/LLM changes.
+
+### Verification
+
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- source-matrix` -> `12 passed`
+- `cd frontend && npm run test:e2e` -> `22 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk LOW, 4 files, 2 symbols, 0 affected processes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
 ### Added
 
 - Clarified the Media tab narrative-convergence signals:
