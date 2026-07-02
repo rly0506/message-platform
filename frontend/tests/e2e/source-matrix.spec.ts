@@ -318,12 +318,20 @@ async function mockApi(page: Page) {
     startedJobs.push('sentiment')
     await route.fulfill({ json: analysisJob('sentiment-job', 'sentiment') })
   })
+  await page.route('**/api/topics/101/cross-synthesis/jobs', async (route) => {
+    // 记录 bundle 是否用轻量模式(refresh_voices:false) 触发三方对照。
+    const body = route.request().postDataJSON() as { refresh_voices?: boolean } | null
+    startedJobs.push(body?.refresh_voices === false ? 'cross:reuse' : 'cross:refresh')
+    await route.fulfill({ json: analysisJob('cross-job', 'deep') })
+  })
   await page.route('**/api/search/jobs/*', async (route) => {
     const url = route.request().url()
     if (url.includes('deep-job')) {
       await route.fulfill({ json: analysisJob('deep-job', 'deep') })
     } else if (url.includes('academic-job')) {
       await route.fulfill({ json: analysisJob('academic-job', 'academic') })
+    } else if (url.includes('cross-job')) {
+      await route.fulfill({ json: analysisJob('cross-job', 'deep') })
     } else {
       await route.fulfill({ json: analysisJob('sentiment-job', 'sentiment') })
     }
@@ -483,10 +491,11 @@ test('keeps secondary media panels collapsed with count summaries by default', a
   }
 })
 
-test('starts academic and sentiment jobs with LLM analysis', async ({ page }) => {
+test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {
   await page.goto('/')
 
-  await page.getByRole('button', { name: '深度分析（LLM）' }).click()
+  await page.getByRole('button', { name: /深度分析（LLM/ }).click()
 
-  await expect.poll(() => startedJobs.sort()).toEqual(['academic', 'deep', 'sentiment'])
+  // 深度分析(三级)先并发跑三个一级声部, 再用轻量模式(refresh_voices:false)跑三方对照。
+  await expect.poll(() => startedJobs.sort()).toEqual(['academic', 'cross:reuse', 'deep', 'sentiment'])
 })

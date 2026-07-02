@@ -192,14 +192,14 @@ def enqueue_sentiment_analysis_job(topic_id: int, limit: int = 25) -> dict[str, 
     )
 
 
-def enqueue_cross_synthesis_job(topic_id: int) -> dict[str, Any]:
+def enqueue_cross_synthesis_job(topic_id: int, refresh_voices: bool = True) -> dict[str, Any]:
     return enqueue_topic_job(
         topic_id,
         query_prefix="cross-synthesis",
-        steps=cross_synthesis_steps(),
-        payload={"topic_id": topic_id, "kind": "cross_synthesis"},
+        steps=cross_synthesis_steps(refresh_voices),
+        payload={"topic_id": topic_id, "kind": "cross_synthesis", "refresh_voices": refresh_voices},
         target=run_cross_synthesis_job,
-        args=(topic_id,),
+        args=(topic_id, refresh_voices),
     )
 
 
@@ -303,7 +303,9 @@ def run_academic_analysis_job(job_id: str, topic_id: int, top_n: int) -> None:
             top_n=top_n,
             on_step=runner.on_step,
         )
-        runner.mark_all_steps_done()
+        # 只收尾仍在 running 的步骤; 保留 synthesize 可能的 "warning"(LLM 综述超时降级),
+        # 不要用 mark_all_steps_done 把警告抹成 done, 否则用户看不到"综述降级了"。
+        runner.mark_running_steps_done()
         return result
 
     run_topic_job(job_id, topic_id, academic_analysis_steps(), work)
@@ -329,43 +331,46 @@ def run_sentiment_analysis_job(job_id: str, topic_id: int, limit: int) -> None:
     )
 
 
-def run_cross_synthesis_job(job_id: str, topic_id: int) -> None:
+def run_cross_synthesis_job(job_id: str, topic_id: int, refresh_voices: bool = True) -> None:
     chain: dict[str, dict[str, Any]] = {}
 
     def work(session: Session, topic: Topic, runner: JobRunner) -> dict[str, Any]:
-        run_cross_voice_step(
-            runner.steps,
-            job_id,
-            chain,
-            "media",
-            lambda: topic_ops.run_deep_analysis(
-                session,
-                topic,
-                enrich_limit=30,
-            ),
-        )
-        run_cross_voice_step(
-            runner.steps,
-            job_id,
-            chain,
-            "academic",
-            lambda: academic.run_academic_analysis(
-                session,
-                topic,
-                top_n=30,
-            ),
-        )
-        run_cross_voice_step(
-            runner.steps,
-            job_id,
-            chain,
-            "sentiment",
-            lambda: sentiment.run_sentiment_analysis(
-                session,
-                topic,
-                limit=25,
-            ),
-        )
+        # refresh_voices=False(深度分析 bundle 内): 三声部刚已跑并落库, 直接从 DB 合成,
+        # 不重跑, 避免三声部各跑两遍(重复采集+双倍 LLM)。缺声部由 gather_voices 兜底照常合成。
+        if refresh_voices:
+            run_cross_voice_step(
+                runner.steps,
+                job_id,
+                chain,
+                "media",
+                lambda: topic_ops.run_deep_analysis(
+                    session,
+                    topic,
+                    enrich_limit=30,
+                ),
+            )
+            run_cross_voice_step(
+                runner.steps,
+                job_id,
+                chain,
+                "academic",
+                lambda: academic.run_academic_analysis(
+                    session,
+                    topic,
+                    top_n=30,
+                ),
+            )
+            run_cross_voice_step(
+                runner.steps,
+                job_id,
+                chain,
+                "sentiment",
+                lambda: sentiment.run_sentiment_analysis(
+                    session,
+                    topic,
+                    limit=25,
+                ),
+            )
         result = cross_synthesis.run_cross_synthesis(
             session,
             topic,
@@ -375,7 +380,7 @@ def run_cross_synthesis_job(job_id: str, topic_id: int) -> None:
         runner.mark_running_steps_done()
         return result
 
-    run_topic_job(job_id, topic_id, cross_synthesis_steps(), work)
+    run_topic_job(job_id, topic_id, cross_synthesis_steps(refresh_voices), work)
 
 
 def discovery_steps() -> list[dict[str, str]]:
@@ -483,11 +488,16 @@ def sentiment_analysis_steps() -> list[dict[str, str]]:
     ]
 
 
-def cross_synthesis_steps() -> list[dict[str, str]]:
-    return [
+def cross_synthesis_steps(refresh_voices: bool = True) -> list[dict[str, str]]:
+    # refresh_voices=False(深度分析 bundle 内): 只用已落库声部, 不重跑三声部, 故只有 3 步。
+    # 否则前端会显示 6 步但轻量 job 只跑 3 步。
+    voice_steps = [
         {"key": "media", "label": "媒体声部：LLM 深度分析", "status": "pending"},
         {"key": "academic", "label": "学界声部：论文与共识", "status": "pending"},
         {"key": "sentiment", "label": "民间声部：多平台情绪", "status": "pending"},
+    ] if refresh_voices else []
+    return [
+        *voice_steps,
         {"key": "gather", "label": "汇总可用声部", "status": "pending"},
         {"key": "synthesize", "label": "综合三方对照", "status": "pending"},
         {"key": "persist", "label": "写入三方对照", "status": "pending"},

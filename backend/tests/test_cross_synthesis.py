@@ -226,6 +226,58 @@ def test_run_cross_synthesis_job_gathers_synthesizes_and_persists(monkeypatch):
     assert saved_rows[0].content_md == "## cross synthesis\ncontent"
 
 
+def test_run_cross_synthesis_job_reuse_voices_skips_voice_reruns(monkeypatch):
+    """refresh_voices=False(深度分析 bundle 内): 不重跑三声部, 只 gather/synth/persist, 3 步。"""
+    from app import topic_ops
+    from app.pipeline import academic, cross_synthesis, sentiment
+
+    topic_id = _seed_topic("Reuse Voices Topic")
+    job = SearchJob(
+        id="cross-reuse-job",
+        query="cross-synthesis:Reuse Voices Topic",
+        status="queued",
+        steps=search_service.cross_synthesis_steps(refresh_voices=False),
+        payload={"topic_id": topic_id, "kind": "cross_synthesis", "refresh_voices": False},
+    )
+    with Session(engine) as session:
+        session.add(job)
+        session.commit()
+
+    voices = {
+        "available_voices": ["media", "sentiment"],
+        "media": {"available": True, "timeline": [], "framing": []},
+        "academic": {"available": False, "note": "missing", "summary_md": ""},
+        "sentiment": {"available": True, "summary_md": "public mood", "top_posts": []},
+    }
+    monkeypatch.setattr(cross_synthesis, "gather_voices", lambda session, topic: voices)
+    monkeypatch.setattr(
+        cross_synthesis, "cross_synthesize", lambda topic, gathered: "## cross\nreused"
+    )
+    # 若这三个被调用即失败 —— 证明轻量路径确实没重跑声部。
+    def _boom(*a, **k):
+        raise AssertionError("voice re-run must NOT happen when refresh_voices=False")
+    monkeypatch.setattr(topic_ops, "run_deep_analysis", _boom)
+    monkeypatch.setattr(academic, "run_academic_analysis", _boom)
+    monkeypatch.setattr(sentiment, "run_sentiment_analysis", _boom)
+
+    search_service.run_cross_synthesis_job("cross-reuse-job", topic_id, refresh_voices=False)
+
+    with Session(engine) as session:
+        saved_job = session.get(SearchJob, "cross-reuse-job")
+        saved_rows = session.exec(
+            select(CrossSynthesis).where(CrossSynthesis.topic_id == topic_id)
+        ).all()
+
+    assert saved_job.status == "done"
+    # 只有 3 步, 全 done。
+    assert [step["key"] for step in saved_job.steps] == ["gather", "synthesize", "persist"]
+    assert [step["status"] for step in saved_job.steps] == ["done", "done", "done"]
+    assert saved_job.result["content_md"] == "## cross\nreused"
+    # chain 为空(没跑声部层)。
+    assert saved_job.result.get("chain") == {}
+    assert len(saved_rows) == 1
+
+
 def test_run_cross_synthesis_job_chains_voice_layers_and_continues_after_failure(monkeypatch):
     from app import topic_ops
     from app.pipeline import academic, cross_synthesis, sentiment
@@ -315,7 +367,7 @@ def test_cross_synthesis_api_endpoints_use_background_job_and_return_latest_payl
     body = response.json()
     assert body["status"] == "queued"
     assert [step["key"] for step in body["steps"]] == ["media", "academic", "sentiment", "gather", "synthesize", "persist"]
-    assert started == [(search_service.run_cross_synthesis_job, (body["id"], topic_id), True)]
+    assert started == [(search_service.run_cross_synthesis_job, (body["id"], topic_id, True), True)]
 
     with Session(engine) as session:
         session.add(

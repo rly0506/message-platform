@@ -26,6 +26,12 @@ class SentimentAnalysisRequest(BaseModel):
     limit: int = Field(default=25, ge=1, le=100)
 
 
+class CrossSynthesisRequest(BaseModel):
+    # True(默认, 单独「三方对照」按钮): 先重跑媒体/学界/民间三声部再合成(全刷新)。
+    # False(深度分析 bundle 内): 只用已落库的三声部合成, 不重跑(避免三声部各跑两遍)。
+    refresh_voices: bool = True
+
+
 class DiscoveryDistillRequest(BaseModel):
     title: str = Field(min_length=1, max_length=400)
     domain: str = Field(default="", max_length=40)

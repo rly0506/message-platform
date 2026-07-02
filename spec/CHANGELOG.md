@@ -1,5 +1,102 @@
 # Spec Changelog
 
+## 2026-07-02
+
+### Added
+
+- Reliability + discovery-layer round (human-approved "A" plan, Claude impl / GPT review):
+  - **#9 academic LLM-synthesis timeout no longer strands the job.** `run_academic_analysis`
+    wraps `synthesize_academic` in try/except: on timeout/failure the summary degrades to ""
+    and the synthesize step reports `warning`, while `persist` still runs so fetched papers +
+    citation graph are not lost. `run_academic_analysis_job` uses `mark_running_steps_done()`
+    (not `mark_all_steps_done()`) so the `warning` is not masked as `done`. `fail_job` untouched
+    (avoids its CRITICAL blast radius).
+  - **#2/#3 discovery layer stops reading like a social feed.** Removed the `🔥 signal` heat
+    badge from seeds (signal still drives ranking, just not shown). The cognition-boundary queue
+    now has a one-click `我懂了` (marks `known`, reuses existing seed mark) that filters the item
+    out of the queue — a visible closure — plus an auxiliary `存疑`. Removed the four-way
+    classification buttons and the free-text "reason" editor from the seed stream (the friction
+    the user flagged). Empty queue shows "今天都过了一遍 👍".
+  - **#6 deep-analysis now includes cross-synthesis without double-running voices.** The
+    cross-synthesis job gained a `refresh_voices: bool = True` flag. The standalone 三方对照 button
+    keeps the full-refresh 6-step path (re-runs media/academic/sentiment then synthesizes). The
+    LLM bundle calls it with `refresh_voices=false` — a lite 3-step path (gather/synthesize/persist)
+    that reuses the just-persisted voices instead of re-running all three. `cross_synthesis_steps`,
+    payload and args all split on the flag so the UI never shows 6 steps for a 3-step run. Missing
+    voices still synthesize (handled by `gather_voices`).
+
+### Two cross-synthesis semantics (by design)
+
+- Standalone 「三方对照」button = full refresh (re-runs all three voices, then synthesizes).
+- 「深度分析（LLM · 媒体+学界+民间+三方对照）」= reuses the voices just persisted by the bundle
+  (`refresh_voices=false`), so nothing runs twice.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `164 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `14 passed` (run twice, stable)
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs impact run_cross_synthesis_job -d upstream` -> risk LOW
+- `node .gitnexus/run.cjs impact run_academic_analysis -d upstream` -> risk LOW
+
+## 2026-06-30
+
+### Added
+
+- Added a fulltext-assisted emotion-manipulation badge to the media article feed,
+  rendered next to the substance-density badge (`6281282`):
+  - `fulltext.extract_url_proxied` reuses the proven httpx + SOCKS5/trust_env path
+    from `rss.py` to fetch HTML, then feeds `extract_from_html` — bypassing
+    trafilatura's proxy-less downloader;
+  - `enrich_topic_articles` concurrently fetches article bodies before each LLM
+    batch (8s timeout, falls back to title+snippet on failure, never blocks);
+  - the enrich LLM call emits two extra fields `emotion_score` / `emotion_note`
+    in the same pass (zero extra calls);
+  - pending re-enrichment includes `emotion_score < 0` only when fulltext is on,
+    so disabling fulltext does not re-run the LLM for un-scorable emotion;
+  - frontend shows `情绪 N` only when `emotion_score >= 0` (red=high manipulation).
+- Config `FULLTEXT_FETCH_TIMEOUT=8`, `ENRICH_FETCH_FULLTEXT=1` (off → title+snippet only).
+
+### Fixed
+
+- Forced `emotion_score=-1` at the code level when no fulltext was fetched,
+  ignoring whatever the LLM returns (`803b7d1`). Real-data validation showed the
+  LLM ignores the prompt's "return -1 without body" instruction and scores
+  emotion from title+snippet alone — a pseudo-judgement leak. The red line is now
+  enforced in code, not by trusting the prompt. `substance_score` is left
+  unchanged (title/snippet conservative estimate is acceptable; evidence bar differs).
+
+### Reason
+
+Emotion manipulation is a whole-article rhetorical pattern, so it must be judged
+from body text, not the opening hook in a snippet. Fulltext is an *assist*, not a
+dependency: when extraction fails, substance scoring continues and the emotion
+badge simply does not show — never a fabricated judgement.
+
+### Known limitation
+
+- The emotion badge (and any fulltext-dependent feature) is only effective for
+  sources whose body can be extracted (direct links / native RSS). The primary
+  source — Google News RSS — yields `news.google.com/rss/articles/CBMi...` redirect
+  URLs that trafilatura cannot extract, so those articles keep `emotion_score=-1`
+  and show no badge. Resolving Google News redirect/encoded URLs is intentionally
+  out of scope this round (redirect-following and `CBMi` base64 decoding are both
+  fragile, and the resolved target may still block scraping). Fulltext-class
+  features need a direct-link / better source to be broadly useful.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `162 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `14 passed`
+- `git diff --check` -> exit 0
+- `git check-ignore backend/.env backend/dossier.db` -> both ignored
+- `node .gitnexus/run.cjs impact enrich_topic_articles -d upstream` -> risk LOW
+- Real-data run (topic 1, enrich_limit=10): `fulltext_hits=0` (confirms the Google
+  News limitation); 4 pseudo emotion scores leaked pre-hotfix were reset to -1 in
+  the live DB with human approval (dry-run → UPDATE → recount 0).
+
 ## 2026-06-29
 
 ### Added

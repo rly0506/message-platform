@@ -100,27 +100,28 @@ test.beforeEach(async ({ page }) => {
   await mockDiscoveryApi(page)
 })
 
-test('marks a frontier seed from the cognition boundary queue', async ({ page }) => {
+test('marks a frontier seed as known from the cognition boundary queue and closes it', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '今日情报台' }).click()
 
+  // 队列初始 2 条, 显示推荐理由(不再显示 🔥 热度数字)。
   await expect(page.locator('.boundary-queue').getByText('认知边界队列（2）')).toBeVisible()
   await expect(page.locator('.boundary-queue')).toContainText('边界外')
   await expect(page.locator('.boundary-queue')).toContainText('机制缺口')
+  await expect(page.locator('.seed-stream').getByText('🔥', { exact: false })).toHaveCount(0)
 
-  const seedRow = page.locator('.stream-row').filter({ hasText: 'New nuclear battery' })
-  await expect(seedRow.getByRole('button', { name: '已知' })).toBeVisible()
-  await seedRow.getByRole('button', { name: '陌生' }).click()
-  await expect(seedRow.locator('.cognition-chip.active')).toContainText('陌生')
+  // 在队列里一键「我懂了」: 复用 seed mark 的 known。
+  const queueItem = page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })
+  await queueItem.getByRole('button', { name: '我懂了' }).click()
 
-  await seedRow.getByPlaceholder('写一句选择理由').fill('完全陌生，值得补课')
-  await seedRow.getByRole('button', { name: '保存理由' }).click()
+  // 闭环可见: 点完后该条从队列消失, 计数降为 1。(先等 UI 闭环, 再断言 POST 内容, 避免竞态)
+  await expect(page.locator('.boundary-queue').getByText('认知边界队列（1）')).toBeVisible()
+  await expect(page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })).toHaveCount(0)
 
-  expect(savedMark).toMatchObject({
+  await expect.poll(() => savedMark).toMatchObject({
     target_type: 'seed',
     target_id: 0,
     target_key: 'https://example.com/energy-seed',
-    label: 'unfamiliar',
-    note: '完全陌生，值得补课',
+    label: 'known',
   })
 })

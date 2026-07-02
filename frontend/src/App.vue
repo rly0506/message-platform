@@ -387,11 +387,15 @@ async function markSeedCognition(seed: DiscoverySeed, label: CognitionLabel, not
 }
 
 async function runLlmAnalysisBundle() {
+  // 三级「深度分析」= 先并发跑三个一级声部(媒体/学界/民间), 全部落库后
+  // 再跑二级「三方对照」——用 refreshVoices=false 走轻量路径, 只复用刚落库的声部,
+  // 不重跑三声部(否则各跑两遍)。缺声部由后端 gather_voices 兜底照常合成。
   await Promise.allSettled([
     runDeepAnalysis(),
     runAcademicAnalysis(),
     runSentimentAnalysis(),
   ])
+  await runCrossSynthesis(false)
 }
 
 async function loadSeedCognitionState() {
@@ -649,7 +653,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
             关键节点不再固定为 14 个。系统按权威来源、报道扩散、未来影响信号、持续时间和主题相关度排序，展示当前最值得关注的事件链。
           </p>
           <div class="deep-actions">
-            <button type="button" class="cross-primary-button" :disabled="crossSynthesisAnalyzing" @click="runCrossSynthesis">
+            <button type="button" class="cross-primary-button" :disabled="crossSynthesisAnalyzing" @click="runCrossSynthesis()">
               {{ crossSynthesisAnalyzing ? '三方对照生成中...' : hasCrossSynthesis ? '刷新三方对照' : '三方对照' }}
             </button>
             <button type="button" class="ghost-button" :disabled="academicAnalyzing" @click="runAcademicAnalysis">
@@ -658,8 +662,8 @@ function countryCoverageNote(country: CountryCompareCountry) {
             <button type="button" class="ghost-button" :disabled="sentimentAnalyzing" @click="runSentimentAnalysis">
               {{ sentimentAnalyzing ? '民间情绪分析中...' : '民间情绪' }}
             </button>
-            <button type="button" :disabled="deepAnalyzing || academicAnalyzing || sentimentAnalyzing" @click="runLlmAnalysisBundle">
-              {{ deepAnalyzing || academicAnalyzing || sentimentAnalyzing ? 'LLM 分析中...' : '深度分析（LLM）' }}
+            <button type="button" :disabled="deepAnalyzing || academicAnalyzing || sentimentAnalyzing || crossSynthesisAnalyzing" @click="runLlmAnalysisBundle">
+              {{ deepAnalyzing || academicAnalyzing || sentimentAnalyzing || crossSynthesisAnalyzing ? 'LLM 分析中...' : '深度分析（LLM · 媒体+学界+民间+三方对照）' }}
             </button>
             <span>{{ hasLlmAnalysis ? '当前展示 LLM 生成结果' : '当前展示本地规则结果' }}</span>
           </div>

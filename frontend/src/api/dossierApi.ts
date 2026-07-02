@@ -126,8 +126,11 @@ export async function createSentimentJob(topicId: number, limit = 25) {
   return res.data
 }
 
-export async function createCrossSynthesisJob(topicId: number) {
-  const res = await axios.post<SearchJob>(`${API_BASE}/api/topics/${topicId}/cross-synthesis/jobs`)
+export async function createCrossSynthesisJob(topicId: number, refreshVoices = true) {
+  const res = await axios.post<SearchJob>(
+    `${API_BASE}/api/topics/${topicId}/cross-synthesis/jobs`,
+    { refresh_voices: refreshVoices },
+  )
   return res.data
 }
 

@@ -120,6 +120,50 @@ def test_run_academic_analysis_fetches_persists_and_synthesizes(monkeypatch):
         assert len(session.exec(select(TopicPaper).where(TopicPaper.topic_id == topic_id)).all()) == 2
 
 
+def test_run_academic_analysis_synthesize_timeout_degrades_and_still_persists(monkeypatch):
+    """#9: LLM 综述超时不能中断 —— 降级为 warning, 论文/引用图照常落库, persist 不跳过。"""
+    topic_id = _seed_topic()
+    papers = [
+        {
+            "openalex_id": "W1", "title": "Paper one", "abstract": "x", "year": 2015,
+            "cited_by_count": 100, "authors": ["A"], "venue": "J",
+            "concepts": [{"name": "Sanctions"}], "url": "https://example.com/w1",
+            "referenced_works": [],
+        },
+        {
+            "openalex_id": "W2", "title": "Paper two", "abstract": "y", "year": 2018,
+            "cited_by_count": 20, "authors": ["B"], "venue": "J",
+            "concepts": [{"name": "Sanctions"}], "url": "https://example.com/w2",
+            "referenced_works": ["W1"],
+        },
+    ]
+    edges = [{"citing_openalex_id": "W2", "cited_openalex_id": "W1"}]
+    monkeypatch.setattr(academic.openalex, "search_works", lambda query, top_n=30: papers)
+    monkeypatch.setattr(academic.openalex, "converged_citation_edges", lambda values: edges)
+
+    # 综述步骤模拟 ReadTimeout。
+    def boom(topic, papers, edges, schools_data):
+        raise TimeoutError("read timed out")
+    monkeypatch.setattr(academic, "synthesize_academic", boom)
+
+    steps = []  # 捕获 on_step 推进
+    def on_step(key, status, details=None):
+        steps.append((key, status))
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        result = academic.run_academic_analysis(session, topic, top_n=2, on_step=on_step)
+
+        # 综述降级: 空摘要, 但流程没崩。
+        assert result["summary_md"] == ""
+        # persist 仍跑: 论文落库。
+        stored = session.exec(select(Paper)).all()
+        assert {p.openalex_id for p in stored} == {"W1", "W2"}
+        # 步骤终态: synthesize=warning, persist=done, 没有卡在 running/pending。
+        assert ("synthesize", "warning") in steps
+        assert ("persist", "done") in steps
+
+
 def test_run_academic_analysis_translates_cjk_topic_before_openalex_search(monkeypatch):
     topic_id = _seed_topic(name="美伊战争")
     captured = {}

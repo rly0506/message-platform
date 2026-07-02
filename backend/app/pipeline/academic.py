@@ -35,8 +35,17 @@ def run_academic_analysis(
 
     if on_step:
         on_step("synthesize", "running")
-    summary_md = synthesize_academic(topic, papers, edges, schools_data)
-    if on_step:
+    # LLM 综合可能超时/失败(实测 ReadTimeout)。降级而非中断: 已抓到的论文+引用图
+    # 不能因综述失败就丢, 后续 persist 必须照常跑。守"无 LLM 也能跑"红线。
+    try:
+        summary_md = synthesize_academic(topic, papers, edges, schools_data)
+        synth_status = "done"
+    except Exception as exc:
+        summary_md = ""
+        synth_status = "warning"
+        if on_step:
+            on_step("synthesize", "warning", {"error": f"{type(exc).__name__}: {str(exc)[:80]}"})
+    if on_step and synth_status == "done":
         on_step("synthesize", "done")
 
     if on_step:

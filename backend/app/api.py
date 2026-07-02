@@ -23,7 +23,7 @@ from app.db import (
     init_db,
 )
 from app.pipeline import local_analyze, narrative_signals
-from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
+from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
 from app.services import article_perspective, country_compare, payloads, search_service
 from app.pipeline import academic, cross_synthesis, sentiment
 
@@ -272,8 +272,12 @@ def create_sentiment_analysis_job(
 
 
 @app.post("/api/topics/{topic_id}/cross-synthesis/jobs")
-def create_cross_synthesis_job(topic_id: int) -> dict[str, Any]:
-    return search_service.enqueue_cross_synthesis_job(topic_id)
+def create_cross_synthesis_job(
+    topic_id: int,
+    payload: CrossSynthesisRequest | None = None,
+) -> dict[str, Any]:
+    refresh_voices = payload.refresh_voices if payload else True
+    return search_service.enqueue_cross_synthesis_job(topic_id, refresh_voices=refresh_voices)
 
 
 @app.post("/api/search/jobs/{job_id}/rerun")

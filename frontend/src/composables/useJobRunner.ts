@@ -369,7 +369,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     }
   }
 
-  async function runCrossSynthesis() {
+  async function runCrossSynthesis(refreshVoices = true) {
     const topicId = selectedTopicId.value
     if (!topicId || crossSynthesisAnalyzing.value) return
     crossSynthesisAnalyzing.value = true
@@ -382,7 +382,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       { key: 'persist', label: '写入三方对照', status: 'pending' },
     ]
     try {
-      const job = await createCrossSynthesisJob(topicId)
+      const job = await createCrossSynthesisJob(topicId, refreshVoices)
       activeCrossSynthesisJobId.value = job.id
       crossSynthesisSteps.value = job.steps || crossSynthesisSteps.value
       crossSynthesisMessage.value = `三方对照任务已提交：${job.id.slice(0, 8)}`

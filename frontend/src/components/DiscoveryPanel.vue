@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { CognitionLabel, CognitionMark, CognitionProfileItem, DiscoveryReport, DiscoverySeed, TopicSummary } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
@@ -34,17 +34,10 @@ defineEmits<{
   markSeedCognition: [seed: DiscoverySeed, label: CognitionLabel, note?: string]
 }>()
 
-const cognitionLabels = [
-  { key: 'known', label: '已知' },
-  { key: 'unexpected', label: '意外' },
-  { key: 'doubtful', label: '存疑' },
-  { key: 'unfamiliar', label: '陌生' },
-] as const
-
-const noteDrafts = ref<Record<string, string>>({})
-
 const boundaryQueue = computed<BoundarySeed[]>(() => {
   return props.seeds
+    // 已点「我懂了」(known) 的从队列移除 —— 形成可见闭环: 点完即少一条。
+    .filter((seed) => props.seedCognitionMarks[seed.url]?.label !== 'known')
     .map((seed) => ({ seed, ...boundaryReason(seed) }))
     .sort((a, b) => reasonRank(a.reason) - reasonRank(b.reason) || b.seed.signal - a.seed.signal)
     .slice(0, 10)
@@ -167,15 +160,36 @@ function reasonRank(reason: string) {
           <div class="boundary-queue">
             <div class="seed-stream-head">
               <strong>认知边界队列（{{ boundaryQueue.length }}）</strong>
-              <span>最多 10 条，先看陌生区和机制缺口</span>
+              <span>系统按你的认知边界挑出来的，点「我懂了」即收进已认识</span>
             </div>
             <ol class="boundary-list">
               <li v-for="item in boundaryQueue" :key="`boundary-${item.seed.url}`">
-                <span>{{ item.reason }}</span>
-                <strong>{{ item.seed.title }}</strong>
-                <em v-if="item.profile">{{ item.profile.domain_label }}</em>
+                <div class="boundary-main">
+                  <span class="boundary-reason">{{ item.reason }}</span>
+                  <strong>{{ item.seed.title }}</strong>
+                  <em v-if="item.profile">{{ item.profile.domain_label }}</em>
+                </div>
+                <div class="boundary-actions">
+                  <button
+                    type="button"
+                    class="boundary-got-it"
+                    title="我已经认识这件事了，从队列收走"
+                    @click="$emit('markSeedCognition', item.seed, 'known')"
+                  >
+                    我懂了
+                  </button>
+                  <button
+                    type="button"
+                    class="boundary-doubt"
+                    title="存疑，先标记"
+                    @click="$emit('markSeedCognition', item.seed, 'doubtful')"
+                  >
+                    存疑
+                  </button>
+                </div>
               </li>
             </ol>
+            <p v-if="!boundaryQueue.length" class="seed-note">队列已清空，今天的认知边界都过了一遍 👍</p>
           </div>
 
           <div class="seed-stream-head">
@@ -200,36 +214,25 @@ function reasonRank(reason: string) {
               <div class="stream-signals">
                 <span v-if="seed.is_new" class="sig sig-new">新</span>
                 <span v-else-if="seed.delta > 0" class="sig sig-up">↑{{ seed.delta }}</span>
-                <span class="sig sig-heat" :title="`关注度信号 ${seed.signal}`">🔥{{ seed.signal }}</span>
               </div>
-              <div class="cognition-mark-row seed-mark-row" aria-label="认知边界标记">
+              <div class="cognition-mark-row seed-mark-row" aria-label="认知标记">
                 <button
-                  v-for="mark in cognitionLabels"
-                  :key="mark.key"
                   type="button"
-                  :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === mark.key }]"
-                  @click="$emit('markSeedCognition', seed, mark.key)"
+                  :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === 'known' }]"
+                  title="我已经认识这件事了"
+                  @click="$emit('markSeedCognition', seed, 'known')"
                 >
-                  {{ mark.label }}
+                  我懂了
                 </button>
-                <div v-if="seedCognitionMarks[seed.url]" class="seed-note-editor">
-                  <input
-                    v-model="noteDrafts[seed.url]"
-                    type="text"
-                    placeholder="写一句选择理由"
-                    :aria-label="`${seed.title} 选择理由`"
-                  />
-                  <button
-                    type="button"
-                    class="stream-go"
-                    @click="$emit('markSeedCognition', seed, seedCognitionMarks[seed.url].label, noteDrafts[seed.url] || seedCognitionMarks[seed.url].note)"
-                  >
-                    保存理由
-                  </button>
-                </div>
-                <p v-if="seedCognitionMarks[seed.url]?.note" class="stream-note seed-saved-note">
-                  {{ seedCognitionMarks[seed.url].note }}
-                </p>
+                <button
+                  type="button"
+                  :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === 'doubtful' }]"
+                  title="存疑，先标记"
+                  @click="$emit('markSeedCognition', seed, 'doubtful')"
+                >
+                  存疑
+                </button>
+                <span v-if="seedCognitionMarks[seed.url]?.label === 'known'" class="seed-mark-done">已认识</span>
               </div>
               <button
                 type="button"
@@ -367,20 +370,59 @@ function reasonRank(reason: string) {
 }
 
 .boundary-list li {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto;
+  display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   color: #53636e;
   font-size: 0.78rem;
 }
 
-.boundary-list span {
+.boundary-main {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.boundary-reason {
+  flex-shrink: 0;
   padding: 2px 7px;
   border-radius: 999px;
   background: #fff4e0;
   color: #8a5a00;
   font-weight: 800;
+}
+
+.boundary-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.boundary-got-it,
+.boundary-doubt {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #c5d2d8;
+  background: #fff;
+  color: #2c3a44;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.boundary-got-it:hover {
+  background: #e6f5ec;
+  border-color: #1e7e44;
+  color: #1e7e44;
+}
+
+.boundary-doubt:hover {
+  background: #f0f3f5;
 }
 
 .boundary-list strong {
@@ -446,31 +488,15 @@ function reasonRank(reason: string) {
 }
 
 .seed-mark-row {
-  flex: 0 0 240px;
+  flex: 0 0 auto;
   margin-top: 0;
+  align-items: center;
 }
 
-.seed-note-editor {
-  display: flex;
-  flex-basis: 100%;
-  gap: 6px;
-}
-
-.seed-note-editor input {
-  min-width: 0;
-  width: 100%;
-  min-height: 30px;
-  border: 1px solid #cbd5db;
-  border-radius: 6px;
-  padding: 0 8px;
-}
-
-.seed-note-editor .stream-go {
-  min-height: 30px;
-}
-
-.seed-saved-note {
-  flex-basis: 100%;
+.seed-mark-done {
+  font-size: 0.72rem;
+  color: #1e7e44;
+  font-weight: 700;
 }
 
 .stream-row:first-child {
@@ -550,7 +576,7 @@ function reasonRank(reason: string) {
 
 .sig-new { background: #e8f5ee; color: #1e7e44; }
 .sig-up { background: #fdeaea; color: #c0392b; }
-.sig-heat { background: #fff3e0; color: #b5651d; }
+
 
 .stream-go {
   flex-shrink: 0;
