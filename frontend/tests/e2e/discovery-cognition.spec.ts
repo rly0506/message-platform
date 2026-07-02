@@ -125,3 +125,43 @@ test('marks a frontier seed as known from the cognition boundary queue and close
     label: 'known',
   })
 })
+
+test('collapses rest seeds and does not duplicate boundary-queue seeds', async ({ page }) => {
+  // 12 条种子: 边界队列取前 10, 其余进折叠的「其余种子」区。
+  const manySeeds = Array.from({ length: 12 }, (_, i) => ({
+    title: `Seed number ${i}`,
+    url: `https://example.com/seed-${i}`,
+    domain: 'finance',
+    domain_label: '财经',
+    signal: 90 - i, // 递减, 保证排序稳定
+    delta: 5,
+    is_new: false,
+    what: `种子 ${i} 摘要`,
+    why: `种子 ${i} 为什么重要`,
+    still_niche: true,
+  }))
+  await page.route('**/api/discovery/latest', async (route) => {
+    await route.fulfill({
+      json: { markdown: '## 今日前沿', run_id: '20260629T040000Z', seeds: manySeeds },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '今日情报台' }).click()
+
+  // 边界队列取前 10。
+  await expect(page.locator('.boundary-queue').getByText('认知边界队列（10）')).toBeVisible()
+  // 其余种子 = 12 - 10 = 2, 且默认折叠(details 未展开时 stream-row 不可见)。
+  await expect(page.locator('.rest-seeds').getByText('其余种子（2）')).toBeVisible()
+  await expect(page.locator('.rest-seeds .stream-row')).toHaveCount(2)
+  await expect(page.locator('.rest-seeds .stream-row').first()).not.toBeVisible()
+
+  // 展开后可见, 且这 2 条不与边界队列的 10 条重复。
+  await page.locator('.rest-seeds-summary').click()
+  await expect(page.locator('.rest-seeds .stream-row').first()).toBeVisible()
+  const queueTitles = await page.locator('.boundary-list li strong').allInnerTexts()
+  const restTitles = await page.locator('.rest-seeds .stream-title').allInnerTexts()
+  for (const t of restTitles) {
+    expect(queueTitles).not.toContain(t)
+  }
+})

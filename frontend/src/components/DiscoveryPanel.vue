@@ -43,6 +43,15 @@ const boundaryQueue = computed<BoundarySeed[]>(() => {
     .slice(0, 10)
 })
 
+// 「其余种子」= 全量种子里, 排除 (a) 当前边界队列展示的 10 条 + (b) 已点「我懂了」的。
+// 避免与队列重复, 也避免"我懂了"后又冒出来。默认折叠, 想扫全量再展开。
+const restSeeds = computed(() => {
+  const inQueue = new Set(boundaryQueue.value.map((item) => item.seed.url))
+  return props.seeds.filter(
+    (seed) => !inQueue.has(seed.url) && props.seedCognitionMarks[seed.url]?.label !== 'known',
+  )
+})
+
 function fmtRunId(runId: string | undefined) {
   if (!runId) return ''
   // 形如 20260628T123000Z 或 2026-06-28T12:30:00Z，统一抽出日期+时间显示
@@ -109,19 +118,19 @@ function reasonRank(reason: string) {
           <h2>今日情报台</h2>
         </div>
         <button type="button" class="cross-primary-button" :disabled="analyzing" @click="$emit('runDiscovery')">
-          {{ analyzing ? '分析中...' : '🔄 立即分析（LLM）' }}
+          {{ analyzing ? '分析中...' : '立即分析（LLM）' }}
         </button>
       </div>
 
       <div class="cross-synthesis-note">
         <strong>鸟瞰：下面是你正在追踪的专题，以及今日注意力前沿里还没出圈、但在加速的"种子"</strong>
         <span>「正在追踪」点任一专题即跳进事件分析台看它的最新档案；「今日前沿」每天中午自动跑基线，点上面按钮即时跑带 LLM 标注的深读。</span>
-        <span>看到值得追的种子，点「🔍 深入分析」——系统提炼成话题词，送进事件分析台跨媒体追踪。</span>
+        <span>看到值得追的种子，点「深入分析」——系统提炼成话题词，送进事件分析台跨媒体追踪。</span>
       </div>
 
       <div v-if="trackedTopics.length" class="tracking-block">
         <div class="tracking-head">
-          <strong>📌 正在追踪（{{ trackedTopics.length }}）</strong>
+          <strong>正在追踪（{{ trackedTopics.length }}）</strong>
           <span>点一个跳进分析台看最新进展</span>
         </div>
         <ol class="tracking-list">
@@ -189,68 +198,75 @@ function reasonRank(reason: string) {
                 </div>
               </li>
             </ol>
-            <p v-if="!boundaryQueue.length" class="seed-note">队列已清空，今天的认知边界都过了一遍 👍</p>
+            <p v-if="!boundaryQueue.length" class="seed-note">队列已清空，今天的认知边界都过了一遍</p>
           </div>
 
-          <div class="seed-stream-head">
-            <strong>🌱 今日前沿种子（{{ seeds.length }}）</strong>
-            <span>一眼扫过去，看到值得追的点「深入」送进事件分析台</span>
-          </div>
-          <p v-if="seedNote" class="seed-note">{{ seedNote }}</p>
-          <ol class="stream">
-            <li
-              v-for="seed in seeds"
-              :key="seed.url"
-              class="stream-row"
-              :class="`tier-${seed.domain}`"
-            >
-              <span class="stream-tag">{{ seed.domain_label }}</span>
-              <div class="stream-main">
-                <a class="stream-title" :href="seed.url" target="_blank" rel="noopener">{{ seed.title }}</a>
-                <p v-if="seed.what || seed.why" class="stream-note">
-                  {{ seed.what }}<template v-if="seed.why"> — {{ seed.why }}</template>
-                </p>
-              </div>
-              <div class="stream-signals">
-                <span v-if="seed.is_new" class="sig sig-new">新</span>
-                <span v-else-if="seed.delta > 0" class="sig sig-up">↑{{ seed.delta }}</span>
-              </div>
-              <div class="cognition-mark-row seed-mark-row" aria-label="认知标记">
-                <button
-                  type="button"
-                  :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === 'known' }]"
-                  title="我已经认识这件事了"
-                  @click="$emit('markSeedCognition', seed, 'known')"
-                >
-                  我懂了
-                </button>
-                <button
-                  type="button"
-                  :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === 'doubtful' }]"
-                  title="存疑，先标记"
-                  @click="$emit('markSeedCognition', seed, 'doubtful')"
-                >
-                  存疑
-                </button>
-                <span v-if="seedCognitionMarks[seed.url]?.label === 'known'" class="seed-mark-done">已认识</span>
-              </div>
-              <button
-                type="button"
-                class="stream-go"
-                :disabled="seedBusy"
-                @click="$emit('analyzeSeed', seed)"
+          <details v-if="restSeeds.length" class="rest-seeds">
+            <summary class="seed-stream-head rest-seeds-summary">
+              <strong>其余种子（{{ restSeeds.length }}）</strong>
+              <span>展开浏览全量前沿；点「深入」送进事件分析台</span>
+            </summary>
+            <p v-if="seedNote" class="seed-note">{{ seedNote }}</p>
+            <ol class="stream">
+              <li
+                v-for="seed in restSeeds"
+                :key="seed.url"
+                class="stream-row"
+                :class="`tier-${seed.domain}`"
               >
-                {{ seedBusy && activeSeedUrl === seed.url ? '…' : '深入 →' }}
-              </button>
-            </li>
-          </ol>
+                <div class="stream-main">
+                  <a
+                    class="stream-title"
+                    :href="seed.url"
+                    :title="seed.domain_label"
+                    :aria-label="`${seed.title}，领域：${seed.domain_label}`"
+                    target="_blank"
+                    rel="noopener"
+                  >{{ seed.title }}</a>
+                  <p v-if="seed.what || seed.why" class="stream-note">
+                    {{ seed.what }}<template v-if="seed.why"> — {{ seed.why }}</template>
+                  </p>
+                </div>
+                <div class="stream-signals">
+                  <span v-if="seed.is_new" class="sig sig-new">新</span>
+                  <span v-else-if="seed.delta > 0" class="sig sig-up">↑{{ seed.delta }}</span>
+                </div>
+                <div class="seed-row-actions">
+                  <button
+                    type="button"
+                    :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === 'known' }]"
+                    title="我已经认识这件事了"
+                    @click="$emit('markSeedCognition', seed, 'known')"
+                  >
+                    我懂了
+                  </button>
+                  <button
+                    type="button"
+                    :class="['cognition-chip', { active: seedCognitionMarks[seed.url]?.label === 'doubtful' }]"
+                    title="存疑，先标记"
+                    @click="$emit('markSeedCognition', seed, 'doubtful')"
+                  >
+                    存疑
+                  </button>
+                  <button
+                    type="button"
+                    class="stream-go"
+                    :disabled="seedBusy"
+                    @click="$emit('analyzeSeed', seed)"
+                  >
+                    {{ seedBusy && activeSeedUrl === seed.url ? '…' : '深入' }}
+                  </button>
+                </div>
+              </li>
+            </ol>
+          </details>
         </div>
 
         <div class="analysis markdown-body discovery-report" v-html="safeReportHtml" />
       </template>
 
       <p v-else-if="loaded" class="muted">
-        还没有任何认知前沿日报。点上面的「🔄 立即分析」生成第一份（首次只建基线，明天起才有加速信号）。
+        还没有任何认知前沿日报。点上面的「立即分析」生成第一份（首次只建基线，明天起才有加速信号）。
       </p>
     </section>
   </section>
@@ -482,21 +498,9 @@ function reasonRank(reason: string) {
   gap: 10px;
   padding: 7px 12px;
   border-top: 1px solid #eef2f4;
-  border-left: 3px solid #cbd5db;
+  border-left: 4px solid #cbd5db;
   background: #fff;
   transition: background 0.12s;
-}
-
-.seed-mark-row {
-  flex: 0 0 auto;
-  margin-top: 0;
-  align-items: center;
-}
-
-.seed-mark-done {
-  font-size: 0.72rem;
-  color: #1e7e44;
-  font-weight: 700;
 }
 
 .stream-row:first-child {
@@ -507,20 +511,11 @@ function reasonRank(reason: string) {
   background: #f8fbfc;
 }
 
-/* 领域色轨：科技/财经/地缘一眼区分 */
+/* 领域色轨(行左边框)：科技/财经/地缘一眼区分, 悬停标题有 domain_label 提示 */
 .stream-row.tier-tech { border-left-color: #2f80ed; }
 .stream-row.tier-finance { border-left-color: #27ae60; }
 .stream-row.tier-geopolitics { border-left-color: #c0392b; }
 .stream-row.tier-science { border-left-color: #8e44ad; }
-
-.stream-tag {
-  flex-shrink: 0;
-  width: 64px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: #24515f;
-  line-height: 1.2;
-}
 
 .stream-main {
   flex: 1;
@@ -600,5 +595,38 @@ function reasonRank(reason: string) {
 .stream-go:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* 行尾动作组: 我懂了/存疑/深入 收在一起, 收紧但保持可见(触屏桌面一致, 不用 hover-only) */
+.seed-row-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 其余种子: 默认折叠的浏览区, 与顶部边界队列(要动作)分层 */
+.rest-seeds {
+  margin-top: 12px;
+  border-top: 1px solid #eef2f4;
+  padding-top: 10px;
+}
+
+.rest-seeds-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.rest-seeds-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rest-seeds-summary::before {
+  content: '▸ ';
+  color: #8a97a0;
+}
+
+.rest-seeds[open] .rest-seeds-summary::before {
+  content: '▾ ';
 }
 </style>
