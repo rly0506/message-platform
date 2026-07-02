@@ -4,29 +4,27 @@ This roadmap records the current product direction after the July 2026 readabili
 
 ## Current Priority
 
-Next feature iteration: cognition-boundary card enhancement in the intelligence desk.
+Next planned implementation candidate: academic filtering / priority-reading signals.
 
-Goal: make each frontier seed answer three questions before the user clicks anything:
+Goal: make the academic layer answer which papers are better first reads without pretending to rank journals formally.
 
-- why this was recommended to the user
-- which cognition profile area it touches or challenges
-- what the next useful action is
+Design reference: `spec/academic-filtering-design.md`.
 
 Implementation default:
 
-- reuse `DiscoverySeed.what`, `DiscoverySeed.why`, `CognitionProfileItem`, and the existing boundary reason logic
-- keep one-click `我懂了` and `存疑`
-- do not restore four-way classification forms or free-text reason boxes
-- do not add backend dependencies, vector storage, or graph infrastructure
+- derive signals from existing OpenAlex fields: venue, year, cited_by_count, concepts, internal citations
+- use neutral labels like `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`
+- do not claim `权威`, `顶刊`, or `中上等刊物` in V1
+- prefer frontend-derived labels before changing backend payloads
 
 ## Near-Term
 
-- Cognition-boundary cards: improve seed cards with recommendation reason, challenged knowledge area, and next action.
+- Academic filtering: turn the design into a small UI iteration in the Academic tab.
 - Local capability note: write a short product note explaining what the no-LLM path can and cannot do.
+- Cognition-boundary cards: continue tuning card wording only after real use.
 
 ## Mid-Term
 
-- Academic filtering: use existing OpenAlex venue, citation, and year fields to make academic results easier to scan and bias toward stronger papers.
 - Community readability: continue improving the sentiment layer as compact evidence cards, while keeping community sentiment clearly labeled as signal rather than fact.
 - Narrative convergence: keep the feature framed as topic-local similarity signals with evidence, not as a claim of manipulation.
 

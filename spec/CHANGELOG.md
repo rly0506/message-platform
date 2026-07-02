@@ -2,6 +2,21 @@
 
 ## 2026-07-02
 
+### Planning
+
+- Added `spec/academic-filtering-design.md`:
+  - frames academic filtering as neutral priority-reading signals, not formal journal ranking;
+  - uses existing OpenAlex fields (`venue`, `year`, `cited_by_count`, concepts, internal citations);
+  - defines V1 labels: `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`;
+  - keeps V1 frontend-derived and avoids backend/API changes unless later reuse needs them.
+- Updated `spec/roadmap.md` so academic filtering is the next planned implementation candidate.
+- Linked the design from `spec/README.md`.
+
+### Verification
+
+- `git diff --check` -> exit 0
+- `git status --short` -> only `spec/` documents changed before commit
+
 ### Added
 
 - Enhanced the cognition-boundary queue cards in the intelligence desk:

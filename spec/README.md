@@ -11,7 +11,8 @@ Read in this order:
 3. `spec/development.md` for development constraints.
 4. `spec/acceptance.md` before claiming work is complete.
 5. `spec/roadmap.md` to understand the current iteration direction.
-6. `spec/CHANGELOG.md` to understand recent spec changes.
+6. `spec/academic-filtering-design.md` when working on the academic layer filtering iteration.
+7. `spec/CHANGELOG.md` to understand recent spec changes.
 
 ## What Counts As Done
 
