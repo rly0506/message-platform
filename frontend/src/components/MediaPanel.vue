@@ -20,6 +20,13 @@ import type {
 type SelectOption = { key: string; label: string }
 type ArticleGroup = { category: string; items: Article[] }
 type StanceGroup = { name: string; count: number }
+type EventStructureNode = {
+  key: string
+  label: string
+  detail: string
+  evidence: string
+  items: string[]
+}
 
 const props = defineProps<{
   query: string
@@ -92,6 +99,86 @@ const substanceStats = computed(() => {
     }
   }
   return stats
+})
+
+const eventStructureNodes = computed<EventStructureNode[]>(() => {
+  const event = props.selectedEvent
+  if (!event) return []
+
+  const nodes: EventStructureNode[] = [
+    {
+      key: 'current',
+      label: '当前节点',
+      detail: event.summary_zh || '当前选中的事件节点。',
+      evidence: `${event.source_count || 0} 源 · ${event.article_count || 0} 篇`,
+      items: [event.title_zh],
+    },
+  ]
+
+  if (event.category || event.category_reason || event.selection_basis?.length) {
+    nodes.push({
+      key: 'trigger',
+      label: '触发/行动',
+      detail: event.category_reason || event.category || '由本地事件分类和入选依据推断。',
+      evidence: `${event.selection_basis?.length || 0} 条依据`,
+      items: event.selection_basis?.length ? event.selection_basis.slice(0, 3) : [event.category || '行动进展'],
+    })
+  }
+
+  const branchMap = new Map<string, { count: number; titles: string[] }>()
+  for (const source of event.source_matrix || []) {
+    const key = source.dominant_stance || source.dominant_category || '媒体分支'
+    const branch = branchMap.get(key) || { count: 0, titles: [] }
+    branch.count += source.article_count || 0
+    if (source.representative_title) branch.titles.push(source.representative_title)
+    branchMap.set(key, branch)
+  }
+  for (const [label, branch] of branchMap) {
+    nodes.push({
+      key: `branch-${label}`,
+      label,
+      detail: '来源矩阵里反复出现的报道分支。',
+      evidence: `${branch.count} 篇报道`,
+      items: branch.titles.slice(0, 3),
+    })
+  }
+
+  if (props.narrativeSignals.length) {
+    nodes.push({
+      key: 'narratives',
+      label: '相似说法',
+      detail: '同一主题内多源重复出现的说法，不代表真假或操控判定。',
+      evidence: `${props.narrativeSignals.length} 条信号`,
+      items: props.narrativeSignals.map((signal) => signal.claim).slice(0, 3),
+    })
+  }
+
+  if (props.entities.length || event.location_signals?.length) {
+    const entities = props.entities.length
+      ? props.entities.map((item) => item.term)
+      : (event.location_signals || []).map((item) => item.term)
+    nodes.push({
+      key: 'entities',
+      label: '关键对象',
+      detail: '报道中反复出现的人物、组织、地点或概念。',
+      evidence: `${entities.length} 个对象`,
+      items: entities.slice(0, 5),
+    })
+  }
+
+  if (props.stancePeriods.length) {
+    nodes.push({
+      key: 'stance',
+      label: '态度变化',
+      detail: '按时间聚合的主导立场变化。',
+      evidence: `${props.stancePeriods.length} 期`,
+      items: props.stancePeriods
+        .map((period) => `${period.period} · ${period.dominant_stance}`)
+        .slice(0, 3),
+    })
+  }
+
+  return nodes
 })
 
 const emit = defineEmits<{
@@ -435,6 +522,28 @@ function emotionClass(score: number) {
         </div>
       </div>
     </article>
+
+    <details v-if="eventStructureNodes.length" class="media-collapse event-structure-panel">
+      <summary>
+        <strong>事件结构树</strong>
+        <span>{{ eventStructureNodes.length }} 节点</span>
+      </summary>
+      <div class="collapse-body event-structure-tree">
+        <p class="event-structure-note">结构化阅读辅助，不代表因果判定。</p>
+        <ol>
+          <li v-for="node in eventStructureNodes" :key="node.key" class="event-structure-node">
+            <div class="event-structure-node-head">
+              <strong>{{ node.label }}</strong>
+              <span>{{ node.evidence }}</span>
+            </div>
+            <p>{{ node.detail }}</p>
+            <ul v-if="node.items.length">
+              <li v-for="item in node.items" :key="item">{{ item }}</li>
+            </ul>
+          </li>
+        </ol>
+      </div>
+    </details>
 
     <details class="media-collapse criteria-panel">
       <summary>

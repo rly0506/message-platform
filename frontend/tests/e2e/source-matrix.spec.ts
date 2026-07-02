@@ -483,11 +483,14 @@ test('keeps secondary media panels collapsed with count summaries by default', a
   ]
 
   for (const panel of collapsedPanels) {
-    const toggle = page.locator('details.media-collapse > summary').filter({ hasText: panel.name })
-    await expect(toggle).toBeVisible()
-    await expect(page.getByText(panel.hiddenText)).toBeHidden()
-    await toggle.click()
-    await expect(page.getByText(panel.hiddenText)).toBeVisible()
+    const details = page.locator('details.media-collapse').filter({
+      has: page.locator('summary').filter({ hasText: panel.name }),
+    })
+    const summary = details.locator('summary').first()
+    await expect(summary).toBeVisible()
+    await expect(details.getByText(panel.hiddenText)).toBeHidden()
+    await summary.click()
+    await expect(details.getByText(panel.hiddenText)).toBeVisible()
   }
 })
 
@@ -512,6 +515,33 @@ test('shows narrative convergence signals as evidence cards', async ({ page }) =
   await expect(card.getByText('Bloomberg')).toBeVisible()
   await expect(card.getByText('代表报道')).toBeVisible()
   await expect(card.getByText('AI capex boom reshapes market')).toBeVisible()
+})
+
+test('shows an event structure tree from existing media signals', async ({ page }) => {
+  await page.goto('/')
+
+  const toggle = page.locator('details.media-collapse > summary').filter({
+    hasText: /事件结构树.*\d+ 节点/,
+  })
+
+  await expect(toggle).toBeVisible()
+  await expect(page.getByText('结构化阅读辅助，不代表因果判定。')).toBeHidden()
+
+  await toggle.click()
+
+  const tree = page.locator('.event-structure-tree')
+  await expect(tree).toBeVisible()
+  await expect(tree.getByText('结构化阅读辅助，不代表因果判定。')).toBeVisible()
+  await expect(tree.getByText('当前节点')).toBeVisible()
+  await expect(tree.getByText('美国与伊朗冲突进入关键节点')).toBeVisible()
+  await expect(tree.getByText('触发/行动')).toBeVisible()
+  await expect(tree.locator('.event-structure-node-head').getByText('冲突/安全')).toBeVisible()
+  await expect(tree.locator('.event-structure-node-head').getByText('影响/后果')).toBeVisible()
+  await expect(tree.getByText('相似说法')).toBeVisible()
+  await expect(tree.getByText('ai capex boom')).toBeVisible()
+  await expect(tree.getByText('关键对象')).toBeVisible()
+  await expect(tree.locator('.event-structure-node').filter({ hasText: '关键对象' }).getByText('伊朗', { exact: true })).toBeVisible()
+  await expect(tree.getByText('态度变化')).toBeVisible()
 })
 
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {

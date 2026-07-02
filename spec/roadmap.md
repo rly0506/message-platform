@@ -4,9 +4,9 @@ This roadmap records the current product direction after the July 2026 readabili
 
 ## Current Priority
 
-Next planned design candidate: event tree / academic literature graph.
+Next planned implementation candidate: academic reading-map V1.
 
-Goal: design how the workbench can show topic structure before implementing another visual feature. The next code iteration should choose either text-first event tree V1 or academic reading-map V1, not both at once.
+Goal: complement the completed event structure tree with an academic reading structure that helps the user choose which papers to read first.
 
 Reference notes: `spec/event-tree-literature-graph-design.md` for the design boundary, `spec/local-capability-boundary.md` for no-LLM limits, and `spec/academic-filtering-design.md` for academic priority-reading signals.
 
@@ -14,12 +14,12 @@ Implementation default:
 
 - text-first before visual canvas
 - keep every branch or group linked back to evidence
-- avoid causal claims such as "root cause" unless evidence supports a weaker label
+- keep academic labels as reading signals, not authority claims
 - do not add a graph library, vector database, or backend dependency in V1
 
 ## Near-Term
 
-- Event tree V1 candidate: collapsed Media-tab structure showing root issue, triggers, branches, consequences, and unresolved questions from existing local analysis data.
+- Event tree V1: implemented as a collapsed Media-tab text structure from existing local analysis data; observe real-topic usefulness before adding visual graphing.
 - Academic reading-map V1 candidate: collapsed Academic-tab structure grouping foundational, recent, high-citation, school/concept, and low-information papers from existing OpenAlex fields.
 - Community readability: observe the platform coverage and sentiment sample cards in real use before adding another redesign pass.
 - Academic filtering: observe the new priority-reading signals in real use before adding sorting.

@@ -2,6 +2,25 @@
 
 ## 2026-07-02
 
+### Added
+
+- Implemented Media-tab event structure tree V1:
+  - added a default-collapsed `事件结构树` panel derived only from existing frontend payload data;
+  - groups the selected event into current node, trigger/action, source-matrix branches, narrative similarity, key objects, and stance changes when data exists;
+  - keeps a boundary note that the structure is a reading aid, not a causal judgement;
+  - no backend/API/DTO/LLM changes.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/MediaPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED before implementation, missing `事件结构树`
+- `cd frontend && npm run test:e2e -- source-matrix` -> `14 passed`
+
+### Planning
+
+- Updated `spec/roadmap.md` so the next implementation candidate is academic reading-map V1, while event tree V1 moves into observation/tuning.
+
 ### Planning
 
 - Added `spec/event-tree-literature-graph-design.md`:
