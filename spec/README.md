@@ -10,7 +10,8 @@ Read in this order:
 2. `spec/project.md` for the product goal and architecture.
 3. `spec/development.md` for development constraints.
 4. `spec/acceptance.md` before claiming work is complete.
-5. `spec/CHANGELOG.md` to understand recent spec changes.
+5. `spec/roadmap.md` to understand the current iteration direction.
+6. `spec/CHANGELOG.md` to understand recent spec changes.
 
 ## What Counts As Done
 

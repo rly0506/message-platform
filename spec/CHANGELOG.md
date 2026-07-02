@@ -2,6 +2,31 @@
 
 ## 2026-07-02
 
+### Planning
+
+- Added `spec/roadmap.md` to record the next iteration direction:
+  - near-term priority is cognition-boundary card enhancement in the intelligence desk;
+  - #5 event tree / academic literature graph is now captured as design-first work;
+  - #7 no-LLM local capability note is now captured as near-term documentation work;
+  - sentence-level perspective remains deferred unless upgraded into fulltext reading assistance or anti-manipulation annotation.
+- Linked `spec/roadmap.md` from `spec/README.md`.
+
+### Frontend收口
+
+- Committed `be5afaf` (`refactor(discovery): calm rest seed browsing`):
+  - rest seeds are default-collapsed;
+  - rest seeds exclude cognition-boundary queue items and already-known seeds;
+  - social-feed style emoji clutter was removed;
+  - e2e coverage now checks collapsed rest seeds and no duplicate boundary seeds.
+
+### Verification
+
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `4 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk LOW, 2 files, 3 symbols, 0 affected processes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
 ### Added
 
 - Reliability + discovery-layer round (human-approved "A" plan, Claude impl / GPT review):
