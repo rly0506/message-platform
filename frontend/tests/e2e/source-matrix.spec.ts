@@ -478,7 +478,7 @@ test('keeps secondary media panels collapsed with count summaries by default', a
     },
     {
       name: /叙事趋同信号.*1 条/,
-      hiddenText: 'Reuters、Financial Times、Bloomberg',
+      hiddenText: 'Bloomberg',
     },
   ]
 
@@ -489,6 +489,29 @@ test('keeps secondary media panels collapsed with count summaries by default', a
     await toggle.click()
     await expect(page.getByText(panel.hiddenText)).toBeVisible()
   }
+})
+
+test('shows narrative convergence signals as evidence cards', async ({ page }) => {
+  await page.goto('/')
+
+  const toggle = page.locator('details.media-collapse > summary').filter({
+    hasText: /叙事趋同信号.*1 条/,
+  })
+  await toggle.click()
+
+  await expect(page.getByText('主题内相似说法聚合，不代表事实真假或操控判定。')).toBeVisible()
+
+  const card = page.locator('.narrative-signal').filter({ hasText: 'ai capex boom' })
+  await expect(card).toBeVisible()
+  await expect(card.getByText('相似说法')).toBeVisible()
+  await expect(card.getByText('3 源')).toBeVisible()
+  await expect(card.getByText('3 篇')).toBeVisible()
+  await expect(card.getByText('2026/06/01 至 2026/06/03')).toBeVisible()
+  await expect(card.getByText('Reuters')).toBeVisible()
+  await expect(card.getByText('Financial Times')).toBeVisible()
+  await expect(card.getByText('Bloomberg')).toBeVisible()
+  await expect(card.getByText('代表报道')).toBeVisible()
+  await expect(card.getByText('AI capex boom reshapes market')).toBeVisible()
 })
 
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {

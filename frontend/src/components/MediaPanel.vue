@@ -117,6 +117,15 @@ function updateArticleCategoryFilter(event: Event) {
   emit('update:articleCategoryFilter', (event.target as HTMLSelectElement).value)
 }
 
+function narrativeTimeRange(signal: NarrativeSignal): string {
+  if (!signal.first_seen && !signal.last_seen) return '时间未明'
+  const first = props.fmtDate(signal.first_seen, false)
+  const last = props.fmtDate(signal.last_seen, false)
+  if (!signal.first_seen || first === last) return last
+  if (!signal.last_seen) return first
+  return `${first} 至 ${last}`
+}
+
 // 干货密度配色: 高=绿(干货), 中=灰, 低=橙(水文警示)
 function substanceClass(score: number) {
   if (score >= 70) return 'substance-high'
@@ -671,15 +680,27 @@ function emotionClass(score: number) {
       <span>{{ narrativeSignals.length }} 条</span>
     </summary>
     <div class="collapse-body">
+      <p class="narrative-note">主题内相似说法聚合，不代表事实真假或操控判定。</p>
       <article v-for="signal in narrativeSignals" :key="signal.claim" class="narrative-signal">
-        <div>
+        <div class="narrative-signal-head">
+          <span class="narrative-kind">相似说法</span>
           <strong>{{ signal.claim }}</strong>
-          <span>{{ signal.source_count }} 源 · {{ signal.article_count }} 篇</span>
         </div>
-        <p>{{ signal.sources.join('、') }}</p>
-        <ul>
-          <li v-for="title in signal.representative_titles" :key="title">{{ title }}</li>
-        </ul>
+        <div class="narrative-meta">
+          <span>{{ signal.source_count }} 源</span>
+          <span>{{ signal.article_count }} 篇</span>
+          <time>{{ narrativeTimeRange(signal) }}</time>
+        </div>
+        <div class="narrative-sources" aria-label="涉及来源">
+          <span v-for="source in signal.sources" :key="source">{{ source }}</span>
+        </div>
+        <div class="narrative-titles">
+          <b>代表报道</b>
+          <ul v-if="signal.representative_titles.length">
+            <li v-for="title in signal.representative_titles" :key="title">{{ title }}</li>
+          </ul>
+          <p v-else class="muted">暂无代表报道标题。</p>
+        </div>
       </article>
       <p v-if="!narrativeSignals.length" class="muted">当前主题内还没有足够多源重复说法。</p>
     </div>

@@ -4,6 +4,21 @@
 
 ### Added
 
+- Clarified the Media tab narrative-convergence signals:
+  - changed each topic-local signal into a compact evidence card with neutral `相似说法` labeling;
+  - shows source count, article count, time span, source chips, and representative titles from existing payload fields;
+  - keeps an explicit boundary note that convergence is a same-topic similarity signal, not a truth or manipulation judgement;
+  - no backend/API/LLM changes.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/MediaPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED before implementation, missing `相似说法`
+- `cd frontend && npm run test:e2e -- source-matrix` -> `12 passed`
+
+### Added
+
 - Added platform coverage status to the Sentiment tab:
   - shows attempted community platforms as compact chips: `有样本`, `暂不可用`, or `已尝试无样本`;
   - labels Hacker News as public API and Chinese OpenCLI platforms as requiring Chrome login state;

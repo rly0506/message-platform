@@ -1864,6 +1864,13 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.narrative-note {
+  margin: 0 0 10px;
+  color: #64737d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .narrative-signal {
   display: grid;
   gap: 8px;
@@ -1877,26 +1884,69 @@ button:disabled {
   margin-top: 10px;
 }
 
-.narrative-signal > div {
+.narrative-signal-head,
+.narrative-meta,
+.narrative-sources {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
 }
 
-.narrative-signal span {
+.narrative-signal-head {
+  justify-content: flex-start;
+}
+
+.narrative-kind {
+  padding: 3px 7px;
+  border: 1px solid #b9d2da;
+  border-radius: 999px;
+  background: #eef7f9;
+  color: #315e68;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.narrative-signal-head strong {
+  min-width: 0;
+}
+
+.narrative-meta span,
+.narrative-meta time {
   color: #6b7b84;
   font-size: 12px;
   font-weight: 800;
 }
 
-.narrative-signal p,
-.narrative-signal ul {
+.narrative-sources span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f3f6f7;
+  color: #53636e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.narrative-titles {
+  display: grid;
+  gap: 6px;
+}
+
+.narrative-titles b {
+  color: #374b55;
+  font-size: 12px;
+}
+
+.narrative-titles p,
+.narrative-titles ul {
   margin: 0;
   color: #53636e;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.narrative-titles ul {
+  padding-left: 18px;
 }
 
 .event-reason {
