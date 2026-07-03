@@ -1,6 +1,71 @@
 # Spec Changelog
 
+## 2026-07-03
+
+### Planning
+
+- Strengthened the next product direction around a **local-first intelligence desk**:
+  - historical `认知前沿日报` should be browsable instead of only showing the latest report;
+  - `认知时间树` should connect seeds/events across days with local evidence before any LLM explanation;
+  - no-LLM mode should support useful classification, collection, archive browsing, query/search, and evidence retrieval.
+- Updated `spec/roadmap.md`:
+  - current priority now names the local-first intelligence desk foundation;
+  - near-term work includes discovery archive V1, local cognition timeline tree V1, and local query/search direction;
+  - local capability boundary is treated as a product target, not only a warning label.
+- Updated `spec/discovery-archive-cognition-timeline-design.md`:
+  - added `Local-First Operating Mode`;
+  - added local-mode acceptance criteria;
+  - clarified that local branches use evidence such as domain, domain label, source/domain, URL reuse, keyword overlap, and repeated signals.
+- Updated `spec/local-capability-boundary.md`:
+  - reframed no-LLM mode as a usable local intelligence workbench;
+  - added local archive, classification, cross-day connection, query/filter, and partial-result preservation goals.
+
+### Verification
+
+- Documentation-only change.
+- `git diff --check` -> exit 0.
+
 ## 2026-07-02
+
+### Fixed
+
+- Clarified the Media-tab event structure tree semantics:
+  - renamed the misleading `触发/行动` node to `入选/归类依据`;
+  - keeps the node tied to event classification / selection basis, not causal triggers;
+  - adds an always-visible caveat that the node does not represent the event trigger cause;
+  - adds panel-level copy that nodes are parallel reading slices, not a timeline or causal chain;
+  - makes source-matrix branch details include the actual branch label.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/MediaPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/tests/e2e/source-matrix.spec.ts" -d upstream --include-tests` -> risk LOW, no upstream dependents
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED after test update, missing new boundary copy
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED after first implementation, node caveat only existed on fallback path
+- `cd frontend && npm run test:e2e -- source-matrix` -> `14 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `24 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk LOW, 5 files, 7 symbols, 0 affected processes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Planning
+
+- Added `spec/discovery-archive-cognition-timeline-design.md`:
+  - records the user request that `认知前沿日报` should expose older dates, not only the latest report;
+  - records the next design direction for a local-first `认知时间树` that links today's seeds/events with previous daily reports;
+  - keeps V1 read-only and archive-first, with optional LLM explanations deferred until local links are useful;
+  - requires every cross-day link to show evidence and avoid causal language.
+- Updated `spec/README.md` to link the new design note.
+- Updated `spec/roadmap.md`:
+  - added discovery archive V1 as a near-term candidate;
+  - added cross-day cognition timeline tree as design-first work;
+  - clarified that the immediate code candidate before new features is the event-structure semantic fix.
+
+### Verification
+
+- `git diff --check` -> exit 0
+- `git status --short` -> only `spec/` documents changed
 
 ### Added
 
