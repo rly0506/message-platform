@@ -2,6 +2,26 @@
 
 ## 2026-07-03
 
+### Added
+
+- Implemented discovery report archive V1:
+  - added read-only backend archive APIs for report list, report detail, and local timeline tree;
+  - kept `/api/discovery/latest` unchanged while reusing the same safe report reader;
+  - frontend now shows a compact archive selector in the intelligence desk;
+  - selecting an older report loads archived markdown/seeds without starting a new discovery job.
+- Implemented local cognition timeline tree V1:
+  - groups archived discovery seeds across reports by local domain evidence;
+  - only emits branches with evidence from at least two report run IDs;
+  - caps visible branch items and keeps at least two run IDs visible when a branch qualifies;
+  - labels the panel as local similarity, not a causal chain.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_discovery.py -q` -> `38 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `175 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `8 passed`
+
 ### Planning
 
 - Strengthened the next product direction around a **local-first intelligence desk**:

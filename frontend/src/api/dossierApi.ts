@@ -9,6 +9,8 @@ import type {
   CountryCompare,
   CrossSynthesis,
   DiscoveryReport,
+  DiscoveryReportMeta,
+  DiscoveryTimelineTree,
   LocalEventsPayload,
   SearchJob,
   SentimentLayer,
@@ -141,6 +143,21 @@ export async function fetchSearchJob(jobId: string) {
 
 export async function fetchLatestDiscovery() {
   const res = await axios.get<DiscoveryReport>(`${API_BASE}/api/discovery/latest`)
+  return res.data
+}
+
+export async function fetchDiscoveryReports() {
+  const res = await axios.get<DiscoveryReportMeta[]>(`${API_BASE}/api/discovery/reports`)
+  return res.data
+}
+
+export async function fetchDiscoveryReport(runId: string) {
+  const res = await axios.get<DiscoveryReport>(`${API_BASE}/api/discovery/reports/${runId}`)
+  return res.data
+}
+
+export async function fetchDiscoveryTimelineTree() {
+  const res = await axios.get<DiscoveryTimelineTree>(`${API_BASE}/api/discovery/timeline-tree`)
   return res.data
 }
 

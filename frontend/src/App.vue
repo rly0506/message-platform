@@ -62,10 +62,14 @@ const {
   message: discoveryMessage,
   activeJobId: discoveryJobId,
   steps: discoverySteps,
+  reports: discoveryReports,
+  selectedRunId: selectedDiscoveryRunId,
+  timelineTree: discoveryTimelineTree,
   safeReportHtml: discoverySafeHtml,
   hasReport: discoveryHasReport,
   seeds: discoverySeeds,
   loadLatest: loadLatestDiscovery,
+  loadReport: loadDiscoveryReport,
   runDiscovery,
   distill: distillSeedTopic,
   stepStatusText: discoveryStepStatusText,
@@ -538,6 +542,9 @@ function countryCoverageNote(country: CountryCompareCountry) {
       :message="discoveryMessage"
       :active-job-id="discoveryJobId"
       :steps="discoverySteps"
+      :discovery-reports="discoveryReports"
+      :selected-discovery-run-id="selectedDiscoveryRunId"
+      :discovery-timeline-tree="discoveryTimelineTree"
       :safe-report-html="discoverySafeHtml"
       :has-report="discoveryHasReport"
       :seeds="discoverySeeds"
@@ -550,6 +557,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
       :cognition-mark-error="cognitionMarkError"
       :step-status-text="discoveryStepStatusText"
       @run-discovery="runDiscovery"
+      @select-discovery-report="loadDiscoveryReport"
       @analyze-seed="analyzeSeed"
       @track-topic="trackTopic"
       @mark-seed-cognition="markSeedCognition"

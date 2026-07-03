@@ -296,6 +296,30 @@ def get_latest_discovery() -> dict[str, Any]:
     return report
 
 
+@app.get("/api/discovery/reports")
+def list_discovery_reports() -> list[dict[str, Any]]:
+    from app.discovery import run as discovery_run
+
+    return discovery_run.list_reports()
+
+
+@app.get("/api/discovery/reports/{run_id}")
+def get_discovery_report(run_id: str) -> dict[str, Any]:
+    from app.discovery import run as discovery_run
+
+    report = discovery_run.report_by_run_id(run_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Discovery report not found")
+    return report
+
+
+@app.get("/api/discovery/timeline-tree")
+def get_discovery_timeline_tree() -> dict[str, Any]:
+    from app.discovery import run as discovery_run
+
+    return discovery_run.timeline_tree()
+
+
 @app.post("/api/discovery/jobs")
 def create_discovery_job(annotate: bool = Query(default=True)) -> dict[str, Any]:
     return search_service.enqueue_discovery_job(annotate=annotate)

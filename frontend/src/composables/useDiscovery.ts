@@ -2,10 +2,13 @@ import { computed, ref } from 'vue'
 import {
   createDiscoveryJob,
   distillSeed,
+  fetchDiscoveryReport,
+  fetchDiscoveryReports,
+  fetchDiscoveryTimelineTree,
   fetchLatestDiscovery,
   isNetworkError,
 } from '../api/dossierApi'
-import type { DiscoveryReport, DiscoveryResult, DiscoverySeed, SearchJob } from '../types/dossier'
+import type { DiscoveryReport, DiscoveryReportMeta, DiscoveryResult, DiscoverySeed, DiscoveryTimelineTree, SearchJob } from '../types/dossier'
 import { renderMarkdown } from '../utils/markdown'
 import { stepStatusText, waitForJob, type StepState } from './jobPolling'
 import { readableError } from './useTopicData'
@@ -19,6 +22,9 @@ export function useDiscovery() {
   const message = ref('')
   const activeJobId = ref('')
   const steps = ref<StepState[]>([])
+  const reports = ref<DiscoveryReportMeta[]>([])
+  const selectedRunId = ref('')
+  const timelineTree = ref<DiscoveryTimelineTree>({ branches: [] })
 
   const safeReportHtml = computed(() => renderMarkdown(report.value?.markdown))
   const hasReport = computed(() => Boolean(report.value?.markdown?.trim()))
@@ -29,6 +35,7 @@ export function useDiscovery() {
     error.value = ''
     try {
       report.value = await fetchLatestDiscovery()
+      selectedRunId.value = report.value.run_id
     } catch (err) {
       // 404 = 还没有任何报告，是正常初始态，不当错误。网络错误才提示。
       if (isNetworkError(err)) {
@@ -37,8 +44,40 @@ export function useDiscovery() {
         report.value = null
       }
     } finally {
+      await Promise.all([loadReports(), loadTimelineTree()])
       loading.value = false
       loaded.value = true
+    }
+  }
+
+  async function loadReports() {
+    try {
+      reports.value = await fetchDiscoveryReports()
+    } catch {
+      reports.value = []
+    }
+  }
+
+  async function loadReport(runId: string) {
+    if (!runId || runId === selectedRunId.value) return
+    loading.value = true
+    error.value = ''
+    try {
+      report.value = await fetchDiscoveryReport(runId)
+      selectedRunId.value = report.value.run_id
+    } catch (err) {
+      error.value = readableError(err)
+    } finally {
+      loading.value = false
+      loaded.value = true
+    }
+  }
+
+  async function loadTimelineTree() {
+    try {
+      timelineTree.value = await fetchDiscoveryTimelineTree()
+    } catch {
+      timelineTree.value = { branches: [] }
     }
   }
 
@@ -79,6 +118,8 @@ export function useDiscovery() {
         path: job.result.path,
         seeds: job.result.seeds || [],
       }
+      selectedRunId.value = job.result.run_id
+      await Promise.all([loadReports(), loadTimelineTree()])
       message.value = `认知前沿日报已生成：${job.result.run_id}`
     } else {
       // 结果形状意外时回退到读最新文件，保证显示不空。
@@ -105,10 +146,16 @@ export function useDiscovery() {
     message,
     activeJobId,
     steps,
+    reports,
+    selectedRunId,
+    timelineTree,
     seeds,
     safeReportHtml,
     hasReport,
     loadLatest,
+    loadReports,
+    loadReport,
+    loadTimelineTree,
     runDiscovery,
     distill,
     stepStatusText,

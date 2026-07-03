@@ -5,6 +5,7 @@
 - 第二次运行 -> 同一 item 的 signal 上涨能被算成 delta, 全新 item 被标 is_new。
 - 分类: 低基数在涨 -> seed; 信号已很大 -> mainstream; 低信号没涨 -> noise。
 """
+import json
 import os
 import tempfile
 
@@ -33,6 +34,24 @@ def _hn(ext_id, title, points, comments=0):
     return DiscoveryItem(source="hackernews", external_id=ext_id, title=title,
                          url=f"https://news.ycombinator.com/item?id={ext_id}",
                          signal=points, engagement=comments)
+
+
+def _write_report_pair(directory, run_id, markdown, seeds=None, sidecar=True):
+    safe = run_id.replace(":", "").replace("-", "")
+    md_path = os.path.join(directory, f"frontier-{safe}.md")
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(markdown)
+    if sidecar:
+        with open(md_path[:-3] + ".json", "w", encoding="utf-8") as f:
+            json.dump(seeds or [], f, ensure_ascii=False)
+    return md_path
+
+
+@pytest.fixture()
+def reports_dir(monkeypatch, tmp_path):
+    from app.discovery import run
+    monkeypatch.setattr(run, "REPORTS_DIR", str(tmp_path))
+    return tmp_path
 
 
 def test_first_run_is_baseline_only(store):
@@ -486,3 +505,256 @@ def test_collect_topic_extra_queries_not_persisted(monkeypatch):
             session.delete(topic)
             session.commit()
 
+
+def test_discovery_report_archive_lists_reports_newest_first(reports_dir):
+    from app.discovery import run
+
+    _write_report_pair(
+        str(reports_dir),
+        "2026-06-29T01:00:00Z",
+        "# old report",
+        seeds=[{"title": "Old AI seed", "domain": "ai"}],
+    )
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T13:57:34Z",
+        "# latest report",
+        seeds=[
+            {"title": "Latest energy seed", "domain": "energy"},
+            {"title": "Second energy seed", "domain": "energy"},
+        ],
+    )
+    _write_report_pair(
+        str(reports_dir),
+        "2026-06-30T04:30:06Z",
+        "# middle report",
+        sidecar=False,
+    )
+
+    reports = run.list_reports()
+
+    assert [item["run_id"] for item in reports] == [
+        "20260702T135734Z",
+        "20260630T043006Z",
+        "20260629T010000Z",
+    ]
+    assert reports[0]["created_at"] == "20260702T135734Z"
+    assert reports[0]["seed_count"] == 2
+    assert reports[0]["has_sidecar"] is True
+    assert reports[1]["seed_count"] == 0
+    assert reports[1]["has_sidecar"] is False
+
+
+def test_report_by_run_id_reads_markdown_and_sidecar(reports_dir):
+    from app.discovery import run
+
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T13:57:34Z",
+        "# archived report\nold content",
+        seeds=[{"title": "Energy seed", "url": "https://example.com/e", "domain": "energy"}],
+    )
+
+    report_payload = run.report_by_run_id("20260702T135734Z")
+
+    assert report_payload is not None
+    assert "old content" in report_payload["markdown"]
+    assert report_payload["run_id"] == "20260702T135734Z"
+    assert report_payload["seeds"][0]["title"] == "Energy seed"
+
+
+def test_report_by_run_id_missing_or_broken_sidecar_degrades_to_empty_seeds(reports_dir):
+    from app.discovery import run
+
+    _write_report_pair(str(reports_dir), "2026-07-01T00:00:00Z", "# no sidecar", sidecar=False)
+    broken = _write_report_pair(str(reports_dir), "2026-07-02T00:00:00Z", "# broken sidecar", seeds=[])
+    with open(broken[:-3] + ".json", "w", encoding="utf-8") as f:
+        f.write("{broken json")
+
+    assert run.report_by_run_id("20260701T000000Z")["seeds"] == []
+    assert run.report_by_run_id("20260702T000000Z")["seeds"] == []
+
+
+def test_report_by_run_id_rejects_path_traversal(reports_dir):
+    from app.discovery import run
+
+    _write_report_pair(str(reports_dir), "2026-07-02T13:57:34Z", "# safe")
+
+    assert run.report_by_run_id("../frontier-20260702T135734Z") is None
+    assert run.report_by_run_id("20260702T135734Z/../../x") is None
+    assert run.report_by_run_id("not-a-run-id") is None
+
+
+def test_discovery_archive_api_routes_return_reports(reports_dir):
+    from fastapi.testclient import TestClient
+
+    from app import api
+
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T13:57:34Z",
+        "# api latest",
+        seeds=[{"title": "API seed", "url": "https://example.com/api", "domain": "energy"}],
+    )
+    client = TestClient(api.app)
+
+    listing = client.get("/api/discovery/reports")
+    detail = client.get("/api/discovery/reports/20260702T135734Z")
+
+    assert listing.status_code == 200
+    assert listing.json()[0]["run_id"] == "20260702T135734Z"
+    assert listing.json()[0]["seed_count"] == 1
+    assert detail.status_code == 200
+    assert detail.json()["markdown"] == "# api latest"
+    assert detail.json()["seeds"][0]["title"] == "API seed"
+
+
+def test_discovery_archive_api_rejects_invalid_run_id(reports_dir):
+    from fastapi.testclient import TestClient
+
+    from app import api
+
+    _write_report_pair(str(reports_dir), "2026-07-02T13:57:34Z", "# safe")
+
+    response = TestClient(api.app).get("/api/discovery/reports/..%2Ffrontier-20260702T135734Z")
+
+    assert response.status_code == 404
+
+
+def test_discovery_timeline_tree_api_route(reports_dir):
+    from fastapi.testclient import TestClient
+
+    from app import api
+
+    _write_report_pair(
+        str(reports_dir),
+        "2026-06-30T04:30:06Z",
+        "# d1",
+        seeds=[{"title": "Grid one", "url": "https://example.com/1", "domain": "energy", "domain_label": "Energy"}],
+    )
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T13:57:34Z",
+        "# d2",
+        seeds=[{"title": "Grid two", "url": "https://example.com/2", "domain": "energy", "domain_label": "Energy"}],
+    )
+
+    response = TestClient(api.app).get("/api/discovery/timeline-tree")
+
+    assert response.status_code == 200
+    assert response.json()["branches"][0]["branch_key"] == "energy"
+
+
+def test_timeline_tree_groups_cross_day_seed_domains(reports_dir):
+    from app.discovery import run
+
+    _write_report_pair(
+        str(reports_dir),
+        "2026-06-29T01:00:00Z",
+        "# d1",
+        seeds=[
+            {
+                "title": "CPO capacity bottleneck",
+                "url": "https://example.com/ai-1",
+                "domain": "ai_infra",
+                "domain_label": "AI infrastructure",
+                "signal": 81,
+                "delta": 22,
+                "why": "mechanism gap",
+            }
+        ],
+    )
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T13:57:34Z",
+        "# d2",
+        seeds=[
+            {
+                "title": "Model serving cost shift",
+                "url": "https://example.com/ai-2",
+                "domain": "ai_infra",
+                "domain_label": "AI infrastructure",
+                "signal": 77,
+                "delta": 18,
+                "why": "same local domain",
+            },
+            {
+                "title": "Solo biotech seed",
+                "url": "https://example.com/bio",
+                "domain": "biotech",
+                "domain_label": "Biotech",
+                "signal": 66,
+                "delta": 6,
+                "why": "single-day appearance",
+            },
+        ],
+    )
+
+    tree = run.timeline_tree()
+
+    assert len(tree["branches"]) == 1
+    branch = tree["branches"][0]
+    assert branch["branch_key"] == "ai_infra"
+    assert branch["label"] == "AI infrastructure"
+    assert branch["connection_kind"] == "local_similarity"
+    assert branch["evidence_basis"] in {
+        "\u540c\u9886\u57df\u8fde\u7eed\u51fa\u73b0",
+        "\u5171\u4eab\u9886\u57df\u6807\u7b7e",
+        "\u672c\u5730\u76f8\u4f3c\u4fe1\u53f7",
+    }
+    assert {item["run_id"] for item in branch["items"]} == {"20260629T010000Z", "20260702T135734Z"}
+    serialized = json.dumps(tree, ensure_ascii=False)
+    for forbidden in ("\u5bfc\u81f4", "\u6839\u56e0", "\u8bc1\u660e", "\u56e0\u679c"):
+        assert forbidden not in serialized
+
+
+def test_timeline_tree_does_not_force_low_sample_branches(reports_dir):
+    from app.discovery import run
+
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T13:57:34Z",
+        "# d1",
+        seeds=[{"title": "Only seed", "url": "https://example.com/one", "domain": "energy", "domain_label": "Energy"}],
+    )
+
+    assert run.timeline_tree() == {"branches": []}
+
+
+def test_timeline_tree_items_keep_cross_day_evidence_visible(reports_dir):
+    from app.discovery import run
+
+    noisy_day_one = [
+        {
+            "title": f"Day one grid note {index}",
+            "url": f"https://example.com/day-one-{index}",
+            "domain": "energy",
+            "domain_label": "Energy",
+            "signal": 100 - index,
+            "delta": 10,
+            "why": "same local domain",
+        }
+        for index in range(8)
+    ]
+    _write_report_pair(str(reports_dir), "2026-07-01T00:00:00Z", "# d1", seeds=noisy_day_one)
+    _write_report_pair(
+        str(reports_dir),
+        "2026-07-02T00:00:00Z",
+        "# d2",
+        seeds=[
+            {
+                "title": "Day two grid note",
+                "url": "https://example.com/day-two",
+                "domain": "energy",
+                "domain_label": "Energy",
+                "signal": 50,
+                "delta": 8,
+                "why": "same local domain",
+            }
+        ],
+    )
+
+    branch = run.timeline_tree()["branches"][0]
+
+    assert len(branch["items"]) <= 5
+    assert {item["run_id"] for item in branch["items"]} == {"20260701T000000Z", "20260702T000000Z"}

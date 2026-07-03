@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CognitionLabel, CognitionMark, CognitionProfileItem, DiscoveryReport, DiscoverySeed, TopicSummary } from '../types/dossier'
+import type {
+  CognitionLabel,
+  CognitionMark,
+  CognitionProfileItem,
+  DiscoveryReport,
+  DiscoveryReportMeta,
+  DiscoverySeed,
+  DiscoveryTimelineItem,
+  DiscoveryTimelineTree,
+  TopicSummary,
+} from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
 type BoundarySeed = { seed: DiscoverySeed; reason: string; profile: CognitionProfileItem | null }
@@ -14,6 +24,9 @@ const props = defineProps<{
   message: string
   activeJobId: string
   steps: StepState[]
+  discoveryReports: DiscoveryReportMeta[]
+  selectedDiscoveryRunId: string
+  discoveryTimelineTree: DiscoveryTimelineTree
   safeReportHtml: string
   hasReport: boolean
   seeds: DiscoverySeed[]
@@ -27,11 +40,12 @@ const props = defineProps<{
   stepStatusText: (status: string) => string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   runDiscovery: []
   analyzeSeed: [seed: DiscoverySeed]
   trackTopic: [topicId: number]
   markSeedCognition: [seed: DiscoverySeed, label: CognitionLabel, note?: string]
+  selectDiscoveryReport: [runId: string]
 }>()
 
 const boundaryQueue = computed<BoundarySeed[]>(() => {
@@ -52,6 +66,10 @@ const restSeeds = computed(() => {
   )
 })
 
+const latestRunId = computed(() => props.discoveryReports[0]?.run_id || props.report?.run_id || '')
+const isHistoricalReport = computed(() => Boolean(props.report?.run_id && latestRunId.value && props.report.run_id !== latestRunId.value))
+const timelineBranches = computed(() => props.discoveryTimelineTree?.branches || [])
+
 function fmtRunId(runId: string | undefined) {
   if (!runId) return ''
   // 形如 20260628T123000Z 或 2026-06-28T12:30:00Z，统一抽出日期+时间显示
@@ -59,6 +77,28 @@ function fmtRunId(runId: string | undefined) {
   const m = compact.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/)
   if (!m) return runId
   return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} UTC`
+}
+
+function selectReport(event: Event) {
+  const runId = (event.target as HTMLSelectElement).value
+  if (runId) {
+    emit('selectDiscoveryReport', runId)
+  }
+}
+
+function seedFromTimelineItem(item: DiscoveryTimelineItem): DiscoverySeed {
+  return {
+    title: item.title,
+    url: item.url,
+    domain: item.domain,
+    domain_label: item.domain_label,
+    signal: item.signal,
+    delta: item.delta,
+    is_new: false,
+    what: item.title,
+    why: item.why,
+    still_niche: true,
+  }
 }
 
 // 「正在追踪」: 把 latest_published_at 转成"最近变化"的相对天数, 让一眼看出哪个专题在动。
@@ -181,7 +221,56 @@ function reasonRank(reason: string) {
       <p v-if="cognitionMarkError" class="country-compare-error">{{ cognitionMarkError }}</p>
 
       <template v-else-if="hasReport">
-        <p v-if="report?.run_id" class="discovery-meta">报告时间：{{ fmtRunId(report.run_id) }}</p>
+        <div v-if="report?.run_id" class="discovery-archive-bar">
+          <p class="discovery-meta">
+            报告时间：{{ fmtRunId(report.run_id) }}
+            <span v-if="isHistoricalReport" class="discovery-report-kind">历史日报</span>
+          </p>
+          <label v-if="discoveryReports.length" class="discovery-archive-selector">
+            <span>历史日报</span>
+            <select
+              aria-label="Discovery report archive"
+              :value="selectedDiscoveryRunId || report.run_id"
+              @change="selectReport"
+            >
+              <option v-for="item in discoveryReports" :key="item.run_id" :value="item.run_id">
+                {{ fmtRunId(item.run_id) }} · {{ item.seed_count }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <details class="cognition-timeline-tree">
+          <summary class="seed-stream-head timeline-tree-summary">
+            <strong>认知时间树</strong>
+            <span>本地跨日报信号</span>
+          </summary>
+          <p class="timeline-tree-note">本地相似信号，不代表因果链。</p>
+          <ol v-if="timelineBranches.length" class="timeline-tree-branches">
+            <li v-for="branch in timelineBranches.slice(0, 5)" :key="branch.branch_key">
+              <div class="timeline-branch-head">
+                <strong>{{ branch.label }}</strong>
+                <span>{{ branch.evidence_basis }}</span>
+              </div>
+              <ol class="timeline-tree-items">
+                <li v-for="item in branch.items" :key="`${branch.branch_key}-${item.run_id}-${item.url}`">
+                  <span class="timeline-run">{{ fmtRunId(item.run_id) }}</span>
+                  <a :href="item.url" target="_blank" rel="noopener">{{ item.title }}</a>
+                  <small v-if="item.why">{{ item.why }}</small>
+                  <button
+                    type="button"
+                    class="timeline-go"
+                    :disabled="seedBusy"
+                    @click="$emit('analyzeSeed', seedFromTimelineItem(item))"
+                  >
+                    深入
+                  </button>
+                </li>
+              </ol>
+            </li>
+          </ol>
+          <p v-else class="timeline-empty">至少需要两天日报才能生成认知时间树。</p>
+        </details>
 
         <div v-if="seeds.length" class="seed-stream">
           <div class="boundary-queue">
@@ -316,9 +405,48 @@ function reasonRank(reason: string) {
 
 <style scoped>
 .discovery-meta {
-  margin: 0 0 0.75rem;
+  margin: 0;
   font-size: 0.85rem;
   color: var(--muted, #6b7280);
+}
+
+.discovery-archive-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 0.75rem;
+}
+
+.discovery-report-kind {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #cbd5db;
+  background: #f8fbfc;
+  color: #155a6e;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.discovery-archive-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #53636e;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.discovery-archive-selector select {
+  max-width: min(70vw, 260px);
+  padding: 4px 8px;
+  border: 1px solid #cbd5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #2c3a44;
+  font: inherit;
 }
 
 /* 正在追踪: 已建专题的鸟瞰, 点一个跳进分析台 */
@@ -409,6 +537,114 @@ function reasonRank(reason: string) {
 
 .seed-stream {
   margin: 0 0 1.25rem;
+}
+
+.cognition-timeline-tree {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0e4;
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+
+.timeline-tree-summary {
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.cognition-timeline-tree[open] .timeline-tree-summary {
+  margin-bottom: 8px;
+}
+
+.timeline-tree-note,
+.timeline-empty {
+  margin: 0 0 8px;
+  color: #6b7280;
+  font-size: 0.78rem;
+}
+
+.timeline-tree-branches,
+.timeline-tree-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-tree-branches {
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-tree-branches > li {
+  padding: 8px 10px;
+  border: 1px solid #e2eaed;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.timeline-branch-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.timeline-branch-head strong {
+  color: #155a6e;
+}
+
+.timeline-branch-head span {
+  color: #6b7280;
+  font-size: 0.76rem;
+}
+
+.timeline-tree-items {
+  display: grid;
+  gap: 5px;
+}
+
+.timeline-tree-items li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #53636e;
+  font-size: 0.78rem;
+}
+
+.timeline-tree-items a {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: #1c2329;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.timeline-tree-items a:hover {
+  text-decoration: underline;
+}
+
+.timeline-tree-items small {
+  color: #71808a;
+}
+
+.timeline-run {
+  flex-shrink: 0;
+  color: #8a97a0;
+  font-size: 0.72rem;
+}
+
+.timeline-go {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid #8fb8c8;
+  border-radius: 999px;
+  background: #eef7f9;
+  color: #155a6e;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .boundary-queue {

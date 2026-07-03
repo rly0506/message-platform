@@ -476,6 +476,36 @@ export type DiscoveryReport = {
   seeds?: DiscoverySeed[]
 }
 
+export type DiscoveryReportMeta = {
+  run_id: string
+  created_at: string
+  seed_count: number
+  has_sidecar: boolean
+}
+
+export type DiscoveryTimelineItem = {
+  run_id: string
+  title: string
+  url: string
+  domain: string
+  domain_label: string
+  signal: number
+  delta: number
+  why: string
+}
+
+export type DiscoveryTimelineBranch = {
+  branch_key: string
+  label: string
+  evidence_basis: string
+  connection_kind: 'local_similarity'
+  items: DiscoveryTimelineItem[]
+}
+
+export type DiscoveryTimelineTree = {
+  branches: DiscoveryTimelineBranch[]
+}
+
 export type SearchJob = {
   id: string
   query: string
