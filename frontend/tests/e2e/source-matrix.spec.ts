@@ -525,16 +525,18 @@ test('shows an event structure tree from existing media signals', async ({ page 
   })
 
   await expect(toggle).toBeVisible()
-  await expect(page.getByText('结构化阅读辅助，不代表因果判定。')).toBeHidden()
+  await expect(page.getByText('结构化阅读辅助，不代表因果判定。节点为并列阅读切片，非时间线或因果链。')).toBeHidden()
 
   await toggle.click()
 
   const tree = page.locator('.event-structure-tree')
   await expect(tree).toBeVisible()
-  await expect(tree.getByText('结构化阅读辅助，不代表因果判定。')).toBeVisible()
+  await expect(tree.getByText('结构化阅读辅助，不代表因果判定。节点为并列阅读切片，非时间线或因果链。')).toBeVisible()
   await expect(tree.getByText('当前节点')).toBeVisible()
   await expect(tree.getByText('美国与伊朗冲突进入关键节点')).toBeVisible()
-  await expect(tree.getByText('触发/行动')).toBeVisible()
+  await expect(tree.getByText('入选/归类依据')).toBeVisible()
+  await expect(tree.getByText('触发/行动')).toHaveCount(0)
+  await expect(tree.getByText('不代表事件触发原因')).toBeVisible()
   await expect(tree.locator('.event-structure-node-head').getByText('冲突/安全')).toBeVisible()
   await expect(tree.locator('.event-structure-node-head').getByText('影响/后果')).toBeVisible()
   await expect(tree.getByText('相似说法')).toBeVisible()

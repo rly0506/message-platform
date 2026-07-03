@@ -118,10 +118,10 @@ const eventStructureNodes = computed<EventStructureNode[]>(() => {
   if (event.category || event.category_reason || event.selection_basis?.length) {
     nodes.push({
       key: 'trigger',
-      label: '触发/行动',
-      detail: event.category_reason || event.category || '由本地事件分类和入选依据推断。',
+      label: '入选/归类依据',
+      detail: `${event.category_reason || event.category || '由本地事件分类和入选依据派生'}，不代表事件触发原因。`,
       evidence: `${event.selection_basis?.length || 0} 条依据`,
-      items: event.selection_basis?.length ? event.selection_basis.slice(0, 3) : [event.category || '行动进展'],
+      items: event.selection_basis?.length ? event.selection_basis.slice(0, 3) : [event.category || '本地归类'],
     })
   }
 
@@ -137,7 +137,7 @@ const eventStructureNodes = computed<EventStructureNode[]>(() => {
     nodes.push({
       key: `branch-${label}`,
       label,
-      detail: '来源矩阵里反复出现的报道分支。',
+      detail: `来源矩阵中归入「${label}」的报道分支。`,
       evidence: `${branch.count} 篇报道`,
       items: branch.titles.slice(0, 3),
     })
@@ -529,7 +529,7 @@ function emotionClass(score: number) {
         <span>{{ eventStructureNodes.length }} 节点</span>
       </summary>
       <div class="collapse-body event-structure-tree">
-        <p class="event-structure-note">结构化阅读辅助，不代表因果判定。</p>
+        <p class="event-structure-note">结构化阅读辅助，不代表因果判定。节点为并列阅读切片，非时间线或因果链。</p>
         <ol>
           <li v-for="node in eventStructureNodes" :key="node.key" class="event-structure-node">
             <div class="event-structure-node-head">
