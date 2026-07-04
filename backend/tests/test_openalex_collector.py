@@ -18,6 +18,7 @@ def test_normalize_work_extracts_confirmed_openalex_fields():
     work = {
         "id": "https://openalex.org/W1",
         "title": "The Iran Nuclear Deal",
+        "doi": "https://doi.org/10.123/example",
         "publication_year": 2015,
         "cited_by_count": 42,
         "referenced_works": ["https://openalex.org/W2"],
@@ -45,6 +46,8 @@ def test_normalize_work_extracts_confirmed_openalex_fields():
     assert normalized["cited_by_count"] == 42
     assert normalized["authors"] == ["Researcher A", "Researcher B"]
     assert normalized["venue"] == "Journal of Security Studies"
+    assert normalized["doi"] == "https://doi.org/10.123/example"
+    assert normalized["openalex_url"] == "https://openalex.org/W1"
     assert normalized["url"] == "https://doi.org/10.123/example"
     assert normalized["concepts"][0]["name"] == "International relations"
     assert normalized["referenced_works"] == ["https://openalex.org/W2"]

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SentimentLayer, SentimentPost, TopicSummary } from '../types/dossier'
+import type { OpenCliDiagnostics, SentimentLayer, SentimentPost, SentimentTimelineItem, TopicSummary } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
 type SentimentPlatformGroup = { platform: string; label: string; posts: SentimentPost[] }
@@ -17,6 +17,7 @@ const props = defineProps<{
   sentimentCommentItems: SentimentPost[]
   sentimentPlatformLabels: string
   sentimentLayer: SentimentLayer | null
+  openCliDiagnostics: OpenCliDiagnostics | null
   selectedTopic: TopicSummary
   sentimentPosts: SentimentPost[]
   safeSentimentSummaryHtml: string
@@ -51,6 +52,8 @@ const platformCoverage = computed(() => {
   }))
 })
 
+const sentimentTimeline = computed(() => props.sentimentLayer?.timeline || [])
+
 function platformRank(platform: string) {
   const ranks: Record<string, number> = {
     reddit: 1,
@@ -60,6 +63,10 @@ function platformRank(platform: string) {
     xueqiu: 5,
   }
   return ranks[platform] || 99
+}
+
+function timelineConfidence(item: SentimentTimelineItem) {
+  return `${Math.round((item.confidence || 0) * 100)}%`
 }
 </script>
 
@@ -80,6 +87,13 @@ function platformRank(platform: string) {
         <strong>民间情绪 · 最该被怀疑的一角</strong>
         <span>Reddit / Hacker News 样本以情绪、站队和看热闹为主；高赞≠事实，只能作为待核实线索。</span>
         <span class="sentiment-prereq">⚠️ 中文平台(B站/小红书/雪球)经本机浏览器采集：点击前请确认 Chrome 已打开并登录这些平台。Hacker News 与已配 API 的 Reddit 不需要浏览器。</span>
+      </div>
+      <div v-if="openCliDiagnostics && !openCliDiagnostics.available" class="opencli-diagnostics">
+        <strong>OpenCLI 未连接</strong>
+        <span>当前命令：{{ openCliDiagnostics.configured_command }}</span>
+        <span v-if="openCliDiagnostics.recommended_command">建议设置：{{ openCliDiagnostics.recommended_command }}</span>
+        <span>{{ openCliDiagnostics.message }}</span>
+        <span>Chrome 已登录仍报错时，先修 OPENCLI_COMMAND；后端能启动 OpenCLI 后，再检查浏览器和平台登录态。</span>
       </div>
 
       <p v-if="activeSentimentJobId" class="search-message">民间情绪任务：{{ activeSentimentJobId.slice(0, 8) }}</p>
@@ -151,6 +165,41 @@ function platformRank(platform: string) {
 
         <div v-if="safeSentimentSummaryHtml" class="analysis markdown-body academic-summary sentiment-summary" v-html="safeSentimentSummaryHtml" />
         <p v-else class="muted">暂无民间情绪摘要。</p>
+
+        <section v-if="sentimentTimeline.length" class="academic-section sentiment-timeline">
+          <div class="evidence-header">
+            <strong>舆论变化时间线</strong>
+            <span>样本趋势，非事实时间线</span>
+          </div>
+          <div class="sentiment-timeline-list">
+            <article
+              v-for="item in sentimentTimeline"
+              :key="`${item.time_bucket}-${item.platform}-${item.dominant_frame}`"
+              class="sentiment-timeline-item"
+            >
+              <div class="sentiment-timeline-head">
+                <time>{{ item.time_bucket }}</time>
+                <b>{{ sentimentPlatformLabel(item.platform) }}</b>
+                <span>{{ item.sample_count }} 条样本</span>
+                <span v-if="item.sample_count < 3" class="sentiment-low-sample">小样本线索</span>
+                <em>置信度 {{ timelineConfidence(item) }}</em>
+              </div>
+              <h3>{{ item.dominant_frame || '未识别叙事框架' }}</h3>
+              <p>{{ item.sentiment_label || 'unknown' }}</p>
+              <div v-if="item.representative_posts?.length" class="sentiment-timeline-samples">
+                <a
+                  v-for="post in item.representative_posts.slice(0, 3)"
+                  :key="`${post.platform}-${post.id}-${post.url}`"
+                  :href="post.url"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {{ post.title || sentimentSnippet(post) || '未命名样本' }}
+                </a>
+              </div>
+            </article>
+          </div>
+        </section>
 
         <div v-if="sentimentPosts.length" class="academic-section">
           <div class="evidence-header">

@@ -37,7 +37,7 @@ export function useEventWorkbench(options: UseEventWorkbenchOptions) {
   const query = ref('')
   const selectedEventIndex = ref(0)
   const activeWorkspaceTab = ref<'media' | 'academic' | 'sentiment' | 'cross' | 'llm'>('media')
-  const expandedTimelineIndex = ref<number | null>(null)
+  const expandedTimelineIndex = ref<number | null>(0)
   const sourceTierFilter = ref('all')
   const sourceMatrixSort = ref('tier')
   const articleCategoryFilter = ref('all')
@@ -191,7 +191,10 @@ export function useEventWorkbench(options: UseEventWorkbenchOptions) {
       selectedEventIndex.value = 0
     }
     if (expandedTimelineIndex.value !== null && expandedTimelineIndex.value >= majorEvents.value.length) {
-      expandedTimelineIndex.value = null
+      expandedTimelineIndex.value = majorEvents.value.length ? 0 : null
+    }
+    if (expandedTimelineIndex.value === null && majorEvents.value.length) {
+      expandedTimelineIndex.value = selectedEventIndex.value
     }
   })
 
@@ -203,12 +206,12 @@ export function useEventWorkbench(options: UseEventWorkbenchOptions) {
 
   function toggleTimelineEvent(index: number) {
     selectedEventIndex.value = index
-    expandedTimelineIndex.value = expandedTimelineIndex.value === index ? null : index
+    expandedTimelineIndex.value = index
   }
 
   function resetSelectedEvent() {
     selectedEventIndex.value = 0
-    expandedTimelineIndex.value = null
+    expandedTimelineIndex.value = 0
   }
 
   function showAuthoritySources() {

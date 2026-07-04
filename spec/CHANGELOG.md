@@ -1,6 +1,372 @@
 # Spec Changelog
 
+## 2026-07-04
+
+### Codex High-Risk Frontend Retest After Latest Inbox Read
+
+- Reread the latest `TO_CODEX.md`, acceptance matrix, remaining-decision packet, and current-state snapshot.
+- Confirmed there was no new Claude decision after the #5/#2 freshness letter.
+- Rechecked the Codex-owned high-risk frontend paths without touching backend/source/academic files:
+  - parent-context drilldown and selected-event drilldown;
+  - stale refresh context;
+  - media stance trend and small-sample downgrade;
+  - event network semantics and selected-node inline detail;
+  - LLM-refresh reuse;
+  - sentiment timeline/OpenCLI diagnostics;
+  - cognition cards.
+- Kept the sprint open because the remaining blockers are still #2 backend auto-refresh, #3/#13 source scope, #6/#7/#8 semantic acceptance, and #10/#11 academic source breadth.
+
+### Verification
+
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `25 passed (49.2s)`.
+
+### Stage 5 Full Gate Refresh
+
+- Reran the stage-5 verification gate for the current 14-point integration tree.
+- Updated `spec/14-point-acceptance-2026-07-04.md` and `spec/current-state.md` with fresh pass counts.
+- Updated `spec/14-point-remaining-decisions-2026-07-04.md` to use the same fresh pass counts.
+- Added a `Final Status Projection` table to both the acceptance matrix and remaining-decision packet so reviewers can see which items are decision-bound rather than test-bound.
+- Kept the sprint open because the remaining blockers are still product-scope decisions/reviews:
+  - #2 backend auto-refresh A/B/C;
+  - #3/#13 source-ingestion V1 scope;
+  - #6/#7/#8 Claude semantic review;
+  - #10/#11 second academic source versus OpenAlex-only V1 limitation.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings in 13.40s`.
+- `cd frontend && npm run build` -> passed (`vue-tsc -b && vite build`; built in 396ms).
+- `cd frontend && npm run test:e2e -- --workers=1` -> `76 passed (2.3m)`.
+- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `8731f0e`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes; broad cumulative 14-point integration tree.
+
+### Codex Frontend Focused Retest After Bridge Plan
+
+- Rechecked the Codex-owned high-risk frontend paths after reading the latest Claude inbox and writing the auto-refresh split plan back to `TO_CLAUDE.md`.
+- Coverage included parent-context drilldown, selected-event drilldown, stale refresh context, media stance trend and small-sample downgrade, event network semantics, selected-node inline detail, LLM-refresh reuse, sentiment timeline/OpenCLI diagnostics, and cognition cards.
+- Updated `spec/14-point-acceptance-2026-07-04.md` and `spec/current-state.md` with the fresh evidence.
+- Kept the sprint open: #2 backend auto-refresh, #10 academic second source/OpenAlex-only decision, and #3/#13 source scope still require human/Claude decisions.
+- Added a short `Human Decision Brief` to `spec/14-point-remaining-decisions-2026-07-04.md` so the remaining choices can be answered without rereading the full packet.
+- Synced `.agent-bridge/BOARD.md` with the latest 14-point sprint truth so Claude/Codex do not continue from the older 2026-07-03 goals.
+
+### Verification
+
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `25 passed (49.3s)`.
+- `git diff --check -- spec/14-point-remaining-decisions-2026-07-04.md spec/CHANGELOG.md` -> exit 0.
+- `git diff --check -- spec/current-state.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Source And Academic Read-Only Evidence Audit
+
+- Extended `spec/14-point-remaining-decisions-2026-07-04.md` with Codex's read-only evidence audit for #3/#10/#11/#13.
+- Evidence reviewed:
+  - source registry service, feed registry, curated feeds, source registry backend tests, and source-registry e2e;
+  - academic pipeline, academic backend tests, academic UI, and academic e2e.
+- Conclusions:
+  - #3 has enough evidence for `V1 Done with known limitation` if full crawler/paywalled exclusives/G20 same-event coverage are deferred;
+  - #10 metadata/prompt/UI is V1-ready, but source breadth remains OpenAlex-only;
+  - #11 UI readability is V1-ready but inherits #10's source limitation;
+  - #13 RSS/newsletter/Google Alerts import is V1-ready if video ingestion is deferred.
+- GitNexus MCP resource read failed with MCP startup handshake failure in this session; this was a read-only audit using current files/tests instead.
+
+### Verification
+
+- `git diff --check -- spec/14-point-remaining-decisions-2026-07-04.md spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/CHANGELOG.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Remaining Decision Packet
+
+- Added `spec/14-point-remaining-decisions-2026-07-04.md` as the decision packet for the open 14-point sprint blockers.
+- The packet turns the remaining #2/#3/#6/#7/#8/#10/#11/#13 blockers into explicit options, recommended decisions, known limitations, final status mapping, and ownership boundaries.
+- Linked the packet from `spec/README.md`, `spec/current-state.md`, and `spec/14-point-acceptance-2026-07-04.md`.
+
+### Verification
+
+- `git diff --check -- spec/14-point-remaining-decisions-2026-07-04.md spec/README.md spec/current-state.md spec/14-point-acceptance-2026-07-04.md spec/CHANGELOG.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Codex Semantic Self-Audit
+
+- Ran a focused semantic scan over Codex-owned media, event-network, sentiment, and cognition UI copy/tests.
+- Confirmed the current UI boundaries for #6/#7/#8:
+  - media stance timeline is framed as `报道样本` and explicitly says it does not represent public opinion;
+  - small media samples downgrade to distribution-only with `当前样本只能显示立场分布`;
+  - sentiment timeline is labeled `样本趋势，非事实时间线`, with `小样本线索` for tiny buckets;
+  - event network is labeled `本地证据边，不显示 LLM 因果假设`;
+  - narrative convergence remains `不代表事实真假或操控判定`.
+- Kept Claude semantic review open; this is Codex self-audit evidence, not independent acceptance.
+
+### Verification
+
+- `rg -n "导致|证明|根因|因果" frontend/src/components frontend/tests/e2e spec/14-point-acceptance-2026-07-04.md spec/current-state.md` -> matches only negative/boundary wording for `因果`.
+- `rg -n "不代表|非事实|样本趋势|小样本|本地证据边|不显示 LLM 因果假设|当前样本只能|占比" frontend/src/components/MediaPanel.vue frontend/src/components/SentimentPanel.vue frontend/tests/e2e/source-matrix.spec.ts frontend/tests/e2e/sentiment-panel.spec.ts` -> found the expected boundary copy and test assertions.
+
+### Completion Audit Clarification
+
+- Added a `Completion Audit - Still Open` section to `spec/14-point-acceptance-2026-07-04.md`.
+- Clarified that the fresh full gate is green, but sprint completion remains open because of decision/review items rather than missing Codex-owned frontend evidence:
+  - #2 backend auto-refresh option;
+  - #3 news/source quality scope;
+  - #6/#7/#8 pseudo-trend and pseudo-causality review;
+  - #10 second academic source or human-accepted OpenAlex-only V1 limitation;
+  - #11 literature-network source hygiene;
+  - #13 source-ingestion scope.
+- Updated `spec/current-state.md` with the same completion boundary so future agents do not loop on already-passing tests.
+
+### Verification
+
+- `git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/CHANGELOG.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Fresh Full Gate Rerun
+
+- Reran the sprint-level acceptance gate after the latest Codex frontend retest.
+- The gate strengthens the evidence for the integrated 14-point repair tree, but it does not close remaining product decisions:
+  - #2 backend auto-refresh still needs the human A/B/C decision;
+  - #3/#10/#11/#13 still need Claude review or implementation for source/academic/source-ingestion scope.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings in 22.21s`.
+- `cd frontend && npm run build` -> passed.
+- `cd frontend && npm run test:e2e -- --workers=1` -> `76 passed (2.3m)`.
+- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes; expected for the broad cumulative 14-point repair integration tree.
+
+### Codex Frontend Retest
+
+- Reran the Codex-owned frontend acceptance slice for the 14-point sprint:
+  - project/topic CRUD;
+  - contextual drilldown with parent topic context;
+  - stale refresh using the current topic context;
+  - media stance trend evidence and small-sample downgrade;
+  - event network and selected-node inline detail;
+  - LLM analysis retained after single-panel refresh;
+  - sentiment timeline/OpenCLI diagnostics UI;
+  - cognition cards, report connection, and deeper path.
+- This refresh strengthens the evidence for #1/#2/#4/#6/#7/#8/#9/#12, but it does not close backend/source/academic decisions.
+
+### Verification
+
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `31 passed` in 49.8s.
+
+### Acceptance Ledger Status Cleanup
+
+- Updated `spec/14-point-acceptance-2026-07-04.md` after the fresh recorded full-gate evidence:
+  - #1, #4, and #9 now use plain `Done` instead of `Done, pending final full gate`;
+  - #12 now uses `V1 Done with known limitation`, with long-term profile calibration kept as future work;
+  - #5 now explicitly separates the completed Windows OpenCLI runner/diagnostics fix from platform-login/session failures that may remain `Blocked by external account/API`.
+- Refreshed the dirty worktree snapshot in `spec/current-state.md` so the newly added acceptance ledger is visible in the frozen state.
+- Kept the sprint open: #2 backend auto-refresh still requires the human A/B/C decision, and #3/#10/#11/#13 still require Claude review or implementation.
+
+### Verification
+
+- `git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/CHANGELOG.md spec/current-state.md` -> exit 0.
+- `rg -n "pending final full gate|Needs final full gate" spec/14-point-acceptance-2026-07-04.md` -> no matches.
+
+### Academic UI Verification Boundary
+
+- Reverified the Codex-owned frontend side of #10/#11 without changing backend collectors:
+  - academic paper cards expose authors/citation text, year, venue, DOI link, and OpenAlex link;
+  - priority-reading signals remain neutral (`高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`);
+  - literature network renders readable nodes and explicit `引用` edges instead of an unreadable citation-chip graph.
+- Kept the source limitation explicit: the academic collector is still OpenAlex-only until Claude adds a second source path or asks the human to accept that V1 limitation.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/AcademicPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/academic-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `2 passed`.
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py -q` -> `12 passed, 3 warnings`.
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings`.
+- `cd frontend && npm run test:e2e -- --workers=1` -> `76 passed`.
+- `cd frontend && npm run build` -> passed.
+- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db` -> no output.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes; expected for the broad cumulative 14-point repair integration tree.
+
+### Media Stance Share Trend
+
+- Strengthened the media stance timeline for the 14-point sprint:
+  - each major trend now shows article-count change and sample-share change, for example `占比 0% → 56%`;
+  - the trend card still shows turning period, driving sources, and representative reports;
+  - tiny samples downgrade to distribution-only instead of presenting a false trend;
+  - wording remains limited to media-report samples, not full public opinion.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/MediaPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "summarizes media stance"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "degrades media stance"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `14 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Sentiment Timeline Small-Sample Marker
+
+- Strengthened the community sentiment timeline for #6:
+  - timeline buckets with fewer than 3 samples now show `小样本线索`;
+  - the timeline still keeps platform, time bucket, sample count, confidence, dominant frame, sentiment label, and representative posts visible;
+  - this keeps partial community signals inspectable without pretending they are broad public-opinion trends.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/SentimentPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/sentiment-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop sentiment-panel.spec.ts -g "sentiment change timeline"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop sentiment-panel.spec.ts` -> `3 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts source-registry.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `35 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Freshness Stale-State Warning
+
+- Added a frontend stale-state warning for old topic data:
+  - labels `latest_published_at` as the local last collected time when it is older than the freshness threshold;
+  - explicitly says this does not mean the outside world has no newer reports;
+  - provides a manual `刷新采集` fallback that reuses the existing search/collection action.
+- Fixed the manual fallback to use the current topic query/name explicitly, so a residual value in the search box cannot refresh the wrong topic.
+- This does not implement backend auto-refresh. The backend scheduling direction still requires the human A/B/C decision from the 14-point sprint plan.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "explains stale"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "refreshes stale"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `13 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Source Manager Status Summary
+
+- Added a frontend source-manager summary for the active 14-point sprint:
+  - total registered sources;
+  - enabled source count;
+  - failed source count;
+  - latest successful fetch time;
+  - up to three failed-source reasons.
+- Kept this as a UI explainability slice only. It does not claim that news-source quality, same-event G20 coverage, or crawler expansion is final; those remain under Claude review for #3.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts -g "summarizes source coverage"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `4 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts source-registry.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `32 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### 14-Point Sprint Acceptance Ledger
+
+- Added `spec/14-point-acceptance-2026-07-04.md` as the active acceptance ledger for the 14-point feedback repair sprint.
+- Updated `spec/current-state.md` and `spec/README.md` to point future agents to the ledger before relying on older audit summaries.
+- The ledger explicitly keeps freshness/automatic update as pending human decision and source/academic items as pending Claude review, so the sprint is not accidentally declared complete from targeted frontend evidence.
+- Tightened #10 after code inspection: the academic layer still calls OpenAlex as the only paper collector, so the user's "OpenAlex 是否单薄" concern remains pending Claude implementation/review unless the human accepts it as a known limitation.
+- Added event-detail contextual drilldown: the selected event inline detail now shows `继续下钻` / `历史相似` chips and reuses the existing parent-context search behavior.
+
+### Verification
+
+- `git diff --check -- spec/14-point-acceptance-2026-07-04.md` -> exit 0.
+- `rg -n "Crossref|Semantic Scholar|arXiv|OpenAlex" backend frontend/src spec backend/config -S` and source inspection confirmed arXiv is used for discovery/frontier, not as a second academic-layer collector.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts -g "selected event detail"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts` -> `13 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Independent Follow-Up Audit
+
+- Addressed Claude's independent audit findings on the 14-point repair tree:
+  - fixed async topic switching races for academic, sentiment, and cross-synthesis jobs;
+  - fixed discovery timeline tree item selection so branches over the display limit keep the latest report run;
+  - changed event-network shared evidence edges from directional arrows to symmetric links.
+- Added regression coverage:
+  - `frontend/tests/e2e/job-topic-race.spec.ts`
+  - `backend/tests/test_discovery.py::test_timeline_tree_items_prefer_latest_runs_when_branch_exceeds_limit`
+  - stronger event-network edge assertions in `frontend/tests/e2e/source-matrix.spec.ts`
+- Updated audit reports to replace the earlier "no new bug found" conclusion with the independent follow-up result.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `198 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- --workers=1` -> `62 passed`
+- `git diff --check` -> exit 0, with existing LF-to-CRLF warnings only
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `261 symbols`, `75` affected processes; still explained as cumulative 14-point repair scope plus follow-up fixes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
 ## 2026-07-03
+
+### Audit
+
+- Added whole-repository self-audit deliverables:
+  - `spec/self-audit-2026-07-03.md`
+  - `spec/debug-audit-2026-07-03.md`
+  - `spec/redundancy-audit-2026-07-03.md`
+  - `spec/regression-audit-2026-07-03.md`
+  - `spec/final-audit-2026-07-03.md`
+- Confirmed the 14 feedback items have code, UI, and test evidence or documented V1 residual risk.
+- Ran a systematic debug pass over search/local analysis, deep analysis/evidence package, academic/OpenAlex, sentiment/OpenCLI/HN/Reddit, cross-synthesis reuse, and project/topic CRUD.
+- Chose not to apply business-code refactors during Phase 3 because the current repair diff is already large and core search impact is GitNexus CRITICAL.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `197 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- --workers=1` -> `56 passed`
+- `git diff --check` -> exit 0, with existing LF-to-CRLF warnings only
+- `node .gitnexus/run.cjs status` -> index up-to-date at `8731f0e`
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `45 files`, `253 symbols`, `68` affected processes; explained as cumulative 14-point repair scope
+- `git check-ignore -v backend/.env backend/dossier.db` -> both ignored
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Documentation
+
+- Added `spec/current-state.md` as the context reset point for future agents:
+  - records the current product positioning;
+  - separates implemented, partially implemented, deferred, and current working-tree items;
+  - captures the latest verification baseline without treating it as future proof;
+  - names the next iteration candidates.
+- Updated `spec/README.md` so `spec/current-state.md` is read immediately after `AGENTS.md`.
+- Updated `spec/project.md` to reflect the shift from an event-intelligence desk toward a cognition-expansion workbench.
+- Updated `spec/roadmap.md` to point to the context reset document and to preserve the narrative-calibration positioning.
+
+### Verification
+
+- `git diff --check` -> exit 0, with existing LF-to-CRLF warnings only.
+- `git status --short` -> confirmed this cleanup only added/changed `spec/` docs on top of the existing uncommitted implementation files.
+
+### Added
+
+- Implemented cognition-profile calibration V1:
+  - expanded local cognition profile fields with `depth`, `interest`, `confidence`, `evidence`, and `recommended_seed_style`;
+  - added a broader default domain universe covering AI infrastructure, finance, macro finance, open source, energy/electricity, biotech, crypto, geopolitics, industrial policy, law/regulation, social structure, engineering infrastructure, and media literacy;
+  - kept `level` and `note` compatible with existing profile rows;
+  - added lightweight SQLite column migration and per-domain backfill for legacy profile rows.
+- Strengthened the discovery boundary queue:
+  - ranks seeds with local profile fields instead of only fixed keyword order;
+  - shows profile evidence and confidence on each boundary card;
+  - adds local workflow prompts such as mechanism tracing, financial-model checks, macro liquidity framing, risk checks, paper checks, project evaluation, and rhetoric-pressure checks.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `7 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `177 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `10 passed`
+- `cd frontend && npm run test:e2e` -> `30 passed`
+
+### Planning
+
+- Added the next cognition direction to `spec/roadmap.md`:
+  - cognition-profile calibration should be repeated and lightweight, not a single long questionnaire;
+  - each profile item should track `depth`, `interest`, `confidence`, `evidence`, and `recommended_seed_style`;
+  - the profile must be calibrated by later behavior such as `我懂了`, `存疑`, `深入`, skipped domains, and repeated interests;
+  - future calibration should use a domain universe instead of only the current AI/finance/geopolitics core.
+- Defined a layered domain-universe planning target:
+  - intelligence core: AI infrastructure, open-source ecosystems, finance/accounting, macro finance, energy/electricity, geopolitics/industrial policy, media literacy;
+  - expansion layer: law/regulation, social structure/demographics, science foundations, biotech/health, cybersecurity/defense, culture/media, organization/management;
+  - naturalist layer: geography/resources, history/institutions, philosophy/thought history, anthropology/social psychology, engineering/infrastructure.
+- Kept the calibration target non-diagnostic:
+  - no scores;
+  - no personality labels;
+  - no claim that a short test fully maps the user;
+  - use the result as editable recommendation evidence only.
 
 ### Added
 

@@ -61,6 +61,7 @@ def run_academic_analysis(
         "edge_count": len(edges),
         "papers": papers,
         "graph": {"nodes": graph_nodes(papers), "edges": edges},
+        "literature_network": literature_network(papers, edges),
         "schools": schools_data["schools"],
         "foundational_papers": schools_data["foundational_papers"],
         "summary_md": summary_md,
@@ -179,11 +180,13 @@ def synthesize_academic_consensus(
     prompt = f"""请基于以下 OpenAlex 学术论文样本，为专题「{topic.name}」生成中文学界视角综述。
 
 要求:
-1. 总结主要学派/研究路径。
-2. 提炼学术共识。
-3. 指出分歧、证据缺口与方法争议。
+1. 标题使用“学界综述”。
+2. 引用每一条判断；每一条实质判断都要引用给定论文，使用 [W123] 这类 citation_key，不允许无出处断言。
+3. 总结主要学派/研究路径、学术共识、分歧、证据缺口与方法争议。
 4. 按时间说明共识如何演变。
-5. 明确说明样本来自 OpenAlex top-N 相关性搜索，引用图只使用样本内部互引。
+5. 末尾必须有“参考文献”小节，列出被引用论文的作者、年份、题名、期刊/会议、DOI 或 OpenAlex 链接。
+6. 明确说明样本来自 OpenAlex top-N 相关性搜索，引用图只使用样本内部互引。
+7. 如果给定样本不足以支持结论，直接写“不足以判断”，不要补写外部文献。
 
 论文样本:
 {compact_papers}
@@ -198,18 +201,23 @@ def synthesize_academic_consensus(
         config.SYNTH_MODEL,
         prompt,
         max_tokens=1800,
-        system="你是严谨的学术综述助手，只根据给定论文样本归纳，不编造文献。",
+        system="你是严谨的学术综述助手，只根据给定论文样本归纳，不编造文献。引用每一条判断。",
     )
 
 
 def compact_paper_for_prompt(paper: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": paper.get("openalex_id", ""),
+        "citation_key": citation_key(paper.get("openalex_id", "")),
+        "citation_ref": f"[{citation_key(paper.get('openalex_id', ''))}]",
         "title": paper.get("title", ""),
         "year": paper.get("year"),
         "cited_by_count": paper.get("cited_by_count", 0),
         "venue": paper.get("venue", ""),
         "authors": (paper.get("authors") or [])[:3],
+        "doi": paper.get("doi", ""),
+        "openalex_url": paper.get("openalex_url") or paper.get("openalex_id", ""),
+        "citation": citation_string(paper),
         "concepts": common_concepts([paper], limit=5),
         "abstract_excerpt": (paper.get("abstract") or "")[:280],
     }
@@ -236,6 +244,8 @@ def persist_academic_layer(
         paper.authors = paper_data.get("authors", [])
         paper.venue = paper_data.get("venue", "")
         paper.concepts = paper_data.get("concepts", [])
+        paper.doi = normalize_doi(paper_data.get("doi", ""))
+        paper.openalex_url = paper_data.get("openalex_url") or openalex_id
         paper.url = paper_data.get("url", "")
         session.add(paper)
         session.commit()
@@ -289,6 +299,7 @@ def academic_payload(session: Session, topic: Topic, summary_md: str = "") -> di
         "topic_name": topic.name,
         "papers": papers,
         "graph": {"nodes": graph_nodes(papers), "edges": edges},
+        "literature_network": literature_network(papers, edges),
         "schools": schools_data["schools"],
         "foundational_papers": schools_data["foundational_papers"],
         "summary_md": summary_md,
@@ -306,6 +317,17 @@ def paper_to_dict(paper: Paper) -> dict[str, Any]:
         "authors": paper.authors,
         "venue": paper.venue,
         "concepts": paper.concepts,
+        "doi": normalize_doi(paper.doi),
+        "openalex_url": paper.openalex_url or paper.openalex_id,
+        "citation_key": citation_key(paper.openalex_id),
+        "citation": citation_string({
+            "authors": paper.authors,
+            "year": paper.year,
+            "title": paper.title,
+            "venue": paper.venue,
+            "doi": paper.doi,
+            "openalex_url": paper.openalex_url or paper.openalex_id,
+        }),
         "url": paper.url,
     }
 
@@ -314,12 +336,71 @@ def graph_nodes(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             "id": paper.get("openalex_id", ""),
+            "citation_key": citation_key(paper.get("openalex_id", "")),
             "title": paper.get("title", ""),
             "year": paper.get("year"),
             "cited_by_count": paper.get("cited_by_count", 0),
         }
         for paper in papers
     ]
+
+
+def literature_network(papers: list[dict[str, Any]], edges: list[dict[str, str]]) -> dict[str, Any]:
+    by_id = {paper.get("openalex_id", ""): paper for paper in papers}
+    return {
+        "nodes": [
+            {
+                "id": paper.get("openalex_id", ""),
+                "citation_key": citation_key(paper.get("openalex_id", "")),
+                "title": paper.get("title", ""),
+                "year": paper.get("year"),
+                "venue": paper.get("venue", ""),
+                "cited_by_count": paper.get("cited_by_count", 0),
+            }
+            for paper in papers
+        ],
+        "edges": [
+            {
+                "citing_openalex_id": edge["citing_openalex_id"],
+                "cited_openalex_id": edge["cited_openalex_id"],
+                "citing_title": by_id.get(edge["citing_openalex_id"], {}).get("title", ""),
+                "cited_title": by_id.get(edge["cited_openalex_id"], {}).get("title", ""),
+                "relation": "cites",
+            }
+            for edge in edges
+        ],
+    }
+
+
+def citation_key(openalex_id: str) -> str:
+    raw = str(openalex_id or "").rstrip("/").split("/")[-1]
+    return raw or "unknown"
+
+
+def normalize_doi(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("https://doi.org/"):
+        return raw
+    if raw.startswith("http://doi.org/"):
+        return "https://doi.org/" + raw.removeprefix("http://doi.org/")
+    if raw.lower().startswith("doi:"):
+        return "https://doi.org/" + raw[4:].strip()
+    if raw.startswith("10."):
+        return f"https://doi.org/{raw}"
+    return raw
+
+
+def citation_string(paper: dict[str, Any]) -> str:
+    authors = paper.get("authors") or []
+    author_text = ", ".join(str(author) for author in authors[:3]) or "Unknown authors"
+    year = paper.get("year") or "n.d."
+    title = paper.get("title") or "Untitled"
+    venue = paper.get("venue") or "Unknown venue"
+    locator = normalize_doi(paper.get("doi")) or paper.get("openalex_url") or paper.get("openalex_id") or ""
+    suffix = f" {locator}" if locator else ""
+    return f"{author_text} ({year}). {title}. {venue}.{suffix}"
 
 
 def primary_concept(paper: dict[str, Any]) -> str:

@@ -26,8 +26,10 @@ def reconstruct_abstract(inverted: dict[str, list[int]] | None) -> str:
 def normalize_work(work: dict[str, Any]) -> dict[str, Any]:
     primary_location = work.get("primary_location") or {}
     source = primary_location.get("source") or {}
+    openalex_id = work.get("id", "")
+    doi = work.get("doi") or ""
     return {
-        "openalex_id": work.get("id", ""),
+        "openalex_id": openalex_id,
         "title": work.get("title") or "",
         "abstract": reconstruct_abstract(work.get("abstract_inverted_index")),
         "year": work.get("publication_year"),
@@ -50,6 +52,8 @@ def normalize_work(work: dict[str, Any]) -> dict[str, Any]:
             for concept in work.get("concepts") or []
             if concept.get("display_name")
         ],
+        "doi": doi,
+        "openalex_url": openalex_id,
         "url": primary_location.get("landing_page_url") or work.get("doi") or work.get("id", ""),
         "referenced_works": list(work.get("referenced_works") or []),
     }

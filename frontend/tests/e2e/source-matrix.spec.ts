@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 
 let startedJobs: string[] = []
+let searchPayloads: Array<{ query: string }> = []
 
 const topic = {
   id: 101,
@@ -235,6 +236,7 @@ const articles = {
 
 async function mockApi(page: Page) {
   startedJobs = []
+  searchPayloads = []
   await page.route('**/api/topics', async (route) => {
     await route.fulfill({ json: [topic] })
   })
@@ -324,9 +326,56 @@ async function mockApi(page: Page) {
     startedJobs.push(body?.refresh_voices === false ? 'cross:reuse' : 'cross:refresh')
     await route.fulfill({ json: analysisJob('cross-job', 'deep') })
   })
+  await page.route('**/api/search/jobs', async (route) => {
+    const body = route.request().postDataJSON() as { query: string }
+    searchPayloads.push(body)
+    await route.fulfill({
+      json: {
+        id: `search-refresh-${searchPayloads.length}`,
+        query: body.query,
+        status: 'done',
+        steps: [],
+        created_at: '2026-06-20T10:00:00',
+        updated_at: '2026-06-20T10:00:00',
+        result: null,
+        error: '',
+      },
+    })
+  })
   await page.route('**/api/search/jobs/*', async (route) => {
     const url = route.request().url()
-    if (url.includes('deep-job')) {
+    if (url.includes('search-refresh-')) {
+      const id = url.split('/').pop() || ''
+      const index = Number(id.replace('search-refresh-', '')) - 1
+      const query = searchPayloads[index]?.query || topic.name
+      await route.fulfill({
+        json: {
+          id,
+          query,
+          status: 'done',
+          steps: [],
+          created_at: '2026-06-20T10:00:00',
+          updated_at: '2026-06-20T10:00:00',
+          result: {
+            topic: { ...topic, queries: [query] },
+            collect: {
+              raw: 0,
+              kept: 0,
+              new_articles: 0,
+              new_links: 0,
+              source_count: 0,
+              requests: [],
+              errors: [],
+            },
+            steps: [],
+            subtopics: [],
+            analogues: [],
+            ...localEvents,
+          },
+          error: '',
+        },
+      })
+    } else if (url.includes('deep-job')) {
       await route.fulfill({ json: analysisJob('deep-job', 'deep') })
     } else if (url.includes('academic-job')) {
       await route.fulfill({ json: analysisJob('academic-job', 'academic') })
@@ -391,6 +440,25 @@ function analysisJob(id: string, kind: 'deep' | 'academic' | 'sentiment') {
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page)
+})
+
+test('explains stale latest-report dates as last collected time', async ({ page }) => {
+  await page.goto('/')
+
+  const staleNotice = page.locator('.freshness-warning')
+  await expect(staleNotice).toContainText('最后采集时间')
+  await expect(staleNotice).toContainText('2026/06/20')
+  await expect(staleNotice).toContainText('不代表世界没有新报道')
+  await expect(staleNotice).toContainText('刷新')
+})
+
+test('refreshes stale topics with the current topic context', async ({ page }) => {
+  await page.goto('/')
+
+  await page.locator('.event-input').fill('unrelated residual query')
+  await page.locator('.freshness-warning').getByRole('button', { name: '刷新采集' }).click()
+
+  await expect.poll(() => searchPayloads.map((payload) => payload.query)).toEqual(['美伊战争'])
 })
 
 test('filters and sorts the event source matrix', async ({ page }) => {
@@ -473,7 +541,7 @@ test('keeps secondary media panels collapsed with count summaries by default', a
       hiddenText: '白宫',
     },
     {
-      name: /态度随时间变化.*1 期/,
+      name: /媒体立场时间线.*1 期/,
       hiddenText: '2026-06',
     },
     {
@@ -517,33 +585,162 @@ test('shows narrative convergence signals as evidence cards', async ({ page }) =
   await expect(card.getByText('AI capex boom reshapes market')).toBeVisible()
 })
 
+test('summarizes media stance timeline as trend changes with evidence', async ({ page }) => {
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({
+      json: {
+        ...localEvents,
+        stance_evolution: [
+          {
+            period: '2026-05',
+            dominant_stance: '中性观察',
+            counts: { 中性观察: 4, 影响后果: 1 },
+            article_ids: [1, 3],
+          },
+          {
+            period: '2026-06',
+            dominant_stance: '冲突/安全',
+            counts: { 中性观察: 1, 冲突安全: 5, 影响后果: 3 },
+            article_ids: [1, 2, 3],
+          },
+        ],
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.locator('details.media-collapse > summary').filter({
+    hasText: /媒体立场时间线.*2 期/,
+  }).click()
+
+  const panel = page.locator('.stance-trend-panel')
+  await expect(panel.getByText('主要变化')).toBeVisible()
+  const trendCard = panel.locator('.stance-trend-card').filter({ hasText: '冲突安全' })
+  await expect(trendCard.locator('.stance-trend-head strong')).toHaveText('冲突安全')
+  await expect(trendCard.getByText('增强 +5')).toBeVisible()
+  await expect(trendCard.getByText('占比 0% → 56%')).toBeVisible()
+  await expect(trendCard.getByText('转折期 2026-06')).toBeVisible()
+  await expect(trendCard.getByText(/推动来源.*Reuters/)).toBeVisible()
+  await expect(trendCard.getByText('代表报道')).toBeVisible()
+  await expect(trendCard.getByText('Reuters reports US-Iran strike risk')).toBeVisible()
+})
+
+test('degrades media stance timeline when the sample is too small', async ({ page }) => {
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({
+      json: {
+        ...localEvents,
+        stance_evolution: [
+          {
+            period: '2026-05',
+            dominant_stance: '中性观察',
+            counts: { 中性观察: 1 },
+            article_ids: [3],
+          },
+          {
+            period: '2026-06',
+            dominant_stance: '冲突安全',
+            counts: { 冲突安全: 1 },
+            article_ids: [1],
+          },
+        ],
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.locator('details.media-collapse > summary').filter({
+    hasText: /媒体立场时间线.*2 期/,
+  }).click()
+
+  const panel = page.locator('.stance-trend-panel')
+  await expect(panel.getByText('当前样本只能显示立场分布')).toBeVisible()
+  await expect(panel.locator('.stance-trend-card')).toHaveCount(0)
+  await expect(panel.getByText('2026-06')).toBeVisible()
+  await expect(panel.getByText('冲突安全 1')).toBeVisible()
+})
+
 test('shows an event structure tree from existing media signals', async ({ page }) => {
   await page.goto('/')
 
   const toggle = page.locator('details.media-collapse > summary').filter({
-    hasText: /事件结构树.*\d+ 节点/,
+    hasText: /事件发展网络.*1 节点/,
   })
 
   await expect(toggle).toBeVisible()
-  await expect(page.getByText('结构化阅读辅助，不代表因果判定。节点为并列阅读切片，非时间线或因果链。')).toBeHidden()
+  await expect(page.getByText('本地证据边')).toBeHidden()
 
   await toggle.click()
 
-  const tree = page.locator('.event-structure-tree')
-  await expect(tree).toBeVisible()
-  await expect(tree.getByText('结构化阅读辅助，不代表因果判定。节点为并列阅读切片，非时间线或因果链。')).toBeVisible()
-  await expect(tree.getByText('当前节点')).toBeVisible()
-  await expect(tree.getByText('美国与伊朗冲突进入关键节点')).toBeVisible()
-  await expect(tree.getByText('入选/归类依据')).toBeVisible()
-  await expect(tree.getByText('触发/行动')).toHaveCount(0)
-  await expect(tree.getByText('不代表事件触发原因')).toBeVisible()
-  await expect(tree.locator('.event-structure-node-head').getByText('冲突/安全')).toBeVisible()
-  await expect(tree.locator('.event-structure-node-head').getByText('影响/后果')).toBeVisible()
-  await expect(tree.getByText('相似说法')).toBeVisible()
-  await expect(tree.getByText('ai capex boom')).toBeVisible()
-  await expect(tree.getByText('关键对象')).toBeVisible()
-  await expect(tree.locator('.event-structure-node').filter({ hasText: '关键对象' }).getByText('伊朗', { exact: true })).toBeVisible()
-  await expect(tree.getByText('态度变化')).toBeVisible()
+  const network = page.locator('.event-network')
+  await expect(network).toBeVisible()
+  await expect(network.getByText('本地证据边，不显示 LLM 因果假设。')).toBeVisible()
+  await expect(network.locator('.event-network-node').getByText('美国与伊朗冲突进入关键节点')).toBeVisible()
+  await expect(network.getByText('暂无可连接的事件边。')).toBeVisible()
+})
+
+test('renders local evidence edges between events in the event network', async ({ page }) => {
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({
+      json: {
+        ...localEvents,
+        events: [
+          localEvents.events[0],
+          {
+            ...localEvents.events[0],
+            date: '2026-06-21',
+            title_zh: '油价与外交反应继续发酵',
+            summary_zh: '后续报道集中讨论油价和外交反应。',
+            article_ids: [4, 5, 6],
+            source_count: 3,
+            article_count: 3,
+            sources: [
+              { name: 'Reuters', count: 1, tier: 'wire', tier_label: '通讯社' },
+              { name: 'Financial Times', count: 2, tier: 'professional', tier_label: '专业媒体' },
+            ],
+            source_matrix: [
+              localEvents.events[0].source_matrix[0],
+              localEvents.events[0].source_matrix[1],
+            ],
+            entities: [
+              { term: '伊朗', count: 2, weight: 0.7, kind: 'place', kind_label: '地点' },
+            ],
+            location_signals: [{ term: '伊朗', count: 2, weight: 0.7, kind: 'place', kind_label: '地点' }],
+          },
+        ],
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.locator('details.media-collapse > summary').filter({
+    hasText: /事件发展网络.*2 节点/,
+  }).click()
+
+  const network = page.locator('.event-network')
+  await expect(network.locator('.event-network-node')).toHaveCount(2)
+  await expect(network.getByText('时间顺序')).toBeVisible()
+  await expect(network.getByText('共享对象')).toBeVisible()
+  await expect(network.getByText('共同来源')).toBeVisible()
+  await expect(network.locator('.event-network-edge').filter({ hasText: '时间顺序' })).toContainText('#1 → #2')
+  await expect(network.locator('.event-network-edge').filter({ hasText: '共享对象' })).toContainText('#1 ↔ #2')
+  await expect(network.locator('.event-network-edge').filter({ hasText: '共同来源' })).toContainText('#1 ↔ #2')
+  await expect(network.locator('.event-network-edge').filter({ hasText: '共享对象' }).locator('li', { hasText: /^伊朗$/ })).toBeVisible()
+  await expect(network.locator('.event-network-edge').filter({ hasText: '共同来源' }).locator('li', { hasText: /^Reuters$/ })).toBeVisible()
+})
+
+test('shows selected event detail inline below the clicked timeline node', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByText('Selected Node')).toHaveCount(0)
+  await expect(page.locator('.event-detail')).toHaveCount(0)
+
+  await page.locator('.timeline-node').filter({ hasText: '美国与伊朗冲突进入关键节点' }).click()
+
+  const timelineItem = page.locator('.timeline-item').filter({ hasText: '美国与伊朗冲突进入关键节点' })
+  await expect(timelineItem.locator('.event-detail-inline')).toBeVisible()
+  await expect(timelineItem.locator('.event-detail-inline').getByRole('button', { name: '各国怎么报道' })).toBeVisible()
+  await expect(page.locator('.feed-pane > .event-detail')).toHaveCount(0)
 })
 
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {
@@ -553,4 +750,34 @@ test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analy
 
   // 深度分析(三级)先并发跑三个一级声部, 再用轻量模式(refresh_voices:false)跑三方对照。
   await expect.poll(() => startedJobs.sort()).toEqual(['academic', 'cross:reuse', 'deep', 'sentiment'])
+})
+
+test('keeps existing LLM analysis visible when refreshing only the academic layer', async ({ page }) => {
+  await page.route('**/api/topics/101', async (route) => {
+    await route.fulfill({
+      json: {
+        ...topic,
+        timeline: [],
+        framing: [],
+        analysis: {
+          content_md: '<!-- analysis-source: llm -->\n## LLM批判分析\n已有深度分析仍应保留。',
+        },
+      },
+    })
+  })
+
+  await page.goto('/')
+
+  await page.getByLabel('专题视图导航').getByRole('button', { name: 'LLM 深度分析' }).click()
+  await expect(page.getByText('当前展示 LLM 生成结果')).toBeVisible()
+  await expect(page.locator('.llm-analysis-body')).toContainText('已有深度分析仍应保留')
+
+  await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
+  await page.getByRole('button', { name: /生成学界层|刷新学界层/ }).click()
+
+  await expect.poll(() => startedJobs).toEqual(['academic'])
+
+  await page.getByLabel('专题视图导航').getByRole('button', { name: 'LLM 深度分析' }).click()
+  await expect(page.getByText('当前展示 LLM 生成结果')).toBeVisible()
+  await expect(page.locator('.llm-analysis-body')).toContainText('已有深度分析仍应保留')
 })

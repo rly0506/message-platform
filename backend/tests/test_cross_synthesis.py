@@ -184,8 +184,8 @@ def test_run_cross_synthesis_job_gathers_synthesizes_and_persists(monkeypatch):
         id="cross-job",
         query="cross-synthesis:Cross Job Topic",
         status="queued",
-        steps=search_service.cross_synthesis_steps(),
-        payload={"topic_id": topic_id, "kind": "cross_synthesis"},
+        steps=search_service.cross_synthesis_steps(refresh_voices=True),
+        payload={"topic_id": topic_id, "kind": "cross_synthesis", "refresh_voices": True},
     )
     with Session(engine) as session:
         session.add(job)
@@ -207,7 +207,7 @@ def test_run_cross_synthesis_job_gathers_synthesizes_and_persists(monkeypatch):
     monkeypatch.setattr(academic, "run_academic_analysis", lambda session, topic, top_n: {"ok": True})
     monkeypatch.setattr(sentiment, "run_sentiment_analysis", lambda session, topic, limit: {"ok": True})
 
-    search_service.run_cross_synthesis_job("cross-job", topic_id)
+    search_service.run_cross_synthesis_job("cross-job", topic_id, refresh_voices=True)
 
     with Session(engine) as session:
         saved_job = session.get(SearchJob, "cross-job")
@@ -287,8 +287,8 @@ def test_run_cross_synthesis_job_chains_voice_layers_and_continues_after_failure
         id="cross-chain-job",
         query="cross-synthesis:Cross Chain Topic",
         status="queued",
-        steps=search_service.cross_synthesis_steps(),
-        payload={"topic_id": topic_id, "kind": "cross_synthesis"},
+        steps=search_service.cross_synthesis_steps(refresh_voices=True),
+        payload={"topic_id": topic_id, "kind": "cross_synthesis", "refresh_voices": True},
     )
     with Session(engine) as session:
         session.add(job)
@@ -327,7 +327,7 @@ def test_run_cross_synthesis_job_chains_voice_layers_and_continues_after_failure
     monkeypatch.setattr(sentiment, "run_sentiment_analysis", fake_sentiment)
     monkeypatch.setattr(cross_synthesis, "run_cross_synthesis", fake_cross)
 
-    search_service.run_cross_synthesis_job("cross-chain-job", topic_id)
+    search_service.run_cross_synthesis_job("cross-chain-job", topic_id, refresh_voices=True)
 
     with Session(engine) as session:
         saved_job = session.get(SearchJob, "cross-chain-job")
@@ -366,8 +366,13 @@ def test_cross_synthesis_api_endpoints_use_background_job_and_return_latest_payl
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "queued"
-    assert [step["key"] for step in body["steps"]] == ["media", "academic", "sentiment", "gather", "synthesize", "persist"]
-    assert started == [(search_service.run_cross_synthesis_job, (body["id"], topic_id, True), True)]
+    assert [step["key"] for step in body["steps"]] == ["gather", "synthesize", "persist"]
+    assert started == [(search_service.run_cross_synthesis_job, (body["id"], topic_id, False), True)]
+
+    refresh_response = client.post(f"/api/topics/{topic_id}/cross-synthesis/jobs", json={"refresh_voices": True})
+    refresh_body = refresh_response.json()
+    assert [step["key"] for step in refresh_body["steps"]] == ["media", "academic", "sentiment", "gather", "synthesize", "persist"]
+    assert started[-1] == (search_service.run_cross_synthesis_job, (refresh_body["id"], topic_id, True), True)
 
     with Session(engine) as session:
         session.add(

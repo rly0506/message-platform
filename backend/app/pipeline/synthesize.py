@@ -24,10 +24,72 @@ _JSON_RULE = (
 
 
 def _listing(rows: list[dict]) -> str:
-    return "\n".join(
-        f"[id={r['id']} | {r['date']} | {r['source']} | {r['lang']} | 立场:{r['stance']}] {r['title_zh']}"
-        for r in rows
-    )
+    lines = []
+    for row in rows:
+        meta = (
+            f"id={row['id']} | {row['date']} | {row['source']} | {row['lang']} | "
+            f"type:{row.get('source_type', 'unknown')} | tier:{row.get('quality_tier', 'other')} | "
+            f"立场:{row['stance']} | 类别:{row.get('category', '未分类')}"
+        )
+        snippet = _clip(row.get("snippet", ""), 160)
+        suffix = f"\n  摘要:{snippet}" if snippet else ""
+        lines.append(f"[{meta}] {row['title_zh']}{suffix}")
+    return "\n".join(lines)
+
+
+def _clip(value: str, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _evidence_context(evidence_package: dict | None) -> str:
+    if not evidence_package:
+        return ""
+    parts = []
+    sources = evidence_package.get("sources", [])[:12]
+    if sources:
+        source_lines = [
+            (
+                f"- {item.get('name', 'unknown')}: {item.get('article_count', 0)}篇, "
+                f"type={item.get('source_type', 'unknown')}, tier={item.get('quality_tier', 'other')}, "
+                f"country={item.get('country') or 'unknown'}"
+            )
+            for item in sources
+        ]
+        parts.append("来源概况:\n" + "\n".join(source_lines))
+
+    events = evidence_package.get("events", [])[:12]
+    if events:
+        event_lines = [
+            (
+                f"- {event.get('date') or '?'} {event.get('title_zh', '')}: "
+                f"{_clip(event.get('summary_zh', ''), 120)} "
+                f"(sources={event.get('source_count', 0)}, articles={len(event.get('article_ids', []))})"
+            )
+            for event in events
+        ]
+        parts.append("本地预分析候选事件:\n" + "\n".join(event_lines))
+
+    signals = evidence_package.get("narrative_signals", [])[:8]
+    if signals:
+        signal_lines = [
+            (
+                f"- {signal.get('claim', '')}: "
+                f"{signal.get('source_count', 0)}个来源/{signal.get('article_count', 0)}篇"
+            )
+            for signal in signals
+        ]
+        parts.append("本地叙事信号:\n" + "\n".join(signal_lines))
+
+    keywords = evidence_package.get("keywords", [])[:20]
+    if keywords:
+        parts.append("关键词: " + "、".join(str(item.get("term", item)) for item in keywords))
+
+    if not parts:
+        return ""
+    return "\n\n本地预分析证据包(无 LLM, 供压缩上下文与复核, 不等同最终判断):\n" + "\n\n".join(parts)
 
 
 def _call_json(prompt: str, max_tokens: int):
@@ -41,9 +103,10 @@ def _call_json(prompt: str, max_tokens: int):
     raise RuntimeError(last)
 
 
-def synth_timeline(name: str, desc: str, rows: list[dict]) -> list:
+def synth_timeline(name: str, desc: str, rows: list[dict], evidence_package: dict | None = None) -> list:
     prompt = f"""主题: {name}
 说明: {desc or "(无)"}
+{_evidence_context(evidence_package)}
 
 基于以下报道，提炼事件演进时间线。{_JSON_RULE}
 输出 JSON 数组，每个元素:
@@ -56,9 +119,10 @@ def synth_timeline(name: str, desc: str, rows: list[dict]) -> list:
     return data if isinstance(data, list) else data.get("timeline", [])
 
 
-def synth_framing(name: str, desc: str, rows: list[dict]) -> list:
+def synth_framing(name: str, desc: str, rows: list[dict], evidence_package: dict | None = None) -> list:
     prompt = f"""主题: {name}
 说明: {desc or "(无)"}
+{_evidence_context(evidence_package)}
 
 基于以下报道，对照各方/各家媒体如何报道 (谁强调什么、谁回避什么)。{_JSON_RULE}
 输出 JSON 数组，每个元素:
@@ -71,11 +135,12 @@ def synth_framing(name: str, desc: str, rows: list[dict]) -> list:
     return data if isinstance(data, list) else data.get("framing", [])
 
 
-def synth_analysis(name: str, desc: str, timeline: list, framing: list) -> str:
+def synth_analysis(name: str, desc: str, timeline: list, framing: list, evidence_package: dict | None = None) -> str:
     tl = "\n".join(f"- {e.get('date','?')} {e.get('title_zh','')}" for e in timeline)
     fr = "\n".join(f"- {f.get('party','')}[{f.get('stance','')}]: {f.get('summary_zh','')}" for f in framing)
     prompt = f"""主题: {name}
 说明: {desc or "(无)"}
+{_evidence_context(evidence_package)}
 
 已整理的时间线:
 {tl or "(空)"}
@@ -111,23 +176,38 @@ def fallback_analysis(name: str, timeline: list, framing: list) -> str:
     )
 
 
-def synthesize(topic_name: str, topic_desc: str, rows: list[dict]) -> dict:
+def synthesize(topic_name: str, topic_desc: str, rows: list[dict], *, evidence_package: dict | None = None) -> dict:
     """编排三步综合。单步失败则该部分为空，不影响其余。"""
     rows = rows[:MAX_ARTICLES]
     out = {"timeline": [], "framing": [], "analysis_md": ""}
 
     try:
-        out["timeline"] = synth_timeline(topic_name, topic_desc, rows)
+        if evidence_package is None:
+            out["timeline"] = synth_timeline(topic_name, topic_desc, rows)
+        else:
+            out["timeline"] = synth_timeline(topic_name, topic_desc, rows, evidence_package=evidence_package)
         print(f"  · 时间线 {len(out['timeline'])} 节点")
     except Exception as e:
         print(f"  · 时间线失败: {e}")
     try:
-        out["framing"] = synth_framing(topic_name, topic_desc, rows)
+        if evidence_package is None:
+            out["framing"] = synth_framing(topic_name, topic_desc, rows)
+        else:
+            out["framing"] = synth_framing(topic_name, topic_desc, rows, evidence_package=evidence_package)
         print(f"  · 各方态度 {len(out['framing'])} 方")
     except Exception as e:
         print(f"  · 各方态度失败: {e}")
     try:
-        out["analysis_md"] = synth_analysis(topic_name, topic_desc, out["timeline"], out["framing"])
+        if evidence_package is None:
+            out["analysis_md"] = synth_analysis(topic_name, topic_desc, out["timeline"], out["framing"])
+        else:
+            out["analysis_md"] = synth_analysis(
+                topic_name,
+                topic_desc,
+                out["timeline"],
+                out["framing"],
+                evidence_package=evidence_package,
+            )
         if not out["analysis_md"].strip():
             out["analysis_md"] = fallback_analysis(topic_name, out["timeline"], out["framing"])
         print(f"  · 批判分析 {len(out['analysis_md'])} 字")

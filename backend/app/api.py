@@ -8,11 +8,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 
+from app import topic_ops
 from app.db import (
     Analysis,
     Article,
     CognitionMark,
     CognitionProfile,
+    Project,
     SentimentPost,
     SourceFraming,
     TimelineEvent,
@@ -24,20 +26,164 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, country_compare, payloads, search_service
+from app.services import article_perspective, country_compare, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.pipeline import academic, cross_synthesis, sentiment
 
 DEFAULT_COGNITION_PROFILE = [
-    ("ai_infra", "AI / 算力基础设施", "partial", "知晓 CPU、GPU、CPO、算力中心、大模型等词，但不懂具体机制与实现。"),
-    ("geopolitics", "地缘政治基础", "partial", "主要来自中国教科书和文科背景。"),
-    ("finance", "金融 / 经济 / 公司财务", "strong_partial", "修过货币银行学、微观、宏观、公司理财、会计、财报分析、国际商务与国际金融。"),
-    ("energy", "能源 / 核能 / 新能源", "unfamiliar", "只在身边新闻中听说，没有主动了解。"),
-    ("biotech", "生物科技", "unfamiliar", "一窍不通。"),
-    ("open_source", "开源社区", "partial", "主要知道 GitHub。"),
-    ("crypto", "加密 / 稳定币", "unfamiliar", "听说过稳定币、比特币、以太币，但没有持有、交易或亲眼所见。"),
-    ("middle_east_security", "中东安全 / 国际冲突", "partial", "主要来自 B 站时政博主分析。"),
-    ("industrial_policy", "产业政策", "unfamiliar", "只在身边新闻中有所耳闻。"),
-    ("social_mood", "社会情绪", "partial", "能通过社交媒体感受到一些。"),
+    {
+        "domain_key": "ai_infra",
+        "domain_label": "AI / 算力基础设施",
+        "level": "partial",
+        "note": "知晓 CPU、GPU、CPO、算力中心、大模型等词，但不懂具体机制与实现。",
+        "depth": "terms",
+        "interest": "high",
+        "confidence": 60,
+        "evidence": "用户自述知道 CPU/GPU/CPO/算力中心/大模型，但不懂具体实现。",
+        "recommended_seed_style": "mechanism",
+    },
+    {
+        "domain_key": "finance",
+        "domain_label": "金融 / 经济 / 公司财务",
+        "level": "strong_partial",
+        "note": "修过货币银行学、微观、宏观、公司理财、会计、财报分析、国际商务与国际金融。",
+        "depth": "coursework",
+        "interest": "high",
+        "confidence": 75,
+        "evidence": "用户列出金融、会计、财报和国际金融课程背景。",
+        "recommended_seed_style": "financial_model",
+    },
+    {
+        "domain_key": "macro_finance",
+        "domain_label": "宏观金融 / 流动性",
+        "level": "partial",
+        "note": "能调用货币理论、利率、投资、汇率和资产配置框架，但需要继续校准现实口径。",
+        "depth": "model",
+        "interest": "high",
+        "confidence": 65,
+        "evidence": "用户用凯恩斯货币理论和国际金融解释降息影响。",
+        "recommended_seed_style": "macro_model",
+    },
+    {
+        "domain_key": "open_source",
+        "domain_label": "开源生态 / GitHub",
+        "level": "partial",
+        "note": "主要知道 GitHub 和 star，开始意识到安全性与商业使用风险。",
+        "depth": "terms",
+        "interest": "high",
+        "confidence": 58,
+        "evidence": "用户选择 GitHub/技术前沿，并提到 star 与开源安全风险。",
+        "recommended_seed_style": "evaluation",
+    },
+    {
+        "domain_key": "energy",
+        "domain_label": "能源 / 核能 / 新能源",
+        "level": "unfamiliar",
+        "note": "只在身边新闻中听说，没有主动了解。",
+        "depth": "none",
+        "interest": "medium",
+        "confidence": 55,
+        "evidence": "用户自述能源、新能源、核能较陌生。",
+        "recommended_seed_style": "mechanism",
+    },
+    {
+        "domain_key": "electricity",
+        "domain_label": "电力系统 / 数据中心供能",
+        "level": "unfamiliar",
+        "note": "能判断电力是 AI 底层，但对发电结构、电网、用电曲线和替代能源机制不熟。",
+        "depth": "intuition",
+        "interest": "medium",
+        "confidence": 55,
+        "evidence": "用户质疑核电公司是否一定最受益，并追问聚变/裂变和其他能源。",
+        "recommended_seed_style": "comparison",
+    },
+    {
+        "domain_key": "biotech",
+        "domain_label": "生物医药 / 生命科学",
+        "level": "unfamiliar",
+        "note": "一窍不通，看到突破类新闻容易惊叹后划走。",
+        "depth": "none",
+        "interest": "low",
+        "confidence": 70,
+        "evidence": "用户自述对生物和医药一窍不通。",
+        "recommended_seed_style": "paper_check",
+    },
+    {
+        "domain_key": "crypto",
+        "domain_label": "加密 / 稳定币",
+        "level": "unfamiliar",
+        "note": "听说过稳定币、比特币、以太币，但没有持有、交易或亲眼所见。",
+        "depth": "terms",
+        "interest": "medium",
+        "confidence": 60,
+        "evidence": "用户能从货币锚定、储备资产、世界央行缺位等角度提出疑问。",
+        "recommended_seed_style": "risk_check",
+    },
+    {
+        "domain_key": "geopolitics",
+        "domain_label": "地缘政治 / 产业竞争",
+        "level": "partial",
+        "note": "主要来自中国教科书、文科背景和 B 站时政博主分析。",
+        "depth": "narrative",
+        "interest": "medium",
+        "confidence": 58,
+        "evidence": "用户能用替代品、产业建设和算法突破解释芯片出口限制。",
+        "recommended_seed_style": "multi_angle",
+    },
+    {
+        "domain_key": "industrial_policy",
+        "domain_label": "产业政策",
+        "level": "unfamiliar",
+        "note": "只在身边新闻中有所耳闻。",
+        "depth": "none",
+        "interest": "medium",
+        "confidence": 50,
+        "evidence": "用户将产业政策列为陌生领域。",
+        "recommended_seed_style": "mechanism",
+    },
+    {
+        "domain_key": "law_regulation",
+        "domain_label": "法律 / 监管",
+        "level": "unfamiliar",
+        "note": "监管框架、合规责任、支付/数据/平台规则需要从案例中补。",
+        "depth": "none",
+        "interest": "medium",
+        "confidence": 45,
+        "evidence": "规划中需要拓展到法律监管，当前缺少稳定画像证据。",
+        "recommended_seed_style": "risk_check",
+    },
+    {
+        "domain_key": "social_structure",
+        "domain_label": "社会结构 / 人群变化",
+        "level": "partial",
+        "note": "能通过社交媒体感受到社会情绪，但机制和结构解释仍需校准。",
+        "depth": "intuition",
+        "interest": "medium",
+        "confidence": 50,
+        "evidence": "用户自述能通过社交媒体感受到一些社会情绪。",
+        "recommended_seed_style": "multi_angle",
+    },
+    {
+        "domain_key": "engineering_infra",
+        "domain_label": "工程基础 / 基础设施",
+        "level": "unfamiliar",
+        "note": "对工程实现、基础设施约束和物理系统机制仍需要补课。",
+        "depth": "none",
+        "interest": "medium",
+        "confidence": 45,
+        "evidence": "用户多次追问机制和实现，但对工程细节自述陌生。",
+        "recommended_seed_style": "mechanism",
+    },
+    {
+        "domain_key": "media_literacy",
+        "domain_label": "媒体识读 / 话术识别",
+        "level": "partial",
+        "note": "能识别绝对化、焦虑贩卖和缺乏事实依据的表达，但需要沉淀成工作流。",
+        "depth": "pattern",
+        "interest": "high",
+        "confidence": 65,
+        "evidence": "用户会追问“如何证明”“6个月如何得出”“是否传播焦虑”。",
+        "recommended_seed_style": "rhetoric_check",
+    },
 ]
 
 app = FastAPI(
@@ -52,7 +198,7 @@ app.add_middleware(
     # 避免端口漂移导致前端跨域报"无法连接后端"。仅匹配本地回环, 不放行外部来源。
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -68,11 +214,119 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/integrations/opencli/diagnostics")
+def opencli_diagnostics_view() -> dict[str, Any]:
+    return opencli_diagnostics.diagnose_opencli()
+
+
+@app.get("/api/sources")
+def list_sources() -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        return source_registry.list_sources(session)
+
+
+@app.post("/api/sources")
+def create_source(payload: dict[str, Any]) -> dict[str, Any]:
+    with Session(engine) as session:
+        return source_registry.create_source(session, payload)
+
+
+@app.post("/api/sources/import")
+def import_sources(payload: dict[str, Any]) -> dict[str, Any]:
+    with Session(engine) as session:
+        return source_registry.import_sources(session, payload)
+
+
+@app.patch("/api/sources/{source_id}")
+def update_source(source_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    with Session(engine) as session:
+        return source_registry.update_source(session, source_id, payload)
+
+
+@app.get("/api/projects")
+def list_projects() -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        ensure_topic_projects(session)
+        projects = session.exec(select(Project).order_by(Project.created_at.desc())).all()
+        return [payloads.project_summary(session, project) for project in projects]
+
+
+@app.post("/api/projects")
+def create_project(payload: dict[str, Any]) -> dict[str, Any]:
+    name = clean_required_text(payload.get("name"), "Project name is required")
+    with Session(engine) as session:
+        project = Project(
+            name=name,
+            description=clean_text(payload.get("description")),
+            status=clean_status(payload.get("status"), "active"),
+        )
+        if project.status == "archived":
+            project.archived_at = datetime.utcnow()
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        return payloads.project_summary(session, project)
+
+
+@app.patch("/api/projects/{project_id}")
+def update_project(project_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if "name" in payload:
+            project.name = clean_required_text(payload.get("name"), "Project name is required")
+        if "description" in payload:
+            project.description = clean_text(payload.get("description"))
+        if "status" in payload:
+            apply_status(project, clean_status(payload.get("status"), project.status))
+        project.updated_at = datetime.utcnow()
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        return payloads.project_summary(session, project)
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        topics = session.exec(select(Topic).where(Topic.project_id == project_id)).all()
+        if topics:
+            raise HTTPException(status_code=409, detail="Project still has topics")
+        session.delete(project)
+        session.commit()
+        return {"deleted": True, "project_id": project_id}
+
+
 @app.get("/api/topics")
 def list_topics() -> list[dict[str, Any]]:
     with Session(engine) as session:
+        ensure_topic_projects(session)
         topics = session.exec(select(Topic).order_by(Topic.created_at.desc())).all()
         return [payloads.topic_summary(session, topic) for topic in topics]
+
+
+@app.post("/api/topics")
+def create_topic(payload: dict[str, Any]) -> dict[str, Any]:
+    name = clean_required_text(payload.get("name"), "Topic name is required")
+    with Session(engine) as session:
+        project = project_for_topic_payload(session, payload, name)
+        topic = Topic(
+            project_id=project.id,
+            name=name,
+            description=clean_text(payload.get("description")),
+            queries=clean_queries(payload.get("queries"), name),
+            status=clean_status(payload.get("status"), "active"),
+        )
+        if topic.status == "archived":
+            topic.archived_at = datetime.utcnow()
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        return payloads.topic_summary(session, topic)
 
 
 @app.get("/api/topics/{topic_id}")
@@ -101,6 +355,41 @@ def get_topic(topic_id: int) -> dict[str, Any]:
         summary["framing"] = [payloads.source_framing(row) for row in framing]
         summary["analysis"] = payloads.analysis_payload(analyses[0]) if analyses else None
         return summary
+
+
+@app.patch("/api/topics/{topic_id}")
+def update_topic(topic_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        if "project_id" in payload:
+            project_id = int(payload.get("project_id") or 0)
+            if not session.get(Project, project_id):
+                raise HTTPException(status_code=404, detail="Project not found")
+            topic.project_id = project_id
+        if "name" in payload:
+            topic.name = clean_required_text(payload.get("name"), "Topic name is required")
+        if "description" in payload:
+            topic.description = clean_text(payload.get("description"))
+        if "queries" in payload:
+            topic.queries = clean_queries(payload.get("queries"), topic.name)
+        if "status" in payload:
+            apply_status(topic, clean_status(payload.get("status"), topic.status))
+        topic.updated_at = datetime.utcnow()
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        return payloads.topic_summary(session, topic)
+
+
+@app.delete("/api/topics/{topic_id}")
+def delete_topic(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        result = topic_ops.remove_topic(session, topic_id, dry_run=False)
+        if not result.get("found"):
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return result
 
 
 @app.get("/api/topics/{topic_id}/articles")
@@ -184,6 +473,15 @@ def local_events(topic_id: int) -> dict[str, Any]:
             "criteria": data["criteria"],
             "narrative_signals": narrative_signals.detect_narrative_signals(article_rows),
         }
+
+
+@app.get("/api/topics/{topic_id}/evidence-package")
+def topic_evidence_package(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return evidence_package.build_evidence_package(session, topic)
 
 
 @app.get("/api/topics/{topic_id}/country-compare")
@@ -277,7 +575,7 @@ def create_cross_synthesis_job(
     topic_id: int,
     payload: CrossSynthesisRequest | None = None,
 ) -> dict[str, Any]:
-    refresh_voices = payload.refresh_voices if payload else True
+    refresh_voices = payload.refresh_voices if payload else False
     return search_service.enqueue_cross_synthesis_job(topic_id, refresh_voices=refresh_voices)
 
 
@@ -414,6 +712,14 @@ def update_cognition_profile(items: list[dict[str, Any]]) -> list[dict[str, Any]
             item = existing[key]
             item.level = str(row.get("level", item.level)).strip() or item.level
             item.note = str(row.get("note", item.note)).strip()
+            item.depth = str(row.get("depth", item.depth)).strip() or item.depth
+            item.interest = str(row.get("interest", item.interest)).strip() or item.interest
+            item.confidence = clamp_int(row.get("confidence", item.confidence), 0, 100, item.confidence)
+            item.evidence = str(row.get("evidence", item.evidence)).strip()
+            item.recommended_seed_style = (
+                str(row.get("recommended_seed_style", item.recommended_seed_style)).strip()
+                or item.recommended_seed_style
+            )
             item.updated_at = datetime.utcnow()
             session.add(item)
         session.commit()
@@ -423,6 +729,81 @@ def update_cognition_profile(items: list[dict[str, Any]]) -> list[dict[str, Any]
 @app.get("/api/search/jobs/{job_id}")
 def get_search_job(job_id: str) -> dict[str, Any]:
     return search_service.job_snapshot(job_id)
+
+
+def ensure_topic_projects(session: Session) -> None:
+    topics = session.exec(select(Topic)).all()
+    changed = False
+    for topic in topics:
+        if topic.project_id:
+            continue
+        project = Project(
+            name=topic.name,
+            description=topic.description,
+            status=topic.status or "active",
+            archived_at=topic.archived_at,
+            created_at=topic.created_at,
+            updated_at=topic.updated_at or datetime.utcnow(),
+        )
+        session.add(project)
+        session.flush()
+        topic.project_id = project.id
+        topic.updated_at = datetime.utcnow()
+        session.add(topic)
+        changed = True
+    if changed:
+        session.commit()
+
+
+def project_for_topic_payload(session: Session, payload: dict[str, Any], topic_name: str) -> Project:
+    project_id = payload.get("project_id")
+    if project_id:
+        project = session.get(Project, int(project_id))
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project
+    project = Project(
+        name=topic_name,
+        description=clean_text(payload.get("description")),
+        status="active",
+    )
+    session.add(project)
+    session.flush()
+    return project
+
+
+def clean_required_text(value: Any, message: str) -> str:
+    text = clean_text(value)
+    if not text:
+        raise HTTPException(status_code=422, detail=message)
+    return text
+
+
+def clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def clean_queries(value: Any, fallback: str) -> list[str]:
+    if not isinstance(value, list):
+        return [fallback]
+    cleaned = [str(item).strip() for item in value if str(item).strip()]
+    return list(dict.fromkeys(cleaned)) or [fallback]
+
+
+def clean_status(value: Any, fallback: str) -> str:
+    status = str(value or fallback).strip() or fallback
+    if status not in {"active", "archived"}:
+        raise HTTPException(status_code=422, detail="status must be active or archived")
+    return status
+
+
+def apply_status(item: Any, status: str) -> None:
+    previous = getattr(item, "status", "active")
+    item.status = status
+    if status == "archived" and previous != "archived":
+        item.archived_at = datetime.utcnow()
+    if status == "active":
+        item.archived_at = None
 
 
 def cognition_mark_payload(mark: CognitionMark) -> dict[str, Any]:
@@ -441,14 +822,23 @@ def cognition_mark_payload(mark: CognitionMark) -> dict[str, Any]:
 def ensure_cognition_profile(session: Session) -> list[CognitionProfile]:
     rows = session.exec(select(CognitionProfile).order_by(CognitionProfile.id)).all()
     if rows:
+        defaults = {row["domain_key"]: row for row in DEFAULT_COGNITION_PROFILE}
+        changed = False
+        existing_keys = {item.domain_key for item in rows}
+        for item in rows:
+            default = defaults.get(item.domain_key, {})
+            changed = apply_cognition_profile_defaults(item, default) or changed
+            session.add(item)
+        for default in DEFAULT_COGNITION_PROFILE:
+            if default["domain_key"] not in existing_keys:
+                session.add(CognitionProfile(**default))
+                changed = True
+        if changed:
+            session.commit()
+            rows = session.exec(select(CognitionProfile).order_by(CognitionProfile.id)).all()
         return rows
-    for domain_key, domain_label, level, note in DEFAULT_COGNITION_PROFILE:
-        session.add(CognitionProfile(
-            domain_key=domain_key,
-            domain_label=domain_label,
-            level=level,
-            note=note,
-        ))
+    for item in DEFAULT_COGNITION_PROFILE:
+        session.add(CognitionProfile(**item))
     session.commit()
     return session.exec(select(CognitionProfile).order_by(CognitionProfile.id)).all()
 
@@ -460,8 +850,39 @@ def cognition_profile_payload(item: CognitionProfile) -> dict[str, Any]:
         "domain_label": item.domain_label,
         "level": item.level,
         "note": item.note,
+        "depth": item.depth,
+        "interest": item.interest,
+        "confidence": item.confidence,
+        "evidence": item.evidence,
+        "recommended_seed_style": item.recommended_seed_style,
         "updated_at": payloads.iso(item.updated_at),
     }
+
+
+def apply_cognition_profile_defaults(item: CognitionProfile, default: dict[str, Any]) -> bool:
+    changed = False
+    for key, fallback, generic_default in (
+        ("depth", "none", "none"),
+        ("interest", "medium", "medium"),
+        ("evidence", "", ""),
+        ("recommended_seed_style", "mechanism", "mechanism"),
+    ):
+        value = getattr(item, key, "")
+        if not value or (default and value == generic_default and default.get(key) != generic_default):
+            setattr(item, key, default.get(key, fallback))
+            changed = True
+    if item.confidence is None or (default and item.confidence == 50 and default.get("confidence") != 50):
+        item.confidence = int(default.get("confidence", 50))
+        changed = True
+    return changed
+
+
+def clamp_int(value: Any, low: int, high: int, fallback: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(low, min(high, parsed))
 
 
 def cognition_unfamiliar_topics(session: Session, marks: list[CognitionMark]) -> list[dict[str, Any]]:

@@ -10,11 +10,12 @@ from sqlmodel import Session, select
 
 from app import config, feed_registry
 from app.collectors import gdelt, rss
-from app.db import Analysis, Article, SourceFraming, TimelineEvent, Topic, TopicArticle
+from app.db import Analysis, Article, SourceFraming, SourceRegistry, TimelineEvent, Topic, TopicArticle
 from app.pipeline import enrich as enrichp
 from app.pipeline import fulltext
 from app.pipeline import local_analyze, prefilter
 from app.pipeline import synthesize as synthp
+from app.services import evidence_package as evidence_service
 
 
 LLM_ANALYSIS_MARKER = "<!-- analysis-source: llm -->"
@@ -97,25 +98,45 @@ def collect_topic(
                 errors.append(error)
                 requests.append(_request_stats(request_id, "gdelt", q, 0, error=error))
 
-    feed_requests = [{"url": url, "metadata": None} for url in feeds]
+    feed_requests = [{"url": url, "metadata": None, "source_id": None} for url in feeds]
     if use_curated_feeds:
+        registry_feeds = feed_registry.enabled_registry_feeds(session)
         feed_requests.extend(
-            {"url": feed["url"], "metadata": feed}
-            for feed in feed_registry.curated_feeds()
+            {"url": feed["url"], "metadata": feed, "source_id": feed.get("source_id")}
+            for feed in registry_feeds
         )
+        if not registry_feeds:
+            feed_requests.extend(
+                {"url": feed["url"], "metadata": feed, "source_id": None}
+                for feed in feed_registry.curated_feeds()
+            )
 
     for feed_request in feed_requests:
         url = feed_request["url"]
         metadata = feed_request["metadata"]
+        source_id = feed_request.get("source_id")
         request_id = _request_id("rss", len(requests))
         try:
             items = rss.collect_feed(url, metadata=metadata)
             raw += _tag_items(items, request_id)
-            requests.append(_request_stats(request_id, "rss", url, len(items)))
+            requests.append(_request_stats(
+                request_id,
+                "rss",
+                url,
+                len(items),
+                metadata=metadata,
+            ))
         except Exception as exc:
             error = f"rss {url!r}: {type(exc).__name__}: {exc}"
             errors.append(error)
-            requests.append(_request_stats(request_id, "rss", url, 0, error=error))
+            requests.append(_request_stats(
+                request_id,
+                "rss",
+                url,
+                0,
+                error=error,
+                metadata=metadata,
+            ))
 
     known_urls = {prefilter.normalize_url(a.url) for a in session.exec(select(Article)).all()}
     linked_ids = [
@@ -131,6 +152,8 @@ def collect_topic(
     kept_by_request = Counter(item.get("_request_id", "") for item in kept)
     for request in requests:
         request["kept_count"] = kept_by_request.get(request["id"], 0)
+        if request.get("source_id"):
+            _update_source_status(session, int(request["source_id"]), request)
 
     new_articles = 0
     new_links = 0
@@ -364,31 +387,35 @@ def enrich_topic_articles(
 
 
 def synthesize_topic(session: Session, topic: Topic) -> dict[str, Any]:
-    rows_db = session.exec(
-        select(TopicArticle, Article)
-        .where(TopicArticle.article_id == Article.id)
-        .where(TopicArticle.topic_id == topic.id)
-        .where(TopicArticle.relevant == True)  # noqa: E712
-        .where(TopicArticle.stance != "")
-    ).all()
-    if not rows_db:
+    package = evidence_service.build_evidence_package(session, topic)
+    rows = [
+        _synthesis_row_from_evidence_article(article)
+        for article in package.get("articles", [])
+        if article.get("stance")
+    ]
+    if not rows:
         raise RuntimeError("没有已富化且相关的文章，请先运行富化。")
 
-    rows = [
-        {
-            "id": article.id,
-            "date": article.published_at.strftime("%Y-%m-%d") if article.published_at else "????-??-??",
-            "source": article.source,
-            "lang": article.source_lang,
-            "stance": topic_article.stance,
-            "title_zh": article.title_zh or article.title,
-        }
-        for topic_article, article in rows_db
-    ]
     rows.sort(key=lambda row: row["date"])
-    data = synthp.synthesize(topic.name, topic.description, rows)
+    data = synthp.synthesize(topic.name, topic.description, rows, evidence_package=package)
     data["input_articles"] = len(rows)
     return data
+
+
+def _synthesis_row_from_evidence_article(article: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": article.get("id"),
+        "date": (article.get("published_at") or "????-??-??")[:10],
+        "source": article.get("source", ""),
+        "lang": article.get("source_lang", ""),
+        "stance": article.get("stance", ""),
+        "title_zh": article.get("title", ""),
+        "snippet": article.get("snippet", ""),
+        "source_type": article.get("source_type", "unknown"),
+        "quality_tier": article.get("quality_tier", "other"),
+        "source_country": article.get("source_country", ""),
+        "category": article.get("category", ""),
+    }
 
 
 def persist_synthesis(session: Session, topic_id: int, data: dict[str, Any]) -> None:
@@ -544,7 +571,9 @@ def _request_stats(
     query: str,
     raw_count: int,
     error: str = "",
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    metadata = metadata or {}
     return {
         "id": request_id,
         "collector": collector,
@@ -553,7 +582,24 @@ def _request_stats(
         "kept_count": 0,
         "status": "failed" if error else "ok",
         "error": error,
+        "source_id": metadata.get("source_id"),
+        "source_name": metadata.get("name", ""),
+        "source_type": metadata.get("source_type", collector),
+        "quality_tier": metadata.get("tier", ""),
     }
+
+
+def _update_source_status(session: Session, source_id: int, request: dict[str, Any]) -> None:
+    source = session.get(SourceRegistry, source_id)
+    if not source:
+        return
+    source.last_status = request["status"]
+    source.last_error = request.get("error", "")
+    source.last_fetched_at = datetime.utcnow()
+    source.article_count += int(request.get("kept_count") or 0)
+    source.updated_at = datetime.utcnow()
+    session.add(source)
+    session.commit()
 
 
 def _tag_items(items: list[dict], request_id: str) -> list[dict]:

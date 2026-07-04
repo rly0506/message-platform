@@ -1,10 +1,12 @@
 """Public sentiment collectors via local OpenCLI."""
 from __future__ import annotations
 
+import os
 import subprocess
 from typing import Any
 
 from app import config
+from app.services import opencli_diagnostics
 
 
 class RedditSentimentError(RuntimeError):
@@ -24,6 +26,35 @@ def _browser_hint() -> str:
     """OpenCLI 失败多半是 Chrome 没开 / 登录态失效。给一句可操作提示, 并安抚: HN 不受影响。"""
     return ("　← 该平台经本机浏览器采集, 请确认 Chrome 已打开并登录对应平台后重试。"
             "(Hacker News 走公开 API, 不受此影响, 已照常采集。)")
+
+
+def _opencli_missing_message(command: str) -> str:
+    recommended = opencli_diagnostics.recommended_command()
+    base = opencli_diagnostics.diagnostic_message(command, "", recommended)
+    return f"{base} Chrome 登录态不是当前阻塞点；请先让后端能启动 OpenCLI。"
+
+
+def _opencli_args(command: str, args: list[str]) -> list[str]:
+    if os.name == "nt" and command.lower().endswith((".cmd", ".bat")):
+        return ["cmd", "/c", command, *args]
+    return [command, *args]
+
+
+def _run_opencli(command: str, args: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        _opencli_args(command, args),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _opencli_start_error(platform: str, action: str, exc: OSError) -> str:
+    detail = str(exc).strip() or exc.__class__.__name__
+    return f"OpenCLI {platform} {action} could not start: {detail}. 请检查 OPENCLI_COMMAND 是否指向可执行的 opencli/opencli.cmd。"
 
 
 
@@ -115,23 +146,15 @@ def search_platform(platform: str, query: str, limit: int = 25, timeout: int = 4
     """Search one OpenCLI platform and normalize posts."""
     command = config.OPENCLI_COMMAND or "opencli"
     try:
-        completed = subprocess.run(
-            [command, platform, "search", query, "-f", "yaml"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
+        completed = _run_opencli(command, [platform, "search", query, "-f", "yaml"], timeout)
     except FileNotFoundError as exc:
-        raise RedditSentimentError(
-            f"OpenCLI is not available at '{command}'. Set OPENCLI_COMMAND to the full local path."
-        ) from exc
+        raise RedditSentimentError(_opencli_missing_message(command)) from exc
     except subprocess.TimeoutExpired as exc:
         raise RedditSentimentError(
             f"OpenCLI {platform} search timed out after {timeout}s.{_browser_hint()}"
         ) from exc
+    except OSError as exc:
+        raise RedditSentimentError(_opencli_start_error(platform, "search", exc)) from exc
 
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
@@ -182,21 +205,13 @@ def search_comments(platform: str, post_id: str, limit: int = 10, timeout: int =
         return []
     command = config.OPENCLI_COMMAND or "opencli"
     try:
-        completed = subprocess.run(
-            [command, platform, command_name, post_id, "-f", "yaml"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
+        completed = _run_opencli(command, [platform, command_name, post_id, "-f", "yaml"], timeout)
     except FileNotFoundError as exc:
-        raise RedditSentimentError(
-            f"OpenCLI is not available at '{command}'. Set OPENCLI_COMMAND to the full local path."
-        ) from exc
+        raise RedditSentimentError(_opencli_missing_message(command)) from exc
     except subprocess.TimeoutExpired as exc:
         raise RedditSentimentError(f"OpenCLI {platform} {command_name} timed out after {timeout}s.") from exc
+    except OSError as exc:
+        raise RedditSentimentError(_opencli_start_error(platform, command_name, exc)) from exc
 
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()

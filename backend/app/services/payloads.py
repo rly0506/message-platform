@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from app.db import (
     Analysis,
     Article,
+    Project,
     SourceFraming,
     TimelineEvent,
     Topic,
@@ -19,7 +20,26 @@ from app.db import (
 from app.pipeline import local_analyze
 
 
-def topic_summary(session: Session, topic: Topic) -> dict[str, Any]:
+def project_summary(session: Session, project: Project) -> dict[str, Any]:
+    topics = session.exec(
+        select(Topic)
+        .where(Topic.project_id == project.id)
+        .order_by(Topic.created_at.desc())
+    ).all()
+    return {
+        "id": project.id,
+        "name": project.name,
+        "description": project.description,
+        "status": project.status,
+        "archived_at": iso(project.archived_at),
+        "created_at": iso(project.created_at),
+        "updated_at": iso(project.updated_at),
+        "topic_count": len(topics),
+        "topics": [topic_summary(session, topic, include_project=False) for topic in topics],
+    }
+
+
+def topic_summary(session: Session, topic: Topic, include_project: bool = True) -> dict[str, Any]:
     links = session.exec(
         select(TopicArticle).where(TopicArticle.topic_id == topic.id)
     ).all()
@@ -33,20 +53,26 @@ def topic_summary(session: Session, topic: Topic) -> dict[str, Any]:
     source_count = len({article.source for article in articles if article.source})
     enriched_count = sum(1 for article in articles if article.enriched)
     relevant_count = sum(1 for link in links if link.relevant)
+    project = session.get(Project, topic.project_id) if include_project and topic.project_id else None
 
-    return {
+    summary = {
         "id": topic.id,
+        "project_id": topic.project_id,
+        "project_name": project.name if project else "",
         "name": topic.name,
         "description": topic.description,
         "queries": topic.queries,
         "status": topic.status,
+        "archived_at": iso(topic.archived_at),
         "created_at": iso(topic.created_at),
+        "updated_at": iso(topic.updated_at),
         "article_count": len(links),
         "source_count": source_count,
         "enriched_count": enriched_count,
         "relevant_count": relevant_count,
         "latest_published_at": iso(latest),
     }
+    return summary
 
 
 def article_payload(topic_article: TopicArticle, article: Article) -> dict[str, Any]:

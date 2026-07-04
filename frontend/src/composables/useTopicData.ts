@@ -1,17 +1,25 @@
 import { computed, ref } from 'vue'
 import {
+  createProject,
+  createTopic,
+  deleteProject,
+  deleteTopic,
   errorMessage,
   fetchArticles,
   fetchLocalEvents,
+  fetchProjects,
   fetchTopic,
   fetchTopics,
   isNetworkError,
+  updateProject,
+  updateTopic,
 } from '../api/dossierApi'
-import type { Article, LocalEventsPayload, TopicDetail, TopicSummary } from '../types/dossier'
+import type { Article, LocalEventsPayload, ProjectSummary, TopicDetail, TopicSummary } from '../types/dossier'
 
 const pageSize = 80
 
 export function useTopicData() {
+  const projects = ref<ProjectSummary[]>([])
   const topics = ref<TopicSummary[]>([])
   const selectedTopicId = ref<number | null>(null)
   const detail = ref<TopicDetail | null>(null)
@@ -32,8 +40,14 @@ export function useTopicData() {
     error.value = ''
     try {
       const data = await fetchTopics()
+      try {
+        projects.value = await fetchProjects()
+      } catch {
+        projects.value = []
+      }
       topics.value = data
-      selectedTopicId.value = preferTopicId || selectedTopicId.value || data[0]?.id || null
+      const preferred = preferTopicId || selectedTopicId.value
+      selectedTopicId.value = data.some((topic) => topic.id === preferred) ? preferred || null : data[0]?.id || null
     } catch (err) {
       error.value = readableError(err)
     } finally {
@@ -65,7 +79,80 @@ export function useTopicData() {
     }
   }
 
+  async function createTopicInProject(payload: {
+    project_id?: number | null
+    name: string
+    description?: string
+    queries?: string[]
+  }) {
+    const topic = await createTopic(payload)
+    await loadTopics(topic.id)
+    await loadTopic(topic.id)
+    return topic
+  }
+
+  async function saveProject(payload: { id?: number; name: string; description?: string }) {
+    const project = payload.id
+      ? await updateProject(payload.id, { name: payload.name, description: payload.description || '' })
+      : await createProject({ name: payload.name, description: payload.description || '' })
+    await loadTopics(selectedTopicId.value || undefined)
+    return project
+  }
+
+  async function archiveProject(id: number) {
+    const project = await updateProject(id, { status: 'archived' })
+    await loadTopics(selectedTopicId.value || undefined)
+    return project
+  }
+
+  async function removeProject(id: number) {
+    const result = await deleteProject(id)
+    await loadTopics(selectedTopicId.value || undefined)
+    return result
+  }
+
+  async function saveTopic(payload: {
+    id?: number
+    project_id?: number | null
+    name: string
+    description?: string
+    queries?: string[]
+  }) {
+    const topic = payload.id
+      ? await updateTopic(payload.id, {
+          project_id: payload.project_id,
+          name: payload.name,
+          description: payload.description || '',
+          queries: payload.queries || [],
+        })
+      : await createTopic(payload)
+    await loadTopics(topic.id)
+    await loadTopic(topic.id)
+    return topic
+  }
+
+  async function archiveTopic(id: number) {
+    const topic = await updateTopic(id, { status: 'archived' })
+    await loadTopics(selectedTopicId.value || undefined)
+    if (selectedTopicId.value === id) {
+      detail.value = { ...detail.value, ...topic } as TopicDetail
+    }
+    return topic
+  }
+
+  async function removeTopic(id: number) {
+    const result = await deleteTopic(id)
+    const fallbackId = selectedTopicId.value === id ? undefined : selectedTopicId.value || undefined
+    await loadTopics(fallbackId)
+    if (selectedTopicId.value === id) {
+      selectedTopicId.value = topics.value[0]?.id || null
+      detail.value = null
+    }
+    return result
+  }
+
   return {
+    projects,
     topics,
     selectedTopicId,
     detail,
@@ -81,6 +168,13 @@ export function useTopicData() {
     loadTopic,
     loadArticles,
     loadLocalEvents,
+    createTopicInProject,
+    saveProject,
+    archiveProject,
+    removeProject,
+    saveTopic,
+    archiveTopic,
+    removeTopic,
   }
 }
 

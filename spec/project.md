@@ -2,11 +2,11 @@
 
 ## One Sentence Goal
 
-Build a personal intelligence workbench that helps the user track events, compare source evidence, notice narrative patterns, and broaden cognition while preserving a no-LLM core path.
+Build a personal cognition-expansion workbench that helps the user track events, compare source evidence, inspect narratives, and turn analysis habits into reusable thinking workflows while preserving a no-LLM core path.
 
 ## Product Shape
 
-The project is not a general news reader. It is an event intelligence desk:
+The project is not a general news reader and not a truth machine. It is a local-first intelligence and cognition-calibration desk:
 
 - collect reports and discussion signals
 - deduplicate and classify evidence
@@ -14,6 +14,14 @@ The project is not a general news reader. It is an event intelligence desk:
 - compare media, academic, community, and synthesis layers
 - expose uncertainty and evidence before conclusions
 - make dense information readable through progressive disclosure
+- recommend cognition-boundary items from local profile evidence
+- help the user reuse analysis workflows across new topics
+
+Positioning principle:
+
+> We cannot understand the world without stories, but we can train ourselves not to be trapped by one story.
+
+The system should help inspect stories with evidence, counterexamples, and models. It should not pretend that a short test fully maps the user or that an LLM can replace judgement.
 
 ## Architecture
 
@@ -41,6 +49,8 @@ Frontend:
 - Search topic -> collect media reports -> store articles -> local event timeline.
 - Deep analysis -> optional LLM enrichment -> synthesis -> timeline/framing/analysis markdown.
 - Discovery -> frontier seeds -> synthesis -> clickable search bridge.
+- Discovery archive -> historical reports -> local cross-day cognition timeline tree.
+- Cognition boundary queue -> low-friction feedback -> local profile evidence -> workflow prompt.
 - Sentiment/community -> Reddit/Hacker News/OpenCLI platform signals, treated as non-factual sentiment samples.
 - Academic/cross synthesis -> compare media, academic, community, and LLM views.
 
@@ -51,3 +61,4 @@ Frontend:
 - Do not treat community sentiment as verified facts.
 - Do not add heavy queues, vector databases, or new infrastructure until existing local patterns fail by evidence.
 - Do not hide evidence behind unsupported conclusions.
+- Do not claim causality, authority, or user-understanding beyond the available evidence.

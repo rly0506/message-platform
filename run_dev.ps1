@@ -54,13 +54,37 @@ $bport = Resolve-Port 8000 "python" "backend"
 $fport = Resolve-Port 5173 "node"   "frontend"
 $apiBase = "http://127.0.0.1:$bport"
 
+function Resolve-OpenCliCommand() {
+    if ($env:OPENCLI_COMMAND -and (Test-Path -LiteralPath $env:OPENCLI_COMMAND)) {
+        return $env:OPENCLI_COMMAND
+    }
+    $cmd = Get-Command opencli -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+        return $cmd.Source
+    }
+    $candidates = @(
+        "D:\npm-global\opencli.cmd",
+        "$env:APPDATA\npm\opencli.cmd"
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            return $candidate
+        }
+    }
+    return ""
+}
+
+$opencliCommand = Resolve-OpenCliCommand
+
 # ---- backend: uvicorn, auto-restart on crash ----
 $backend = @"
 `$host.UI.RawUI.WindowTitle = 'BACKEND :$bport  (auto-restart; close window to stop)'
 `$env:PYTHONIOENCODING = 'utf-8'
+if ('$opencliCommand') { `$env:OPENCLI_COMMAND = '$opencliCommand' }
 Set-Location '$root'
 while (`$true) {
     Write-Host '[backend] starting uvicorn :$bport ...' -ForegroundColor Cyan
+    if (`$env:OPENCLI_COMMAND) { Write-Host ("[backend] OPENCLI_COMMAND={0}" -f `$env:OPENCLI_COMMAND) -ForegroundColor DarkGray }
     & '$root\venv\Scripts\python.exe' -m uvicorn app.api:app --app-dir backend --host 127.0.0.1 --port $bport --reload
     Write-Host '[backend] exited; restarting in 2s (Ctrl+C to stop this window)...' -ForegroundColor Yellow
     Start-Sleep -Seconds 2
@@ -80,8 +104,14 @@ while (`$true) {
 }
 "@
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $backend
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontend
+# Pass each script via -EncodedCommand (base64 of UTF-16LE). Passing a multi-line
+# script through -Command as one string mangles the inner quotes at the command-line
+# boundary (e.g. Write-Host ("..." -f ...) lost its quotes and broke parsing).
+# EncodedCommand has no special characters, so quoting/escaping survives intact.
+$backendEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($backend))
+$frontendEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($frontend))
+Start-Process powershell -ArgumentList "-NoExit", "-EncodedCommand", $backendEnc
+Start-Process powershell -ArgumentList "-NoExit", "-EncodedCommand", $frontendEnc
 
 Write-Host ""
 Write-Host "Launched in two new windows:" -ForegroundColor Green

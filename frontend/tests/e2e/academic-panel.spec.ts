@@ -40,6 +40,10 @@ const academicLayer = {
       authors: ['A. Scholar'],
       venue: 'Journal of AI Systems',
       concepts: [{ name: 'Artificial intelligence', score: 0.9, level: 1 }],
+      doi: 'https://doi.org/10.1000/foundation',
+      openalex_url: 'https://openalex.org/W1',
+      citation_key: 'W1',
+      citation: 'A. Scholar (2018). Foundational compute scaling paper. Journal of AI Systems. https://doi.org/10.1000/foundation',
       url: 'https://example.com/foundation',
     },
     {
@@ -51,6 +55,10 @@ const academicLayer = {
       authors: ['B. Researcher'],
       venue: 'Conference on Machine Learning',
       concepts: [{ name: 'Evaluation', score: 0.8, level: 2 }],
+      doi: '',
+      openalex_url: 'https://openalex.org/W2',
+      citation_key: 'W2',
+      citation: 'B. Researcher (2026). Recent frontier evaluation paper. Conference on Machine Learning. https://openalex.org/W2',
       url: 'https://example.com/recent',
     },
     {
@@ -62,6 +70,10 @@ const academicLayer = {
       authors: [],
       venue: '',
       concepts: [],
+      doi: '',
+      openalex_url: 'https://openalex.org/W3',
+      citation_key: 'W3',
+      citation: 'Unknown authors (2025). Sparse metadata working paper. Unknown venue. https://openalex.org/W3',
       url: 'https://example.com/sparse',
     },
     {
@@ -73,12 +85,45 @@ const academicLayer = {
       authors: ['C. Author'],
       venue: 'Policy Review',
       concepts: [],
+      doi: '',
+      openalex_url: 'https://openalex.org/W4',
+      citation_key: 'W4',
+      citation: 'C. Author (2016). Venue-only background paper. Policy Review. https://openalex.org/W4',
       url: 'https://example.com/background',
     },
   ],
   graph: {
     nodes: [],
     edges: [{ citing_openalex_id: 'https://openalex.org/W2', cited_openalex_id: 'https://openalex.org/W1' }],
+  },
+  literature_network: {
+    nodes: [
+      {
+        id: 'https://openalex.org/W1',
+        citation_key: 'W1',
+        title: 'Foundational compute scaling paper',
+        year: currentYear - 8,
+        venue: 'Journal of AI Systems',
+        cited_by_count: 900,
+      },
+      {
+        id: 'https://openalex.org/W2',
+        citation_key: 'W2',
+        title: 'Recent frontier evaluation paper',
+        year: currentYear,
+        venue: 'Conference on Machine Learning',
+        cited_by_count: 50,
+      },
+    ],
+    edges: [
+      {
+        citing_openalex_id: 'https://openalex.org/W2',
+        cited_openalex_id: 'https://openalex.org/W1',
+        citing_title: 'Recent frontier evaluation paper',
+        cited_title: 'Foundational compute scaling paper',
+        relation: 'cites',
+      },
+    ],
   },
   schools: [],
   foundational_papers: [
@@ -145,4 +190,23 @@ test('shows academic priority-reading summary and neutral paper labels', async (
 
   const sparse = page.locator('.academic-paper-list article').filter({ hasText: 'Sparse metadata working paper' })
   await expect(sparse.locator('.academic-signal-badge')).toContainText(['新近', '低信息'])
+})
+
+test('shows citation metadata and readable literature network', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
+
+  const foundational = page.locator('.academic-paper-list article').filter({ hasText: 'Foundational compute scaling paper' })
+  await expect(foundational).toContainText('A. Scholar')
+  await expect(foundational).toContainText('Journal of AI Systems')
+  await expect(foundational).toContainText('https://doi.org/10.1000/foundation')
+  await expect(foundational.getByRole('link', { name: 'DOI' })).toHaveAttribute('href', 'https://doi.org/10.1000/foundation')
+  await expect(foundational.getByRole('link', { name: 'OpenAlex' })).toHaveAttribute('href', 'https://openalex.org/W1')
+
+  const network = page.locator('.academic-literature-network')
+  await expect(network).toContainText('文献网络')
+  await expect(network).toContainText('Recent frontier evaluation paper')
+  await expect(network).toContainText('引用')
+  await expect(network).toContainText('Foundational compute scaling paper')
+  await expect(page.locator('.academic-edge-list')).toHaveCount(0)
 })

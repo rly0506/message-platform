@@ -76,6 +76,62 @@
       "country": "United States",
       "lang": "en",
       "tier": "professional"
+    },
+    {
+      "name": "TLDR",
+      "url": "https://tldr.tech/api/rss/tech",
+      "country": "United States",
+      "lang": "en",
+      "tier": "newsletter",
+      "source_type": "rss",
+      "notes": "Industry pulse source from the user's intelligence-source list."
+    },
+    {
+      "name": "The Rundown AI",
+      "url": "https://www.therundown.ai/feed",
+      "country": "United States",
+      "lang": "en",
+      "tier": "newsletter",
+      "source_type": "rss",
+      "enabled": "false",
+      "notes": "Listed as a target source; keep disabled until a currently valid feed URL is confirmed."
+    },
+    {
+      "name": "Morning Brew",
+      "url": "https://www.morningbrew.com/daily/rss",
+      "country": "United States",
+      "lang": "en",
+      "tier": "newsletter",
+      "source_type": "rss",
+      "enabled": "false",
+      "notes": "Listed as a target source; current direct RSS fetch may be blocked by Cloudflare."
+    },
+    {
+      "name": "Stratechery",
+      "url": "https://stratechery.com/feed/",
+      "country": "United States",
+      "lang": "en",
+      "tier": "professional",
+      "source_type": "rss",
+      "notes": "Deep-thinking source from the user's intelligence-source list."
+    },
+    {
+      "name": "Lenny's Newsletter",
+      "url": "https://www.lennysnewsletter.com/feed",
+      "country": "United States",
+      "lang": "en",
+      "tier": "newsletter",
+      "source_type": "rss",
+      "notes": "Product and growth source from the user's intelligence-source list."
+    },
+    {
+      "name": "OpenAI Research",
+      "url": "https://openai.com/news/rss.xml",
+      "country": "United States",
+      "lang": "en",
+      "tier": "research",
+      "source_type": "rss",
+      "notes": "Research source from the user's intelligence-source list."
     }
   ]
 }

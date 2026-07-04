@@ -9,6 +9,7 @@ from app.db import (
     Article,
     SearchJob,
     SourceFraming,
+    SourceRegistry,
     TimelineEvent,
     Topic,
     TopicArticle,
@@ -47,9 +48,10 @@ def test_run_deep_analysis_enriches_synthesizes_and_persists(monkeypatch):
             for item in items
         }
 
-    def fake_synthesize(topic_name, description, rows):
+    def fake_synthesize(topic_name, description, rows, *, evidence_package=None):
         assert topic_name == "LLM 接入测试"
         assert len(rows) == 2
+        assert evidence_package is not None
         return {
             "timeline": [
                 {
@@ -113,6 +115,59 @@ def test_run_deep_analysis_enriches_synthesizes_and_persists(monkeypatch):
     assert ("enrich", "done", result["enrich"]) in steps
     assert ("synthesize", "running", None) in steps
     assert ("persist", "done", None) in steps
+
+
+def test_synthesize_topic_passes_local_evidence_package_to_llm(monkeypatch):
+    topic_id, article_ids = _seed_deep_analysis_case(article_count=2)
+    captured = {}
+
+    def fake_synthesize(topic_name, description, rows, *, evidence_package=None):
+        captured["topic_name"] = topic_name
+        captured["rows"] = rows
+        captured["evidence_package"] = evidence_package
+        return {"timeline": [], "framing": [], "analysis_md": "ok"}
+
+    monkeypatch.setattr(topic_ops.synthp, "synthesize", fake_synthesize)
+
+    with Session(engine) as session:
+        session.add(SourceRegistry(
+            name="测试来源",
+            url="https://example.com/test-source.xml",
+            country="United Kingdom",
+            language="en",
+            source_type="rss",
+            quality_tier="wire",
+            enabled=True,
+            fulltext_support=True,
+        ))
+        for article_id in article_ids:
+            article = session.get(Article, article_id)
+            article.enriched = True
+            article.title_zh = f"译文标题 {article_id}"
+            article.snippet_zh = f"本地证据摘要 {article_id}"
+            article.source_country = "United Kingdom"
+            article.collector = "rss"
+            session.add(article)
+            link = session.get(TopicArticle, (topic_id, article_id))
+            link.stance = "中立观察"
+            link.stance_summary = "测试立场"
+            session.add(link)
+        session.commit()
+
+        topic = session.get(Topic, topic_id)
+        result = topic_ops.synthesize_topic(session, topic)
+
+    assert result["input_articles"] == 2
+    assert captured["topic_name"] == "LLM 接入测试"
+    assert captured["evidence_package"]["topic_id"] == topic_id
+    assert captured["evidence_package"]["article_count"] == 2
+    assert captured["evidence_package"]["events"]
+    assert "narrative_signals" in captured["evidence_package"]
+    assert all(row["source_type"] == "rss" for row in captured["rows"])
+    assert all(row["quality_tier"] == "wire" for row in captured["rows"])
+    assert all(row["snippet"] for row in captured["rows"])
+    assert all(row["category"] for row in captured["rows"])
+    assert all("body" not in row for row in captured["rows"])
 
 
 def test_enqueue_deep_analysis_job_creates_search_job_without_running_llm(monkeypatch):

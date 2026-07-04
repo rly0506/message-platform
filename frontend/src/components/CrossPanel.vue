@@ -37,7 +37,7 @@ defineEmits<{
 
       <div class="cross-synthesis-note">
         <strong>媒体 / 学界 / 民间的交叉校验</strong>
-        <span>点击后会依次尝试更新媒体、学界、民间声部；单个声部失败不会阻断最终综合。</span>
+        <span>默认复用已经生成的媒体、学界、民间声部；刷新某个声部后可直接重新生成对照。</span>
         <span>综合共识、矛盾、盲区、机制链条和批判提示；民间情绪始终按非事实源处理。</span>
       </div>
 

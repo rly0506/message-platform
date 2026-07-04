@@ -34,6 +34,54 @@ const sentiment = {
   platforms: ['reddit', 'hackernews', 'bilibili', 'xiaohongshu', 'xueqiu'],
   warning: 'community samples are not facts',
   summary_md: '## Sentiment summary\nCommunity attention is rising.',
+  timeline: [
+    {
+      time_bucket: '2026-06-20',
+      platform: 'reddit',
+      dominant_frame: 'supply anxiety',
+      sentiment_label: 'anxious',
+      sample_count: 2,
+      confidence: 0.8,
+      representative_posts: [
+        {
+          id: 'r1',
+          platform: 'reddit',
+          kind: 'post',
+          subreddit: 'hardware',
+          title: 'GPU shortage is back',
+          author: 'reader',
+          score: 120,
+          num_comments: 44,
+          url: 'https://reddit.com/r/hardware/comments/r1',
+          created_utc: '2026-06-20T03:00:00',
+          selftext_snippet: 'People are debating whether supply is actually tight.',
+        },
+      ],
+    },
+    {
+      time_bucket: '2026-06-20',
+      platform: 'hackernews',
+      dominant_frame: 'capex debate',
+      sentiment_label: 'skeptical',
+      sample_count: 1,
+      confidence: 0.45,
+      representative_posts: [
+        {
+          id: 'h1',
+          platform: 'hackernews',
+          kind: 'post',
+          subreddit: 'Hacker News',
+          title: 'Accelerator demand keeps climbing',
+          author: 'hnuser',
+          score: 80,
+          num_comments: 12,
+          url: 'https://news.ycombinator.com/item?id=1',
+          created_utc: '2026-06-20T05:00:00',
+          selftext_snippet: 'HN is arguing about capex and bottlenecks.',
+        },
+      ],
+    },
+  ],
   errors: [
     { platform: 'xiaohongshu', error: 'browser unavailable' },
     { platform: 'xueqiu', error: 'login expired' },
@@ -98,6 +146,18 @@ async function mockApi(page: Page) {
   await page.route('**/api/topics/202/sentiment', async (route) => {
     await route.fulfill({ json: sentiment })
   })
+  await page.route('**/api/integrations/opencli/diagnostics', async (route) => {
+    await route.fulfill({
+      json: {
+        configured_command: 'opencli',
+        available: false,
+        resolved_path: '',
+        recommended_command: 'D:\\npm-global\\opencli.cmd',
+        browser_required_platforms: ['reddit', 'bilibili', 'xiaohongshu', 'xueqiu'],
+        message: "OpenCLI is not available at 'opencli'. Set OPENCLI_COMMAND to 'D:\\npm-global\\opencli.cmd'. Chrome 登录态不是当前阻塞点；请先让后端能启动 OpenCLI。",
+      },
+    })
+  })
 }
 
 test.beforeEach(async ({ page }) => {
@@ -126,4 +186,31 @@ test('renders sentiment as scannable sample cards', async ({ page }) => {
   await expect(page.locator('.sentiment-sample-card').first()).toContainText('GPU shortage is back')
   await expect(page.locator('.sentiment-sample-card').first()).toContainText('情绪样本，非事实来源')
   await expect(page.getByText('1 条高赞评论')).toBeVisible()
+})
+
+test('renders sentiment change timeline as platform-frame samples', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('专题视图导航').getByRole('button', { name: '民间情绪' }).click()
+
+  const timeline = page.locator('.sentiment-timeline')
+  await expect(timeline).toContainText('舆论变化时间线')
+  await expect(timeline.locator('.sentiment-timeline-item')).toHaveCount(2)
+  await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('Reddit')
+  await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('supply anxiety')
+  await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('anxious')
+  await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('2 条样本')
+  await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('GPU shortage is back')
+  await expect(timeline.locator('.sentiment-timeline-item').nth(1)).toContainText('小样本线索')
+  await expect(timeline).toContainText('样本趋势，非事实时间线')
+})
+
+test('shows actionable OpenCLI diagnostics in the sentiment panel', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('专题视图导航').getByRole('button', { name: '民间情绪' }).click()
+
+  const diagnostics = page.locator('.opencli-diagnostics')
+  await expect(diagnostics).toContainText('OpenCLI 未连接')
+  await expect(diagnostics).toContainText('当前命令：opencli')
+  await expect(diagnostics).toContainText('建议设置：D:\\npm-global\\opencli.cmd')
+  await expect(diagnostics).toContainText('Chrome 已登录仍报错时，先修 OPENCLI_COMMAND')
 })

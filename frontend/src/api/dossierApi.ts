@@ -12,8 +12,12 @@ import type {
   DiscoveryReportMeta,
   DiscoveryTimelineTree,
   LocalEventsPayload,
+  OpenCliDiagnostics,
+  ProjectSummary,
   SearchJob,
   SentimentLayer,
+  SourceImportResult,
+  SourceRegistry,
   TopicDetail,
   TopicSummary,
 } from '../types/dossier'
@@ -22,6 +26,94 @@ export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
 
 export async function fetchTopics() {
   const res = await axios.get<TopicSummary[]>(`${API_BASE}/api/topics`)
+  return res.data
+}
+
+export async function fetchProjects() {
+  const res = await axios.get<ProjectSummary[]>(`${API_BASE}/api/projects`)
+  return res.data
+}
+
+export async function fetchSources() {
+  const res = await axios.get<SourceRegistry[]>(`${API_BASE}/api/sources`)
+  return res.data
+}
+
+export async function createSource(payload: Partial<SourceRegistry>) {
+  const res = await axios.post<SourceRegistry>(`${API_BASE}/api/sources`, payload)
+  return res.data
+}
+
+export async function importSources(payload: {
+  text: string
+  country?: string
+  language?: string
+  source_type?: string
+  quality_tier?: string
+  notes?: string
+}) {
+  const res = await axios.post<SourceImportResult>(`${API_BASE}/api/sources/import`, payload)
+  return res.data
+}
+
+export async function updateSource(id: number, payload: Partial<SourceRegistry>) {
+  const res = await axios.patch<SourceRegistry>(`${API_BASE}/api/sources/${id}`, payload)
+  return res.data
+}
+
+export async function createProject(payload: {
+  name: string
+  description?: string
+  status?: string
+}) {
+  const res = await axios.post<ProjectSummary>(`${API_BASE}/api/projects`, payload)
+  return res.data
+}
+
+export async function updateProject(
+  id: number,
+  payload: {
+    name?: string
+    description?: string
+    status?: string
+  },
+) {
+  const res = await axios.patch<ProjectSummary>(`${API_BASE}/api/projects/${id}`, payload)
+  return res.data
+}
+
+export async function deleteProject(id: number) {
+  const res = await axios.delete<{ deleted: boolean; project_id: number }>(`${API_BASE}/api/projects/${id}`)
+  return res.data
+}
+
+export async function createTopic(payload: {
+  project_id?: number | null
+  name: string
+  description?: string
+  queries?: string[]
+  status?: string
+}) {
+  const res = await axios.post<TopicSummary>(`${API_BASE}/api/topics`, payload)
+  return res.data
+}
+
+export async function updateTopic(
+  id: number,
+  payload: {
+    project_id?: number | null
+    name?: string
+    description?: string
+    queries?: string[]
+    status?: string
+  },
+) {
+  const res = await axios.patch<TopicSummary>(`${API_BASE}/api/topics/${id}`, payload)
+  return res.data
+}
+
+export async function deleteTopic(id: number) {
+  const res = await axios.delete<{ deleted: boolean; topic_id: number }>(`${API_BASE}/api/topics/${id}`)
   return res.data
 }
 
@@ -89,6 +181,11 @@ export async function fetchAcademic(topicId: number) {
 
 export async function fetchSentiment(topicId: number) {
   const res = await axios.get<SentimentLayer>(`${API_BASE}/api/topics/${topicId}/sentiment`)
+  return res.data
+}
+
+export async function fetchOpenCliDiagnostics() {
+  const res = await axios.get<OpenCliDiagnostics>(`${API_BASE}/api/integrations/opencli/diagnostics`)
   return res.data
 }
 

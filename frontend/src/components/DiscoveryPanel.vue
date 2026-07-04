@@ -13,7 +13,91 @@ import type {
 } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
-type BoundarySeed = { seed: DiscoverySeed; reason: string; profile: CognitionProfileItem | null }
+type BoundarySeed = {
+  seed: DiscoverySeed
+  reason: string
+  profile: CognitionProfileItem | null
+  score: number
+  workflow: string
+}
+type DomainRule = {
+  key: string
+  words: string[]
+  workflow: string
+}
+
+const domainRules: DomainRule[] = [
+  {
+    key: 'energy',
+    words: ['energy', 'nuclear', 'battery', 'grid', '新能源', '核能', '能源', '电力'],
+    workflow: '先拆清能源类型、电力供给、成本曲线和替代能源，再看谁真正受益。',
+  },
+  {
+    key: 'electricity',
+    words: ['electricity', 'power grid', 'data center power', '电网', '发电', '供电', '数据中心用电'],
+    workflow: '先看负荷曲线、发电结构、电网约束和长期用电合同，再判断受益者。',
+  },
+  {
+    key: 'ai_infra',
+    words: ['gpu', 'cpu', 'cpo', 'compute', 'inference', '算力', '推理', '大模型', '数据中心'],
+    workflow: '先区分训练与推理，再追问成本口径、芯片供给、利用率和替代方案。',
+  },
+  {
+    key: 'finance',
+    words: ['finance', 'credit', 'market', 'bank', 'valuation', '融资', '银行', '金融', '估值', '财报'],
+    workflow: '用财报、现金流、成本和需求曲线追问，不只看标题里的增长叙事。',
+  },
+  {
+    key: 'macro_finance',
+    words: ['fed', 'rate cut', 'liquidity', 'dollar', 'interest rate', '美联储', '降息', '流动性', '美元'],
+    workflow: '先拆利率、流动性、汇率和资产配置链条，再找数据口径验证。',
+  },
+  {
+    key: 'open_source',
+    words: ['github', 'open source', 'oss', '开源', 'star'],
+    workflow: '先看维护者、许可证、提交活跃度、安全记录和商业使用边界。',
+  },
+  {
+    key: 'crypto',
+    words: ['crypto', 'stablecoin', 'bitcoin', 'ethereum', '加密', '稳定币', '比特币', '以太币'],
+    workflow: '先追问锚定资产、储备透明度、监管责任、流动性和极端赎回风险。',
+  },
+  {
+    key: 'biotech',
+    words: ['bio', 'drug', 'gene', 'clinical', '生物', '医药', '基因', '临床'],
+    workflow: '先找论文和临床阶段，再分开看科学突破、监管审批和资本市场叙事。',
+  },
+  {
+    key: 'geopolitics',
+    words: ['geopolitics', 'war', 'export control', 'chip ban', '地缘', '冲突', '出口限制', '芯片禁令'],
+    workflow: '先拆各方激励、替代品、政策周期和产业能力，不用单一阵营叙事下结论。',
+  },
+  {
+    key: 'industrial_policy',
+    words: ['industrial policy', 'supply chain', '产业政策', '供应链', '补贴'],
+    workflow: '先看政策工具、产业瓶颈、补贴对象和替代路径，再判断长期效果。',
+  },
+  {
+    key: 'law_regulation',
+    words: ['regulation', 'law', 'compliance', 'privacy', '监管', '法律', '合规', '隐私'],
+    workflow: '先看监管主体、责任边界、处罚案例和数据/支付/平台规则。',
+  },
+  {
+    key: 'social_structure',
+    words: ['demographic', 'labor', 'society', 'population', '人口', '就业', '社会结构'],
+    workflow: '先区分情绪样本和结构数据，再看群体、地区、时间和制度约束。',
+  },
+  {
+    key: 'engineering_infra',
+    words: ['infrastructure', 'engineering', 'manufacturing', '工程', '制造', '基础设施'],
+    workflow: '先追问物理约束、供应链、良率、维护成本和规模化瓶颈。',
+  },
+  {
+    key: 'media_literacy',
+    words: ['must', 'forever', 'only winner', '6 months', '焦虑', '永远错过', '唯一受益', '必须'],
+    workflow: '先标出绝对化词语，再追问证据、时间口径、反例和利益相关方。',
+  },
+]
 
 const props = defineProps<{
   report: DiscoveryReport | null
@@ -53,7 +137,7 @@ const boundaryQueue = computed<BoundarySeed[]>(() => {
     // 已点「我懂了」(known) 的从队列移除 —— 形成可见闭环: 点完即少一条。
     .filter((seed) => props.seedCognitionMarks[seed.url]?.label !== 'known')
     .map((seed) => ({ seed, ...boundaryReason(seed) }))
-    .sort((a, b) => reasonRank(a.reason) - reasonRank(b.reason) || b.seed.signal - a.seed.signal)
+    .sort((a, b) => b.score - a.score || b.seed.signal - a.seed.signal)
     .slice(0, 10)
 })
 
@@ -120,12 +204,15 @@ function isStale(iso: string | null): boolean {
   return Number.isNaN(then) || (Date.now() - then) > 14 * 86_400_000
 }
 
-function boundaryReason(seed: DiscoverySeed): { reason: string; profile: CognitionProfileItem | null } {
-  const profile = profileForSeed(seed)
-  if (profile?.level === 'unfamiliar') return { reason: '边界外', profile }
-  if (profile?.level === 'partial') return { reason: '机制缺口', profile }
-  if (profile?.level === 'strong_partial') return { reason: '课程相关', profile }
-  return { reason: seed.is_new ? '新信号' : '加速信号', profile: null }
+function boundaryReason(seed: DiscoverySeed): Omit<BoundarySeed, 'seed'> {
+  const { profile, rule } = profileForSeed(seed)
+  const reason = reasonForProfile(seed, profile)
+  return {
+    reason,
+    profile,
+    score: boundaryScore(seed, profile, reason),
+    workflow: rule?.workflow || workflowForStyle(profile?.recommended_seed_style),
+  }
 }
 
 function recommendationText(item: BoundarySeed) {
@@ -136,34 +223,114 @@ function recommendationText(item: BoundarySeed) {
   return '这个方向正在加速，适合判断是否继续追踪。'
 }
 
-function challengeText(item: BoundarySeed) {
-  if (item.profile?.note) return `${item.profile.domain_label}：${item.profile.note}`
-  return item.seed.why || item.seed.what || '先看它是否补上你当前信息版图里的空白。'
+function nextActionText(item: BoundarySeed) {
+  const style = styleLabel(item.profile?.recommended_seed_style)
+  if (item.seed.what) return `送进事件分析台：${item.seed.what}；${style}`
+  return `送进事件分析台做跨媒体追踪；${style}`
 }
 
-function nextActionText(item: BoundarySeed) {
-  if (item.seed.what) return `深入分析：${item.seed.what}`
-  return '深入分析：送进事件分析台做跨媒体追踪。'
+function seedSummary(seed: DiscoverySeed) {
+  return seed.what || seed.title || '暂无摘要'
+}
+
+function seedReportConnection(seed: DiscoverySeed) {
+  const branch = timelineBranches.value.find((item) =>
+    item.branch_key === seed.domain ||
+    item.label === seed.domain_label ||
+    item.items.some((entry) => entry.url === seed.url),
+  )
+  if (!branch) return '今日日报新线索，尚未形成跨日报分支。'
+  const related = branch.items
+    .filter((item) => item.url !== seed.url)
+    .map((item) => item.why || item.title)
+    .filter(Boolean)
+    .slice(0, 2)
+  const suffix = related.length ? `；相关：${related.join(' / ')}` : ''
+  return `认知时间树：${branch.label}${suffix}`
+}
+
+function seedDeepReason(item: BoundarySeed) {
+  return item.seed.why || recommendationText(item)
 }
 
 function profileForSeed(seed: DiscoverySeed) {
   const text = `${seed.domain} ${seed.domain_label} ${seed.title} ${seed.what} ${seed.why}`.toLowerCase()
-  const wanted = [
-    ['energy', ['energy', 'nuclear', '新能源', '核能', '能源']],
-    ['ai_infra', ['gpu', 'cpu', 'cpo', 'compute', '算力', '大模型']],
-    ['finance', ['finance', 'credit', 'market', '银行', '金融', '融资']],
-    ['crypto', ['crypto', 'stablecoin', 'bitcoin', 'ethereum', '稳定币', '比特币']],
-    ['biotech', ['bio', 'drug', 'gene', '生物', '基因']],
-    ['open_source', ['github', 'open source', '开源']],
-    ['industrial_policy', ['industrial policy', '产业政策']],
-    ['geopolitics', ['geopolitics', 'war', '地缘', '冲突']],
-  ]
-  const match = wanted.find(([, words]) => (words as string[]).some((word) => text.includes(word)))
-  return props.cognitionProfile.find((item) => item.domain_key === match?.[0]) || null
+  const direct = props.cognitionProfile.find((item) => item.domain_key === seed.domain)
+  const directRule = domainRules.find((rule) => rule.key === direct?.domain_key)
+  if (direct) return { profile: direct, rule: directRule }
+  const rule = domainRules.find((item) => item.words.some((word) => text.includes(word)))
+  return {
+    profile: props.cognitionProfile.find((item) => item.domain_key === rule?.key) || null,
+    rule,
+  }
 }
 
-function reasonRank(reason: string) {
-  return ['边界外', '机制缺口', '课程相关'].indexOf(reason) + 1 || 9
+function reasonForProfile(seed: DiscoverySeed, profile: CognitionProfileItem | null) {
+  if (profile?.level === 'unfamiliar') return '边界外'
+  if (profile?.level === 'partial') return profile.depth === 'terms' ? '机制缺口' : '模型校准'
+  if (profile?.level === 'strong_partial') return '课程相关'
+  return seed.is_new ? '新信号' : '加速信号'
+}
+
+function boundaryScore(seed: DiscoverySeed, profile: CognitionProfileItem | null, reason: string) {
+  const reasonBoost: Record<string, number> = {
+    边界外: 80,
+    机制缺口: 65,
+    模型校准: 58,
+    课程相关: 52,
+    新信号: 42,
+    加速信号: 35,
+  }
+  const interestBoost = profile?.interest === 'high' ? 16 : profile?.interest === 'medium' ? 8 : 0
+  const confidence = typeof profile?.confidence === 'number' ? profile.confidence : 50
+  const confidenceBoost = confidence >= 70 ? 8 : confidence >= 55 ? 4 : 0
+  return (reasonBoost[reason] || 30) + interestBoost + confidenceBoost + Math.min(seed.signal / 10, 10)
+}
+
+function profileEvidenceText(item: BoundarySeed) {
+  if (!item.profile) return '暂无画像命中；按新信号与加速程度推荐。'
+  const parts = [
+    `${item.profile.domain_label}`,
+    item.profile.depth ? `depth ${item.profile.depth}` : '',
+    item.profile.interest ? `interest ${item.profile.interest}` : '',
+    typeof item.profile.confidence === 'number' ? `confidence ${item.profile.confidence}%` : '',
+  ].filter(Boolean)
+  return `${parts.join(' · ')}。${item.profile.evidence || item.profile.note}`
+}
+
+function workflowText(item: BoundarySeed) {
+  return item.workflow || workflowForStyle(item.profile?.recommended_seed_style)
+}
+
+function workflowForStyle(style: string | undefined) {
+  const fallback = '先看来源可信度、关键数字口径、反例和下一步可验证证据。'
+  const workflows: Record<string, string> = {
+    mechanism: '先拆概念、参与方、成本结构、技术瓶颈和可验证指标。',
+    comparison: '先列替代方案和受益方，再比较约束、成本、周期和反例。',
+    financial_model: '用财报、现金流、成本和需求曲线追问，不只看标题里的增长叙事。',
+    macro_model: '先拆利率、流动性、汇率和资产配置链条，再找数据口径验证。',
+    evaluation: '先看维护者、许可证、提交活跃度、安全记录和商业使用边界。',
+    risk_check: '先找锚定资产、责任主体、极端情景和监管边界。',
+    paper_check: '先找论文和临床阶段，再分开看科学突破、监管审批和资本市场叙事。',
+    multi_angle: '先列各方激励、约束和反例，避免单一叙事直接盖棺定论。',
+    rhetoric_check: '先标出绝对化词语，再追问证据、时间口径、反例和利益相关方。',
+  }
+  return workflows[style || ''] || fallback
+}
+
+function styleLabel(style: string | undefined) {
+  const labels: Record<string, string> = {
+    mechanism: '适合机制补课',
+    comparison: '适合做替代方案比较',
+    financial_model: '适合套财务/需求模型',
+    macro_model: '适合套宏观流动性模型',
+    evaluation: '适合做项目评估',
+    risk_check: '适合做风险核查',
+    paper_check: '适合先查论文证据',
+    multi_angle: '适合多方视角拆解',
+    rhetoric_check: '适合识别话术压力',
+  }
+  return labels[style || ''] || '适合先做证据核查'
 }
 </script>
 
@@ -288,16 +455,32 @@ function reasonRank(reason: string) {
                   </div>
                   <dl class="boundary-card-notes">
                     <div>
+                      <dt>摘要</dt>
+                      <dd>{{ seedSummary(item.seed) }}</dd>
+                    </div>
+                    <div>
+                      <dt>相关日报线索</dt>
+                      <dd>{{ seedReportConnection(item.seed) }}</dd>
+                    </div>
+                    <div>
+                      <dt>深入理由</dt>
+                      <dd>{{ seedDeepReason(item) }}</dd>
+                    </div>
+                    <div>
                       <dt>推荐原因</dt>
                       <dd>{{ recommendationText(item) }}</dd>
                     </div>
                     <div>
-                      <dt>挑战点</dt>
-                      <dd>{{ challengeText(item) }}</dd>
+                      <dt>建议路径</dt>
+                      <dd>{{ nextActionText(item) }}</dd>
                     </div>
                     <div>
-                      <dt>下一步</dt>
-                      <dd>{{ nextActionText(item) }}</dd>
+                      <dt>画像依据</dt>
+                      <dd>{{ profileEvidenceText(item) }}</dd>
+                    </div>
+                    <div>
+                      <dt>分析工作流</dt>
+                      <dd>{{ workflowText(item) }}</dd>
                     </div>
                   </dl>
                 </div>

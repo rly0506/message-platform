@@ -758,3 +758,40 @@ def test_timeline_tree_items_keep_cross_day_evidence_visible(reports_dir):
 
     assert len(branch["items"]) <= 5
     assert {item["run_id"] for item in branch["items"]} == {"20260701T000000Z", "20260702T000000Z"}
+
+
+def test_timeline_tree_items_prefer_latest_runs_when_branch_exceeds_limit(reports_dir):
+    from app.discovery import run
+
+    run_ids = [
+        "2026-06-29T01:00:00Z",
+        "2026-06-30T01:00:00Z",
+        "2026-07-01T01:00:00Z",
+        "2026-07-02T01:00:00Z",
+        "2026-07-03T01:00:00Z",
+        "2026-07-04T01:00:00Z",
+    ]
+    for index, run_id in enumerate(run_ids, start=1):
+        _write_report_pair(
+            str(reports_dir),
+            run_id,
+            f"# d{index}",
+            seeds=[
+                {
+                    "title": f"Energy signal {index}",
+                    "url": f"https://example.com/energy-{index}",
+                    "domain": "energy",
+                    "domain_label": "Energy",
+                    "signal": 10 + index,
+                    "delta": index,
+                    "why": "same local domain",
+                }
+            ],
+        )
+
+    branch = run.timeline_tree()["branches"][0]
+
+    item_run_ids = [item["run_id"] for item in branch["items"]]
+    assert len(item_run_ids) == 5
+    assert "20260704T010000Z" in item_run_ids
+    assert "20260629T010000Z" not in item_run_ids

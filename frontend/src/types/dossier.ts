@@ -1,14 +1,59 @@
 export type TopicSummary = {
   id: number
+  project_id?: number | null
+  project_name?: string
   name: string
   description: string
   queries: string[]
   status: string
+  archived_at?: string | null
   article_count: number
   source_count: number
   enriched_count: number
   relevant_count: number
   latest_published_at: string | null
+  updated_at?: string | null
+}
+
+export type ProjectSummary = {
+  id: number
+  name: string
+  description: string
+  status: string
+  archived_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  topic_count: number
+  topics: TopicSummary[]
+}
+
+export type SourceRegistry = {
+  id: number
+  name: string
+  url: string
+  country: string
+  language: string
+  source_type: string
+  quality_tier: string
+  requires_login: boolean
+  fulltext_support: boolean
+  enabled: boolean
+  last_status: string
+  last_error: string
+  last_fetched_at: string | null
+  article_count: number
+  notes: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type SourceImportResult = {
+  created_count: number
+  duplicate_count: number
+  invalid_count: number
+  created: SourceRegistry[]
+  duplicates: Array<Partial<SourceRegistry> & { line?: string; reason?: string }>
+  invalid: Array<{ line: string; error: string }>
 }
 
 export type TopicDetail = TopicSummary & {
@@ -71,6 +116,8 @@ export type AcademicPaperConcept = {
 export type AcademicPaper = {
   id?: number
   openalex_id: string
+  citation_key?: string
+  citation?: string
   title: string
   abstract?: string
   year: number | null
@@ -78,6 +125,8 @@ export type AcademicPaper = {
   authors: string[]
   venue: string
   concepts?: AcademicPaperConcept[]
+  doi?: string
+  openalex_url?: string
   url: string
 }
 
@@ -91,6 +140,23 @@ export type AcademicGraphNode = {
 export type AcademicGraphEdge = {
   citing_openalex_id: string
   cited_openalex_id: string
+}
+
+export type AcademicLiteratureNetworkNode = {
+  id: string
+  citation_key: string
+  title: string
+  year: number | null
+  venue: string
+  cited_by_count: number
+}
+
+export type AcademicLiteratureNetworkEdge = {
+  citing_openalex_id: string
+  cited_openalex_id: string
+  citing_title: string
+  cited_title: string
+  relation: string
 }
 
 export type AcademicSchoolPaper = {
@@ -124,6 +190,10 @@ export type AcademicLayer = {
     nodes: AcademicGraphNode[]
     edges: AcademicGraphEdge[]
   }
+  literature_network?: {
+    nodes: AcademicLiteratureNetworkNode[]
+    edges: AcademicLiteratureNetworkEdge[]
+  }
   schools: AcademicSchool[]
   foundational_papers: AcademicFoundationalPaper[]
   summary_md: string
@@ -147,6 +217,16 @@ export type SentimentPost = {
   selftext_snippet: string
 }
 
+export type SentimentTimelineItem = {
+  time_bucket: string
+  platform: string
+  dominant_frame: string
+  sentiment_label: string
+  sample_count: number
+  confidence: number
+  representative_posts: SentimentPost[]
+}
+
 export type SentimentLayer = {
   topic_id: number
   topic_name: string
@@ -156,8 +236,18 @@ export type SentimentLayer = {
   platforms?: string[]
   warning: string
   posts: SentimentPost[]
+  timeline?: SentimentTimelineItem[]
   errors?: Array<{ platform: string; error: string }>
   summary_md: string
+}
+
+export type OpenCliDiagnostics = {
+  configured_command: string
+  available: boolean
+  resolved_path: string
+  recommended_command: string
+  browser_required_platforms: string[]
+  message: string
 }
 
 export type CrossSynthesis = {
@@ -233,6 +323,11 @@ export type CognitionProfileItem = {
   domain_label: string
   level: 'partial' | 'strong_partial' | 'unfamiliar' | string
   note: string
+  depth?: string
+  interest?: string
+  confidence?: number
+  evidence?: string
+  recommended_seed_style?: string
   updated_at: string | null
 }
 

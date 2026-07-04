@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   fetchArticlePerspective,
   fetchCognitionMarks,
   fetchCognitionProfile,
   fetchCountryCompare,
+  fetchSources,
+  createSource,
+  importSources,
   saveCognitionMark,
+  updateSource,
 } from './api/dossierApi'
 import AcademicPanel from './components/AcademicPanel.vue'
 import CrossPanel from './components/CrossPanel.vue'
@@ -33,6 +37,7 @@ import type {
   LocalEvent,
   SearchResponse,
   SentimentPost,
+  SourceRegistry,
 } from './types/dossier'
 
 const countryCompareLoading = ref(false)
@@ -84,6 +89,7 @@ const workspaceTabs = [
 ] as const
 
 const {
+  projects,
   topics,
   selectedTopicId,
   detail,
@@ -99,7 +105,300 @@ const {
   loadTopic,
   loadArticles,
   loadLocalEvents,
+  saveProject,
+  archiveProject,
+  removeProject,
+  saveTopic,
+  archiveTopic,
+  removeTopic,
 } = useTopicData()
+
+const showProjectManager = ref(false)
+const activeManagerForm = ref<'project' | 'topic'>('topic')
+const projectDraft = ref({
+  id: 0,
+  name: '',
+  description: '',
+})
+const topicDraft = ref({
+  id: 0,
+  project_id: 0,
+  name: '',
+  description: '',
+  queries: '',
+})
+const savingProject = ref(false)
+const creatingTopic = ref(false)
+const projectManagerError = ref('')
+const sources = ref<SourceRegistry[]>([])
+const sourceManagerLoading = ref(false)
+const sourceManagerError = ref('')
+const sourceBusy = ref<Record<number, boolean>>({})
+const creatingSource = ref(false)
+const importingSources = ref(false)
+const sourceImportMessage = ref('')
+const sourceDraft = ref({
+  name: '',
+  url: '',
+  country: '',
+  language: 'en',
+  source_type: 'rss',
+  quality_tier: 'user',
+})
+const sourceImportDraft = ref({
+  text: '',
+  country: '',
+  language: 'en',
+  source_type: 'rss',
+  quality_tier: 'user',
+})
+const staleTopicDays = 7
+const sourceManagerStats = computed(() => {
+  const enabled = sources.value.filter((source) => source.enabled).length
+  const failedSources = sources.value.filter((source) => source.last_status === 'failed')
+  const latestSuccess = sources.value
+    .filter((source) => source.last_status === 'ok' && source.last_fetched_at)
+    .sort((left, right) => {
+      const leftTime = new Date(left.last_fetched_at || '').getTime()
+      const rightTime = new Date(right.last_fetched_at || '').getTime()
+      return rightTime - leftTime
+    })[0]
+
+  return {
+    total: sources.value.length,
+    enabled,
+    failed: failedSources.length,
+    latestSuccessAt: latestSuccess?.last_fetched_at || null,
+    failedNotes: failedSources
+      .slice(0, 3)
+      .map((source) => `${source.name}：${source.last_error || '最近采集失败，暂无详细原因'}`),
+  }
+})
+const topicFreshnessWarning = computed(() => {
+  const latest = selectedTopic.value?.latest_published_at
+  if (!latest) return ''
+  const latestDate = new Date(latest)
+  if (Number.isNaN(latestDate.getTime())) return ''
+  const ageDays = Math.floor((Date.now() - latestDate.getTime()) / 86_400_000)
+  if (ageDays < staleTopicDays) return ''
+  return `最后采集时间是 ${fmtDate(latest)}，这只说明本地档案停在这里，不代表世界没有新报道。需要最新报道时请刷新采集。`
+})
+
+function openNewTopic(projectId: number | null = null) {
+  activeManagerForm.value = 'topic'
+  topicDraft.value = {
+    id: 0,
+    project_id: projectId || projects.value[0]?.id || selectedTopic.value?.project_id || 0,
+    name: '',
+    description: '',
+    queries: '',
+  }
+  projectDraft.value = { id: 0, name: '', description: '' }
+  projectManagerError.value = ''
+}
+
+function openNewProject() {
+  activeManagerForm.value = 'project'
+  projectDraft.value = { id: 0, name: '', description: '' }
+  topicDraft.value = { id: 0, project_id: 0, name: '', description: '', queries: '' }
+  projectManagerError.value = ''
+}
+
+function editProjectDraft(project: { id: number; name: string; description: string }) {
+  activeManagerForm.value = 'project'
+  projectDraft.value = {
+    id: project.id,
+    name: project.name,
+    description: project.description || '',
+  }
+  topicDraft.value = { id: 0, project_id: 0, name: '', description: '', queries: '' }
+  projectManagerError.value = ''
+}
+
+function editTopicDraft(topic: {
+  id: number
+  project_id?: number | null
+  name: string
+  description: string
+  queries: string[]
+}) {
+  activeManagerForm.value = 'topic'
+  topicDraft.value = {
+    id: topic.id,
+    project_id: topic.project_id || projects.value[0]?.id || 0,
+    name: topic.name,
+    description: topic.description || '',
+    queries: topic.queries.join('\n'),
+  }
+  projectDraft.value = { id: 0, name: '', description: '' }
+  projectManagerError.value = ''
+}
+
+async function saveProjectDraft() {
+  if (!projectDraft.value.name.trim() || savingProject.value) return
+  savingProject.value = true
+  projectManagerError.value = ''
+  try {
+    await saveProject({
+      id: projectDraft.value.id || undefined,
+      name: projectDraft.value.name.trim(),
+      description: projectDraft.value.description.trim(),
+    })
+    projectDraft.value = { id: 0, name: '', description: '' }
+    activeManagerForm.value = 'topic'
+  } catch (err) {
+    projectManagerError.value = readableError(err)
+  } finally {
+    savingProject.value = false
+  }
+}
+
+async function saveTopicDraft() {
+  if (!topicDraft.value.name.trim() || creatingTopic.value) return
+  creatingTopic.value = true
+  projectManagerError.value = ''
+  try {
+    const topic = await saveTopic({
+      id: topicDraft.value.id || undefined,
+      project_id: topicDraft.value.project_id || null,
+      name: topicDraft.value.name.trim(),
+      description: topicDraft.value.description.trim(),
+      queries: topicDraft.value.queries
+        .split(/\r?\n|,/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    })
+    selectedTopicId.value = topic.id
+    topicDraft.value = { id: 0, project_id: topic.project_id || 0, name: '', description: '', queries: '' }
+  } catch (err) {
+    projectManagerError.value = readableError(err)
+  } finally {
+    creatingTopic.value = false
+  }
+}
+
+async function archiveExistingProject(projectId: number) {
+  projectManagerError.value = ''
+  try {
+    await archiveProject(projectId)
+  } catch (err) {
+    projectManagerError.value = readableError(err)
+  }
+}
+
+async function deleteExistingProject(projectId: number) {
+  if (!window.confirm('删除项目只允许在项目下没有专题时执行，确认删除？')) return
+  projectManagerError.value = ''
+  try {
+    await removeProject(projectId)
+  } catch (err) {
+    projectManagerError.value = readableError(err)
+  }
+}
+
+async function archiveExistingTopic(topicId: number) {
+  projectManagerError.value = ''
+  try {
+    await archiveTopic(topicId)
+  } catch (err) {
+    projectManagerError.value = readableError(err)
+  }
+}
+
+async function deleteExistingTopic(topicId: number) {
+  if (!window.confirm('删除专题会移除该专题下的分析结果和独占文章，确认删除？')) return
+  projectManagerError.value = ''
+  try {
+    await removeTopic(topicId)
+  } catch (err) {
+    projectManagerError.value = readableError(err)
+  }
+}
+
+async function loadSourceRegistry() {
+  sourceManagerLoading.value = true
+  sourceManagerError.value = ''
+  try {
+    sources.value = await fetchSources()
+  } catch (err) {
+    sourceManagerError.value = readableError(err)
+  } finally {
+    sourceManagerLoading.value = false
+  }
+}
+
+async function toggleSource(source: SourceRegistry) {
+  sourceBusy.value = { ...sourceBusy.value, [source.id]: true }
+  sourceManagerError.value = ''
+  try {
+    const updated = await updateSource(source.id, { enabled: !source.enabled })
+    sources.value = sources.value.map((item) => (item.id === updated.id ? updated : item))
+  } catch (err) {
+    sourceManagerError.value = readableError(err)
+  } finally {
+    sourceBusy.value = { ...sourceBusy.value, [source.id]: false }
+  }
+}
+
+async function saveSourceDraft() {
+  if (!sourceDraft.value.name.trim() || !sourceDraft.value.url.trim() || creatingSource.value) return
+  creatingSource.value = true
+  sourceManagerError.value = ''
+  try {
+    const created = await createSource({
+      name: sourceDraft.value.name.trim(),
+      url: sourceDraft.value.url.trim(),
+      country: sourceDraft.value.country.trim(),
+      language: sourceDraft.value.language.trim(),
+      source_type: sourceDraft.value.source_type,
+      quality_tier: sourceDraft.value.quality_tier,
+      notes: 'user-added source',
+    })
+    sources.value = [created, ...sources.value.filter((item) => item.id !== created.id)]
+    sourceDraft.value = {
+      name: '',
+      url: '',
+      country: '',
+      language: 'en',
+      source_type: 'rss',
+      quality_tier: 'user',
+    }
+  } catch (err) {
+    sourceManagerError.value = readableError(err)
+  } finally {
+    creatingSource.value = false
+  }
+}
+
+async function importSourceDraft() {
+  if (!sourceImportDraft.value.text.trim() || importingSources.value) return
+  importingSources.value = true
+  sourceManagerError.value = ''
+  sourceImportMessage.value = ''
+  try {
+    const result = await importSources({
+      text: sourceImportDraft.value.text,
+      country: sourceImportDraft.value.country.trim(),
+      language: sourceImportDraft.value.language.trim(),
+      source_type: sourceImportDraft.value.source_type,
+      quality_tier: sourceImportDraft.value.quality_tier,
+      notes: 'bulk-imported source',
+    })
+    sources.value = [
+      ...result.created,
+      ...sources.value.filter((item) => !result.created.some((created) => created.id === item.id)),
+    ]
+    sourceImportMessage.value =
+      `导入 ${result.created_count} 个，重复 ${result.duplicate_count} 个，无效 ${result.invalid_count} 个。`
+    if (result.created_count > 0) {
+      sourceImportDraft.value.text = ''
+    }
+  } catch (err) {
+    sourceManagerError.value = readableError(err)
+  } finally {
+    importingSources.value = false
+  }
+}
 
 const {
   query,
@@ -177,7 +476,9 @@ const {
   academicMessage,
   academicError,
   academicSteps,
+  academicLayer,
   sentimentLayer,
+  openCliDiagnostics,
   sentimentMessage,
   sentimentError,
   sentimentSteps,
@@ -219,6 +520,7 @@ const {
   voiceLabel,
 } = useJobRunner({
   selectedTopicId,
+  selectedTopic,
   localData,
   selectedEventIndex,
   error,
@@ -238,6 +540,12 @@ watch(appMode, (mode) => {
   }
   if (mode === 'discovery') {
     loadSeedCognitionState()
+  }
+})
+
+watch(showProjectManager, (visible) => {
+  if (visible && !sources.value.length) {
+    loadSourceRegistry()
   }
 })
 
@@ -270,6 +578,13 @@ async function analyzeSeed(seed: DiscoverySeed) {
     seedBusy.value = false
     activeSeedUrl.value = ''
   }
+}
+
+async function refreshSelectedTopicCollection() {
+  const term = selectedTopic.value?.queries?.[0] || selectedTopic.value?.name || ''
+  if (!term.trim()) return
+  eventSearch.value = term.trim()
+  await runEventSearch()
 }
 
 // 情报台「正在追踪」: 点已建专题 -> 切到事件分析台并选中它 (watch(selectedTopicId) 自动加载档案)。
@@ -447,6 +762,8 @@ function foundationalStats(paper: AcademicPaper) {
 
 function academicPaperUrl(paper: AcademicPaper | AcademicFoundationalPaper) {
   if ('url' in paper && paper.url) return paper.url
+  if ('doi' in paper && paper.doi) return paper.doi
+  if ('openalex_url' in paper && paper.openalex_url) return paper.openalex_url
   return paper.openalex_id
 }
 
@@ -524,11 +841,223 @@ function countryCoverageNote(country: CountryCompareCountry) {
             {{ mode.label }}
           </button>
         </nav>
+        <button
+          v-if="appMode === 'workbench'"
+          type="button"
+          class="ghost-button"
+          @click="showProjectManager = !showProjectManager"
+        >
+          管理项目
+        </button>
         <select v-if="appMode === 'workbench'" v-model="selectedTopicId" class="topic-select" aria-label="选择专题">
           <option v-for="topic in topics" :key="topic.id" :value="topic.id">
             #{{ topic.id }} {{ topic.name }}
           </option>
         </select>
+      </div>
+    </section>
+
+    <section v-if="appMode === 'workbench' && showProjectManager" class="project-manager">
+      <div class="project-manager-head">
+        <div>
+          <p class="eyebrow">Projects</p>
+          <h2>项目与专题</h2>
+        </div>
+        <div class="project-manager-actions">
+          <button type="button" class="ghost-button" @click="openNewProject">
+            新建项目
+          </button>
+          <button type="button" class="cross-primary-button" @click="openNewTopic(null)">
+            新建专题
+          </button>
+        </div>
+      </div>
+      <p v-if="projectManagerError" class="search-message error">{{ projectManagerError }}</p>
+      <div class="project-grid">
+        <article v-for="project in projects" :key="project.id" class="project-row">
+          <div class="project-row-head">
+            <div>
+              <strong>{{ project.name }}</strong>
+              <span v-if="project.status === 'archived'" class="status-pill">已归档</span>
+            </div>
+            <p>{{ project.description || '暂无描述' }}</p>
+            <span>{{ project.topic_count }} 个专题</span>
+          </div>
+          <ul>
+            <li v-for="topic in project.topics" :key="topic.id">
+              <div class="topic-row-main">
+                <button type="button" @click="selectedTopicId = topic.id">
+                  {{ topic.name }}
+                </button>
+                <span>
+                  {{ topic.article_count }} 篇 · {{ topic.source_count }} 源
+                  <template v-if="topic.status === 'archived'"> · 已归档</template>
+                </span>
+              </div>
+              <div class="topic-row-actions">
+                <button type="button" class="text-button" @click="editTopicDraft(topic)">
+                  编辑专题
+                </button>
+                <button type="button" class="text-button" @click="archiveExistingTopic(topic.id)">
+                  归档专题
+                </button>
+                <button type="button" class="text-button danger" @click="deleteExistingTopic(topic.id)">
+                  删除专题
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div class="project-row-actions">
+            <button type="button" class="ghost-button" @click="openNewTopic(project.id)">
+              新建专题
+            </button>
+            <button type="button" class="ghost-button" @click="editProjectDraft(project)">
+              编辑项目
+            </button>
+            <button type="button" class="ghost-button" @click="archiveExistingProject(project.id)">
+              归档项目
+            </button>
+            <button type="button" class="ghost-button danger" @click="deleteExistingProject(project.id)">
+              删除项目
+            </button>
+          </div>
+        </article>
+      </div>
+      <form v-if="activeManagerForm === 'project'" class="project-editor" @submit.prevent="saveProjectDraft">
+        <label>
+          项目名称
+          <input v-model="projectDraft.name" aria-label="项目名称" placeholder="俄乌战争研究" />
+        </label>
+        <label>
+          项目描述
+          <textarea v-model="projectDraft.description" aria-label="项目描述" placeholder="长期项目的范围与备注" />
+        </label>
+        <button type="submit" :disabled="savingProject || !projectDraft.name.trim()">
+          {{ savingProject ? '保存中...' : '保存项目' }}
+        </button>
+      </form>
+      <form v-else class="topic-editor" @submit.prevent="saveTopicDraft">
+        <label>
+          所属项目
+          <select v-model.number="topicDraft.project_id" aria-label="所属项目">
+            <option v-for="project in projects" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </select>
+        </label>
+        <label>
+          专题名称
+          <input v-model="topicDraft.name" aria-label="专题名称" placeholder="前线态势" />
+        </label>
+        <label>
+          检索词
+          <textarea v-model="topicDraft.queries" aria-label="检索词" placeholder="俄乌战争 前线态势" />
+        </label>
+        <label>
+          专题描述
+          <textarea v-model="topicDraft.description" aria-label="专题描述" placeholder="保留父专题语境的追踪说明" />
+        </label>
+        <button type="submit" :disabled="creatingTopic || !topicDraft.name.trim()">
+          {{ creatingTopic ? '保存中...' : topicDraft.id ? '保存专题' : '保存专题' }}
+        </button>
+      </form>
+      <div class="source-manager">
+        <div class="source-manager-head">
+          <div>
+            <p class="eyebrow">Sources</p>
+            <h2>情报源</h2>
+          </div>
+          <button type="button" class="ghost-button" :disabled="sourceManagerLoading" @click="loadSourceRegistry">
+            {{ sourceManagerLoading ? '刷新中...' : '刷新' }}
+          </button>
+        </div>
+        <p v-if="sourceManagerError" class="search-message error">{{ sourceManagerError }}</p>
+        <div v-if="sources.length" class="source-status-summary" aria-label="情报源状态摘要">
+          <span>共 {{ sourceManagerStats.total }} 个源</span>
+          <span>启用 {{ sourceManagerStats.enabled }} 个</span>
+          <span :class="{ warning: sourceManagerStats.failed > 0 }">失败 {{ sourceManagerStats.failed }} 个</span>
+          <span>最近成功 {{ fmtDate(sourceManagerStats.latestSuccessAt, true) }}</span>
+          <small v-for="note in sourceManagerStats.failedNotes" :key="note">{{ note }}</small>
+        </div>
+        <div class="source-ingestion-guide" aria-label="情报源导入路径">
+          <strong>情报源导入路径</strong>
+          <span>RSS / Newsletter / Google Alerts：粘贴 feed URL 后进入采集与本地预分析。</span>
+          <span>B站视频 / 网页线索：先作为待核实来源备注或对应平台样本处理，V1 不做视频转录。</span>
+          <span>失败原因会显示在源状态表里；付费墙、登录态和反爬限制不静默吞掉。</span>
+        </div>
+        <form class="source-editor" @submit.prevent="saveSourceDraft">
+          <label>
+            源名
+            <input v-model="sourceDraft.name" aria-label="源名" placeholder="Google Alert - Ukraine frontline" />
+          </label>
+          <label>
+            Feed URL
+            <input v-model="sourceDraft.url" aria-label="Feed URL" placeholder="https://example.com/feed.xml" />
+          </label>
+          <label>
+            国家/地区
+            <input v-model="sourceDraft.country" aria-label="国家/地区" placeholder="United States" />
+          </label>
+          <label>
+            层级
+            <select v-model="sourceDraft.quality_tier" aria-label="来源层级">
+              <option value="user">user</option>
+              <option value="newsletter">newsletter</option>
+              <option value="mainstream">mainstream</option>
+              <option value="professional">professional</option>
+              <option value="wire">wire</option>
+            </select>
+          </label>
+          <button type="submit" :disabled="creatingSource || !sourceDraft.name.trim() || !sourceDraft.url.trim()">
+            {{ creatingSource ? '添加中...' : '添加源' }}
+          </button>
+        </form>
+        <form class="source-importer" @submit.prevent="importSourceDraft">
+          <label>
+            批量导入情报源
+            <textarea
+              v-model="sourceImportDraft.text"
+              aria-label="批量导入情报源"
+              placeholder="Ukraine Alert https://example.com/feed.xml&#10;Morning Brew https://www.morningbrew.com/daily/rss"
+            />
+          </label>
+          <label>
+            批量导入层级
+            <select v-model="sourceImportDraft.quality_tier" aria-label="批量导入层级">
+              <option value="user">user</option>
+              <option value="newsletter">newsletter</option>
+              <option value="mainstream">mainstream</option>
+              <option value="professional">professional</option>
+              <option value="wire">wire</option>
+            </select>
+          </label>
+          <label>
+            国家/地区
+            <input v-model="sourceImportDraft.country" aria-label="批量导入国家/地区" placeholder="United States" />
+          </label>
+          <button type="submit" :disabled="importingSources || !sourceImportDraft.text.trim()">
+            {{ importingSources ? '导入中...' : '批量导入' }}
+          </button>
+        </form>
+        <p v-if="sourceImportMessage" class="source-import-message">{{ sourceImportMessage }}</p>
+        <div class="source-table">
+          <article v-for="source in sources" :key="source.id" :class="{ disabled: !source.enabled }">
+            <div>
+              <strong>{{ source.name }}</strong>
+              <small>{{ source.url }}</small>
+            </div>
+            <span>{{ source.source_type }}</span>
+            <span>{{ source.quality_tier }}</span>
+            <span>{{ source.country || '未知' }}</span>
+            <span :class="`source-status status-${source.last_status}`">{{ source.last_status }}</span>
+            <span>{{ source.article_count }} 篇</span>
+            <button type="button" :disabled="sourceBusy[source.id]" @click="toggleSource(source)">
+              {{ source.enabled ? '暂停' : '恢复' }}
+            </button>
+            <small v-if="source.last_error">{{ source.last_error }}</small>
+          </article>
+          <p v-if="!sourceManagerLoading && !sources.length" class="source-empty">暂无情报源。</p>
+        </div>
       </div>
     </section>
 
@@ -593,7 +1122,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
             type="button"
             class="thread-chip thread-drill"
             :disabled="searching"
-            @click="searchRelated(topic)"
+            @click="searchRelated(topic, 'subtopic')"
           >
             {{ topic }}
           </button>
@@ -606,7 +1135,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
             type="button"
             class="thread-chip thread-history"
             :disabled="searching"
-            @click="searchRelated(ana)"
+            @click="searchRelated(ana, 'analogue')"
           >
             {{ ana }}
           </button>
@@ -709,6 +1238,34 @@ function countryCoverageNote(country: CountryCompareCountry) {
           <div class="chips">
             <span v-for="term in selectedTopic.queries" :key="term">{{ term }}</span>
           </div>
+          <div v-if="subtopics.length || analogues.length" class="related-threads context-drilldown">
+            <div v-if="subtopics.length" class="thread-row">
+              <span class="thread-label">继续下钻</span>
+              <button
+                v-for="topic in subtopics"
+                :key="`summary-sub-${topic}`"
+                type="button"
+                class="thread-chip thread-drill"
+                :disabled="searching"
+                @click="searchRelated(topic, 'subtopic')"
+              >
+                {{ topic }}
+              </button>
+            </div>
+            <div v-if="analogues.length" class="thread-row">
+              <span class="thread-label">历史相似</span>
+              <button
+                v-for="ana in analogues"
+                :key="`summary-ana-${ana}`"
+                type="button"
+                class="thread-chip thread-history"
+                :disabled="searching"
+                @click="searchRelated(ana, 'analogue')"
+              >
+                {{ ana }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="metrics">
@@ -728,6 +1285,12 @@ function countryCoverageNote(country: CountryCompareCountry) {
             <strong>{{ fmtDate(selectedTopic.latest_published_at) }}</strong>
             <span>最新报道</span>
           </div>
+        </div>
+        <div v-if="topicFreshnessWarning" class="freshness-warning">
+          <span>{{ topicFreshnessWarning }}</span>
+          <button type="button" class="ghost-button" :disabled="searching" @click="refreshSelectedTopicCollection">
+            {{ searching ? '刷新中...' : '刷新采集' }}
+          </button>
         </div>
       </section>
 
@@ -793,8 +1356,12 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :article-perspectives="articlePerspectives"
           :article-perspective-loading="articlePerspectiveLoading"
           :article-perspective-errors="articlePerspectiveErrors"
+          :subtopics="subtopics"
+          :analogues="analogues"
+          :searching="searching"
           :keyword-size="keywordSize"
           :toggle-timeline-event="toggleTimelineEvent"
+          :search-related="searchRelated"
           :load-country-compare-for-selected-event="loadCountryCompareForSelectedEvent"
           :show-authority-sources="showAuthoritySources"
           :show-earliest-sources="showEarliestSources"
@@ -826,6 +1393,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :academic-steps="academicSteps"
           :academic-loading="academicLoading"
           :academic-error="academicError"
+          :academic-layer="academicLayer"
           :academic-papers="academicPapers"
           :academic-citation-edges="academicCitationEdges"
           :academic-schools="academicSchools"
@@ -852,6 +1420,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :sentiment-comment-items="sentimentCommentItems"
           :sentiment-platform-labels="sentimentPlatformLabels"
           :sentiment-layer="sentimentLayer"
+          :open-cli-diagnostics="openCliDiagnostics"
           :selected-topic="selectedTopic"
           :sentiment-posts="sentimentPosts"
           :safe-sentiment-summary-html="safeSentimentSummaryHtml"

@@ -20,6 +20,60 @@ def test_rank_posts_sorts_by_score_descending():
     assert [post["id"] for post in sentiment.rank_posts(posts)] == ["high", "mid", "low"]
 
 
+def test_sentiment_payload_builds_platform_timeline_with_frames():
+    from app.pipeline import sentiment
+
+    topic = Topic(id=10, name="AI hardware cycle")
+    posts = [
+        {
+            "platform": "reddit",
+            "kind": "post",
+            "id": "r1",
+            "title": "GPU shortage is back",
+            "score": 100,
+            "num_comments": 20,
+            "created_utc": "2026-06-20T03:00:00",
+            "selftext_snippet": "Supply is tight and people are worried about shortages.",
+            "url": "https://reddit.com/r/hardware/comments/r1",
+        },
+        {
+            "platform": "reddit",
+            "kind": "comment",
+            "id": "c1",
+            "parent_post_id": "r1",
+            "title": "Retail inventory is uneven",
+            "score": 18,
+            "num_comments": 0,
+            "created_utc": "2026-06-20T04:00:00",
+            "selftext_snippet": "Retail inventory is uneven.",
+            "url": "https://reddit.com/r/hardware/comments/r1/c1",
+        },
+        {
+            "platform": "hackernews",
+            "kind": "post",
+            "id": "h1",
+            "title": "Accelerator demand keeps climbing",
+            "score": 80,
+            "num_comments": 12,
+            "created_utc": "2026-06-21T05:00:00",
+            "selftext_snippet": "People discuss capex and demand.",
+            "url": "https://news.ycombinator.com/item?id=1",
+        },
+    ]
+
+    payload = sentiment.sentiment_payload(topic, posts)
+
+    assert payload["timeline"]
+    first = payload["timeline"][0]
+    assert first["time_bucket"] == "2026-06-20"
+    assert first["platform"] == "reddit"
+    assert first["dominant_frame"] in {"供应/价格焦虑", "市场/投资影响", "技术/产品讨论", "泛讨论"}
+    assert first["sentiment_label"] in {"担忧/风险", "乐观/机会", "中性/讨论"}
+    assert first["sample_count"] == 2
+    assert first["representative_posts"][0]["title"] == "GPU shortage is back"
+    assert 0 < first["confidence"] <= 1
+
+
 def test_summarize_sentiment_prompt_frames_reddit_as_suspect_corner(monkeypatch):
     from app.pipeline import sentiment
 

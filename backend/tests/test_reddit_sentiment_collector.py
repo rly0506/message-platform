@@ -1,4 +1,5 @@
 import subprocess
+import os
 from datetime import datetime
 
 import pytest
@@ -87,19 +88,23 @@ def test_chinese_platform_collectors_parse_opencli_yaml(monkeypatch):
     }
     calls = []
 
+    def platform_from_cmd(cmd):
+        return cmd[3] if os.name == "nt" and cmd[:2] == ["cmd", "/c"] else cmd[1]
+
     def fake_run(cmd, capture_output, text, encoding, errors, timeout, check):
         calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0, stdout=samples[cmd[1]], stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout=samples[platform_from_cmd(cmd)], stderr="")
 
     monkeypatch.setattr(reddit_sentiment.subprocess, "run", fake_run)
     monkeypatch.setattr(reddit_sentiment.config, "OPENCLI_COMMAND", "D:\\npm-global\\opencli.cmd")
 
     posts = reddit_sentiment.search_chinese_platforms("美伊战争", limit=5)
 
+    prefix = ["cmd", "/c", "D:\\npm-global\\opencli.cmd"] if os.name == "nt" else ["D:\\npm-global\\opencli.cmd"]
     assert calls == [
-        ["D:\\npm-global\\opencli.cmd", "bilibili", "search", "美伊战争", "-f", "yaml"],
-        ["D:\\npm-global\\opencli.cmd", "xiaohongshu", "search", "美伊战争", "-f", "yaml"],
-        ["D:\\npm-global\\opencli.cmd", "xueqiu", "search", "美伊战争", "-f", "yaml"],
+        [*prefix, "bilibili", "search", "美伊战争", "-f", "yaml"],
+        [*prefix, "xiaohongshu", "search", "美伊战争", "-f", "yaml"],
+        [*prefix, "xueqiu", "search", "美伊战争", "-f", "yaml"],
     ]
     assert [post["platform"] for post in posts] == ["bilibili", "xiaohongshu", "xueqiu"]
     assert posts[0]["subreddit"] == "bilibili"
@@ -280,6 +285,79 @@ def test_comment_command_unavailable_degrades_to_posts_only(monkeypatch):
     assert "OpenCLI is not available" in result["errors"][0]["error"]
 
 
+def test_opencli_os_error_is_isolated_and_hackernews_still_runs(monkeypatch):
+    from app.collectors import hackernews_sentiment, reddit_sentiment
+
+    def fake_run(*args, **kwargs):
+        raise OSError(193, "%1 is not a valid Win32 application")
+
+    monkeypatch.setattr(reddit_sentiment.subprocess, "run", fake_run)
+    monkeypatch.setattr(hackernews_sentiment, "search_hackernews", lambda *args, **kwargs: [
+        {
+            "platform": "hackernews",
+            "kind": "post",
+            "id": "hn1",
+            "parent_post_id": "",
+            "subreddit": "hackernews",
+            "title": "HN stayed available",
+            "author": "hn-user",
+            "score": 3,
+            "num_comments": 1,
+            "url": "https://news.ycombinator.com/item?id=1",
+            "created_utc": "1760000000",
+            "selftext_snippet": "",
+        }
+    ])
+
+    result = reddit_sentiment.search_all_platforms(
+        reddit_query="US Iran war",
+        chinese_query="美伊战争",
+        hackernews=True,
+        limit=5,
+        platforms=("bilibili",),
+        comment_post_limit=0,
+    )
+
+    assert [post["platform"] for post in result["posts"]] == ["hackernews"]
+    assert result["errors"][0]["platform"] == "bilibili"
+    assert "OpenCLI bilibili search could not start" in result["errors"][0]["error"]
+    assert "not a valid Win32 application" in result["errors"][0]["error"]
+
+
+def test_comment_os_error_keeps_parent_post(monkeypatch):
+    from app.collectors import reddit_sentiment
+
+    search_yaml = """
+- id: bv123
+  title: B站视频
+  author: up
+  score: 30
+  comments: 8
+  url: https://www.bilibili.com/video/BV123
+"""
+
+    def fake_run(cmd, capture_output, text, encoding, errors, timeout, check):
+        if "search" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=search_yaml, stderr="")
+        raise OSError(193, "%1 is not a valid Win32 application")
+
+    monkeypatch.setattr(reddit_sentiment.subprocess, "run", fake_run)
+
+    result = reddit_sentiment.search_all_platforms(
+        reddit_query="US Iran war",
+        chinese_query="美伊战争",
+        hackernews=False,
+        limit=5,
+        platforms=("bilibili",),
+        comment_post_limit=5,
+        comments_per_post=10,
+    )
+
+    assert [item["kind"] for item in result["posts"]] == ["post"]
+    assert result["errors"][0]["platform"] == "bilibili"
+    assert "OpenCLI bilibili comments could not start" in result["errors"][0]["error"]
+
+
 def test_comment_fetch_respects_top_k_limit(monkeypatch):
     from app.collectors import reddit_sentiment
 
@@ -322,14 +400,21 @@ def test_comment_fetch_respects_top_k_limit(monkeypatch):
 
 def test_search_reddit_reports_opencli_unavailable(monkeypatch):
     from app.collectors import reddit_sentiment
+    from app.services import opencli_diagnostics
 
     def fake_run(*args, **kwargs):
         raise FileNotFoundError("opencli")
 
     monkeypatch.setattr(reddit_sentiment.subprocess, "run", fake_run)
+    monkeypatch.setattr(reddit_sentiment.config, "OPENCLI_COMMAND", "opencli")
+    monkeypatch.setattr(opencli_diagnostics, "recommended_command", lambda: r"D:\npm-global\opencli.cmd")
 
-    with pytest.raises(reddit_sentiment.RedditSentimentError, match="OpenCLI is not available"):
+    with pytest.raises(reddit_sentiment.RedditSentimentError) as exc:
         reddit_sentiment.search_reddit("US Iran war", limit=5)
+    message = str(exc.value)
+    assert "OpenCLI is not available" in message
+    assert r"D:\npm-global\opencli.cmd" in message
+    assert "Chrome 登录态不是当前阻塞点" in message
 
 
 def test_search_reddit_reports_opencli_timeout(monkeypatch):
@@ -348,10 +433,14 @@ def test_sentiment_post_table_round_trips_in_isolated_db():
     from app.db import SentimentPost, engine, init_db
 
     init_db()
+    topic_id = 9910
     created = datetime(2026, 6, 27, 12, 0, 0)
     with Session(engine) as session:
+        for existing in session.exec(select(SentimentPost).where(SentimentPost.topic_id == topic_id)).all():
+            session.delete(existing)
+        session.commit()
         row = SentimentPost(
-            topic_id=10,
+            topic_id=topic_id,
             platform="reddit",
             subreddit="worldnews",
             title="US Iran thread",
@@ -367,7 +456,7 @@ def test_sentiment_post_table_round_trips_in_isolated_db():
         session.commit()
 
     with Session(engine) as session:
-        rows = session.exec(select(SentimentPost).where(SentimentPost.topic_id == 10)).all()
+        rows = session.exec(select(SentimentPost).where(SentimentPost.topic_id == topic_id)).all()
 
     assert len(rows) == 1
     assert rows[0].platform == "reddit"

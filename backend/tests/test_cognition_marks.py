@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app import api
-from app.db import Article, Topic, TopicArticle, engine, init_db
+from app.db import Article, CognitionProfile, Topic, TopicArticle, engine, init_db
 
 
 def test_cognition_mark_create_update_and_summary():
@@ -94,12 +94,70 @@ def test_cognition_profile_initializes_default_boundaries():
 
     assert response.status_code == 200
     profile = response.json()
-    assert len(profile) == 10
+    assert len(profile) >= 11
     by_key = {item["domain_key"]: item for item in profile}
     assert by_key["ai_infra"]["level"] == "partial"
     assert "CPU" in by_key["ai_infra"]["note"]
+    assert by_key["ai_infra"]["depth"] == "terms"
+    assert by_key["ai_infra"]["interest"] == "high"
+    assert by_key["ai_infra"]["confidence"] == 60
+    assert by_key["ai_infra"]["evidence"]
+    assert by_key["ai_infra"]["recommended_seed_style"] == "mechanism"
     assert by_key["energy"]["level"] == "unfamiliar"
     assert by_key["finance"]["level"] == "strong_partial"
+    assert by_key["media_literacy"]["recommended_seed_style"] == "rhetoric_check"
+
+
+def test_cognition_profile_updates_calibration_fields():
+    client = TestClient(api.app)
+    response = client.put("/api/cognition/profile", json=[
+        {
+            "domain_key": "energy",
+            "level": "partial",
+            "note": "开始关注电力和核能。",
+            "depth": "mechanism",
+            "interest": "medium",
+            "confidence": 72,
+            "evidence": "读过两条能源日报并追问核电受益逻辑。",
+            "recommended_seed_style": "comparison",
+        }
+    ])
+
+    assert response.status_code == 200
+    by_key = {item["domain_key"]: item for item in response.json()}
+    assert by_key["energy"]["level"] == "partial"
+    assert by_key["energy"]["note"] == "开始关注电力和核能。"
+    assert by_key["energy"]["depth"] == "mechanism"
+    assert by_key["energy"]["interest"] == "medium"
+    assert by_key["energy"]["confidence"] == 72
+    assert by_key["energy"]["evidence"] == "读过两条能源日报并追问核电受益逻辑。"
+    assert by_key["energy"]["recommended_seed_style"] == "comparison"
+
+
+def test_cognition_profile_backfills_legacy_profile_rows():
+    client = TestClient(api.app)
+    client.get("/api/cognition/profile")
+    with Session(engine) as session:
+        item = session.exec(select(CognitionProfile).where(CognitionProfile.domain_key == "ai_infra")).one()
+        item.note = "旧库里只有 level 和 note。"
+        item.depth = "none"
+        item.interest = "medium"
+        item.confidence = 50
+        item.evidence = ""
+        item.recommended_seed_style = "mechanism"
+        session.add(item)
+        session.commit()
+
+    response = client.get("/api/cognition/profile")
+
+    assert response.status_code == 200
+    by_key = {item["domain_key"]: item for item in response.json()}
+    assert by_key["ai_infra"]["note"] == "旧库里只有 level 和 note。"
+    assert by_key["ai_infra"]["depth"] == "terms"
+    assert by_key["ai_infra"]["interest"] == "high"
+    assert by_key["ai_infra"]["confidence"] == 60
+    assert by_key["ai_infra"]["evidence"]
+    assert by_key["ai_infra"]["recommended_seed_style"] == "mechanism"
 
 
 def test_cognition_mark_put_cors_preflight_is_allowed():

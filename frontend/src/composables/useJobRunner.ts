@@ -8,6 +8,7 @@ import {
   createSentimentJob,
   fetchAcademic,
   fetchCrossSynthesis,
+  fetchOpenCliDiagnostics,
   fetchSentiment,
   rerunSearchJob,
 } from '../api/dossierApi'
@@ -18,15 +19,18 @@ import type {
   CrossSynthesis,
   DeepAnalysisResult,
   LocalEventsPayload,
+  OpenCliDiagnostics,
   SearchJob,
   SearchResponse,
   SentimentLayer,
   SentimentPost,
+  TopicSummary,
 } from '../types/dossier'
 import { readableError } from './useTopicData'
 
 type UseJobRunnerOptions = {
   selectedTopicId: Ref<number | null>
+  selectedTopic: Ref<TopicSummary | null>
   localData: Ref<LocalEventsPayload | null>
   selectedEventIndex: Ref<number>
   error: Ref<string>
@@ -43,6 +47,7 @@ const sentimentLimit = 25
 export function useJobRunner(options: UseJobRunnerOptions) {
   const {
     selectedTopicId,
+    selectedTopic,
     localData,
     selectedEventIndex,
     error,
@@ -86,6 +91,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
   const academicError = ref('')
   const academicSteps = ref<StepState[]>([])
   const sentimentLayer = ref<SentimentLayer | null>(null)
+  const openCliDiagnostics = ref<OpenCliDiagnostics | null>(null)
   const sentimentJob = ref<SearchJob | null>(null)
   const sentimentMessage = ref('')
   const sentimentError = ref('')
@@ -168,12 +174,25 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     sentimentLoading.value = true
     sentimentError.value = ''
     try {
-      sentimentLayer.value = await fetchSentiment(id)
+      const [layer, diagnostics] = await Promise.all([
+        fetchSentiment(id),
+        loadOpenCliDiagnostics(),
+      ])
+      sentimentLayer.value = layer
+      openCliDiagnostics.value = diagnostics
     } catch (err) {
       sentimentError.value = readableError(err)
       sentimentLayer.value = null
     } finally {
       sentimentLoading.value = false
+    }
+  }
+
+  async function loadOpenCliDiagnostics() {
+    try {
+      return await fetchOpenCliDiagnostics()
+    } catch {
+      return null
     }
   }
 
@@ -210,6 +229,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
 
   function resetSentimentState() {
     sentimentLayer.value = null
+    openCliDiagnostics.value = null
     sentimentJob.value = null
     sentimentMessage.value = ''
     sentimentError.value = ''
@@ -327,7 +347,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       academicSteps.value = job.steps || academicSteps.value
       academicMessage.value = `学界任务已提交：${job.id.slice(0, 8)}`
       const resultJob = await waitForAcademicJob(job.id)
-      await finishAcademicJob(resultJob)
+      await finishAcademicJob(resultJob, topicId)
     } catch (err) {
       academicError.value = readableError(err)
       academicSteps.value = academicSteps.value.map((step) =>
@@ -357,7 +377,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       sentimentSteps.value = job.steps || sentimentSteps.value
       sentimentMessage.value = `民间情绪任务已提交：${job.id.slice(0, 8)}`
       const resultJob = await waitForSentimentJob(job.id)
-      await finishSentimentJob(resultJob)
+      await finishSentimentJob(resultJob, topicId)
     } catch (err) {
       sentimentError.value = readableError(err)
       sentimentSteps.value = sentimentSteps.value.map((step) =>
@@ -369,7 +389,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     }
   }
 
-  async function runCrossSynthesis(refreshVoices = true) {
+  async function runCrossSynthesis(refreshVoices = false) {
     const topicId = selectedTopicId.value
     if (!topicId || crossSynthesisAnalyzing.value) return
     crossSynthesisAnalyzing.value = true
@@ -387,7 +407,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       crossSynthesisSteps.value = job.steps || crossSynthesisSteps.value
       crossSynthesisMessage.value = `三方对照任务已提交：${job.id.slice(0, 8)}`
       const resultJob = await waitForCrossSynthesisJob(job.id)
-      await finishCrossSynthesisJob(resultJob)
+      await finishCrossSynthesisJob(resultJob, topicId)
     } catch (err) {
       crossSynthesisError.value = readableError(err)
       crossSynthesisSteps.value = crossSynthesisSteps.value.map((step) =>
@@ -452,7 +472,11 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     await Promise.all([loadTopic(result.topic_id), loadArticles(result.topic_id), loadLocalEvents(result.topic_id)])
   }
 
-  async function finishAcademicJob(job: SearchJob) {
+  function isStillSelectedTopic(topicId: number) {
+    return selectedTopicId.value === topicId
+  }
+
+  async function finishAcademicJob(job: SearchJob, topicId: number) {
     academicJob.value = job
     if (job.status !== 'done') {
       throw new Error(job.error || `学界任务${stepStatusText(job.status)}`)
@@ -461,18 +485,19 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       throw new Error('学界任务返回了未知结果')
     }
     academicSteps.value = job.steps || []
-    const topicId = selectedTopicId.value
-    if (topicId) {
+    if (!isStillSelectedTopic(topicId)) {
+      academicMessage.value = '学界任务已完成；你已切换专题，当前页未自动刷新。'
+      return
+    }
+    if (isStillSelectedTopic(topicId)) {
       await loadAcademicLayer(topicId)
-    } else if (isAcademicLayer(job.result)) {
-      academicLayer.value = job.result
     }
     const papers = academicLayer.value?.papers.length ?? 0
     const edges = academicLayer.value?.graph?.edges.length ?? 0
     academicMessage.value = `学界视角已更新：${papers} 篇论文，${edges} 条内部引用。`
   }
 
-  async function finishSentimentJob(job: SearchJob) {
+  async function finishSentimentJob(job: SearchJob, topicId: number) {
     sentimentJob.value = job
     if (job.status !== 'done' && job.status !== 'empty') {
       throw new Error(job.error || `民间情绪任务${stepStatusText(job.status)}`)
@@ -481,11 +506,12 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       throw new Error('民间情绪任务返回了未知结果')
     }
     sentimentSteps.value = job.steps || []
-    const topicId = selectedTopicId.value
-    if (topicId) {
+    if (!isStillSelectedTopic(topicId)) {
+      sentimentMessage.value = '民间情绪任务已完成；你已切换专题，当前页未自动刷新。'
+      return
+    }
+    if (isStillSelectedTopic(topicId)) {
       await loadSentimentLayer(topicId)
-    } else if (isSentimentLayer(job.result)) {
-      sentimentLayer.value = job.result
     }
     const posts = sentimentLayer.value?.posts.length ?? 0
     sentimentMessage.value =
@@ -494,7 +520,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
         : '民间情绪任务完成，但没有抓到可用帖子。'
   }
 
-  async function finishCrossSynthesisJob(job: SearchJob) {
+  async function finishCrossSynthesisJob(job: SearchJob, topicId: number) {
     crossSynthesisJob.value = job
     if (job.status !== 'done') {
       throw new Error(job.error || `三方对照任务${stepStatusText(job.status)}`)
@@ -503,11 +529,12 @@ export function useJobRunner(options: UseJobRunnerOptions) {
       throw new Error('三方对照任务返回了未知结果')
     }
     crossSynthesisSteps.value = job.steps || []
-    const topicId = selectedTopicId.value
-    if (topicId) {
+    if (!isStillSelectedTopic(topicId)) {
+      crossSynthesisMessage.value = '三方对照任务已完成；你已切换专题，当前页未自动刷新。'
+      return
+    }
+    if (isStillSelectedTopic(topicId)) {
       await loadCrossSynthesisLayer(topicId)
-    } else if (isCrossSynthesis(job.result)) {
-      crossSynthesisLayer.value = job.result
     }
     const voices = crossVoicesUsed.value.length
     crossSynthesisMessage.value =
@@ -536,11 +563,18 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     return waitForJob(jobId, crossSynthesisSteps, crossSynthesisMessage, 1800, '三方对照任务')
   }
 
+  function contextualSubtopicQuery(term: string) {
+    const subtopic = term.trim()
+    const parent = selectedTopic.value?.name?.trim() || ''
+    if (!parent || subtopic.includes(parent) || parent.includes(subtopic)) return subtopic
+    return `${parent} ${subtopic}`
+  }
+
   // 点下钻/历史 chip: 把该线索填进搜索框并立刻跑一次新搜索 (各开各的档案)。
-  async function searchRelated(term: string) {
+  async function searchRelated(term: string, kind: 'subtopic' | 'analogue' = 'subtopic') {
     const next = (term || '').trim()
     if (!next || searching.value) return
-    eventSearch.value = next
+    eventSearch.value = kind === 'subtopic' ? contextualSubtopicQuery(next) : next
     await runEventSearch()
   }
 
@@ -579,6 +613,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
     academicError,
     academicSteps,
     sentimentLayer,
+    openCliDiagnostics,
     sentimentJob,
     sentimentMessage,
     sentimentError,

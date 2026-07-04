@@ -6,9 +6,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from sqlmodel import Session, select
+
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "feeds.json"
 REQUIRED_FIELDS = {"name", "url", "country", "lang", "tier"}
+OPTIONAL_FIELDS = {"source_type", "enabled", "requires_login", "fulltext_support", "notes"}
 
 
 @lru_cache(maxsize=1)
@@ -33,10 +36,38 @@ def _validate_feed(feed: Any, index: int) -> dict[str, str]:
         raise ValueError(f"curated feed #{index + 1} has empty keys: {', '.join(empty)}")
     if not out["url"].startswith(("http://", "https://")):
         raise ValueError(f"curated feed #{index + 1} has invalid url: {out['url']}")
-    return {
+    result = {
         "name": out["name"],
         "url": out["url"],
         "country": out["country"],
         "lang": out["lang"],
         "tier": out["tier"],
+    }
+    for field in OPTIONAL_FIELDS:
+        if field in feed:
+            result[field] = str(feed[field]).strip()
+    return result
+
+
+def enabled_registry_feeds(session: Session) -> list[dict[str, Any]]:
+    from app.db import SourceRegistry
+
+    rows = session.exec(
+        select(SourceRegistry)
+        .where(SourceRegistry.enabled == True)  # noqa: E712
+        .where(SourceRegistry.source_type == "rss")
+        .order_by(SourceRegistry.id)
+    ).all()
+    return [source_feed_metadata(source) for source in rows]
+
+
+def source_feed_metadata(source: Any) -> dict[str, Any]:
+    return {
+        "source_id": source.id,
+        "name": source.name,
+        "url": source.url,
+        "country": source.country,
+        "lang": source.language,
+        "tier": source.quality_tier,
+        "source_type": source.source_type,
     }

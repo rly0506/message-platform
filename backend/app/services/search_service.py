@@ -192,7 +192,7 @@ def enqueue_sentiment_analysis_job(topic_id: int, limit: int = 25) -> dict[str, 
     )
 
 
-def enqueue_cross_synthesis_job(topic_id: int, refresh_voices: bool = True) -> dict[str, Any]:
+def enqueue_cross_synthesis_job(topic_id: int, refresh_voices: bool = False) -> dict[str, Any]:
     return enqueue_topic_job(
         topic_id,
         query_prefix="cross-synthesis",
@@ -331,7 +331,7 @@ def run_sentiment_analysis_job(job_id: str, topic_id: int, limit: int) -> None:
     )
 
 
-def run_cross_synthesis_job(job_id: str, topic_id: int, refresh_voices: bool = True) -> None:
+def run_cross_synthesis_job(job_id: str, topic_id: int, refresh_voices: bool = False) -> None:
     chain: dict[str, dict[str, Any]] = {}
 
     def work(session: Session, topic: Topic, runner: JobRunner) -> dict[str, Any]:
@@ -488,7 +488,7 @@ def sentiment_analysis_steps() -> list[dict[str, str]]:
     ]
 
 
-def cross_synthesis_steps(refresh_voices: bool = True) -> list[dict[str, str]]:
+def cross_synthesis_steps(refresh_voices: bool = False) -> list[dict[str, str]]:
     # refresh_voices=False(深度分析 bundle 内): 只用已落库声部, 不重跑三声部, 故只有 3 步。
     # 否则前端会显示 6 步但轻量 job 只跑 3 步。
     voice_steps = [

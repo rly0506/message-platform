@@ -127,6 +127,11 @@ async function mockDiscoveryApi(page: Page) {
           domain_label: 'Energy',
           level: 'unfamiliar',
           note: 'Heard in news, not actively studied',
+          depth: 'none',
+          interest: 'medium',
+          confidence: 58,
+          evidence: 'User said energy is mostly from surrounding news.',
+          recommended_seed_style: 'mechanism',
           updated_at: '2026-06-29T00:00:00',
         },
         {
@@ -135,6 +140,11 @@ async function mockDiscoveryApi(page: Page) {
           domain_label: 'AI infrastructure',
           level: 'partial',
           note: 'Knows CPU, GPU, CPO and compute center terms',
+          depth: 'terms',
+          interest: 'high',
+          confidence: 64,
+          evidence: 'User chose AI infrastructure as a priority frontier.',
+          recommended_seed_style: 'mechanism',
           updated_at: '2026-06-29T00:00:00',
         },
         {
@@ -143,6 +153,11 @@ async function mockDiscoveryApi(page: Page) {
           domain_label: 'Finance',
           level: 'strong_partial',
           note: 'Course background is relatively strong',
+          depth: 'coursework',
+          interest: 'high',
+          confidence: 78,
+          evidence: 'User listed finance and accounting courses.',
+          recommended_seed_style: 'financial_model',
           updated_at: '2026-06-29T00:00:00',
         },
       ],
@@ -234,6 +249,36 @@ test('collapses rest seeds and does not duplicate boundary-queue seeds', async (
   for (const title of restTitles) {
     expect(queueTitles).not.toContain(title)
   }
+})
+
+test('shows profile evidence and local workflow prompts in boundary cards', async ({ page }) => {
+  await openDiscovery(page)
+
+  const firstItem = page.locator('.boundary-list li').first()
+  await expect(firstItem).toContainText('New nuclear battery')
+  await expect(firstItem).toContainText('画像依据')
+  await expect(firstItem).toContainText('confidence 58%')
+  await expect(firstItem).toContainText('分析工作流')
+  await expect(firstItem).toContainText('先拆清能源类型、电力供给、成本曲线和替代能源')
+  await expect(firstItem).toContainText('适合机制补课')
+
+  const financeItem = page.locator('.boundary-list li').filter({ hasText: 'GPU cluster financing' })
+  await expect(financeItem).toContainText('用财报、现金流、成本和需求曲线追问')
+})
+
+test('shows seed summary, report connection and suggested path in boundary cards', async ({ page }) => {
+  await openDiscovery(page)
+
+  const item = page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })
+  await expect(item).toContainText('摘要')
+  await expect(item).toContainText('Small nuclear storage enters pilot')
+  await expect(item).toContainText('相关日报线索')
+  await expect(item).toContainText('认知时间树：Energy')
+  await expect(item).toContainText('Older report seed')
+  await expect(item).toContainText('深入理由')
+  await expect(item).toContainText('Energy is outside the current cognition boundary')
+  await expect(item).toContainText('建议路径')
+  await expect(item).toContainText('送进事件分析台')
 })
 
 test('loads historical discovery reports without starting a new discovery job', async ({ page }) => {

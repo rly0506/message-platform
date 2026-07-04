@@ -27,9 +27,9 @@ class SentimentAnalysisRequest(BaseModel):
 
 
 class CrossSynthesisRequest(BaseModel):
-    # True(默认, 单独「三方对照」按钮): 先重跑媒体/学界/民间三声部再合成(全刷新)。
-    # False(深度分析 bundle 内): 只用已落库的三声部合成, 不重跑(避免三声部各跑两遍)。
-    refresh_voices: bool = True
+    # False(默认): 只用已落库的三声部合成, 不重跑(避免刷新单板块后重复消耗 LLM)。
+    # True: 用户显式请求全刷新时, 先重跑媒体/学界/民间三声部再合成。
+    refresh_voices: bool = False
 
 
 class DiscoveryDistillRequest(BaseModel):
@@ -60,6 +60,10 @@ class CollectionRequestStats(BaseModel):
     kept_count: int
     status: str
     error: str = ""
+    source_id: int | None = None
+    source_name: str = ""
+    source_type: str = ""
+    quality_tier: str = ""
 
 
 class CollectionTimeSpan(BaseModel):

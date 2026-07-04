@@ -1,5 +1,5 @@
 from app import topic_ops
-from app.db import Article, Topic, TopicArticle, engine, init_db
+from app.db import Article, SourceRegistry, Topic, TopicArticle, engine, init_db
 from sqlmodel import Session, select
 
 
@@ -135,6 +135,9 @@ def test_collect_topic_curated_feed_adds_metadata_and_filters_by_relevance(monke
     monkeypatch.setattr(topic_ops.rss, "collect_feed", fake_collect_feed)
 
     with Session(engine) as session:
+        for source in session.exec(select(SourceRegistry)).all():
+            session.delete(source)
+        session.commit()
         topic = Topic(name="Battery supply chain", queries=["Battery supply chain"])
         session.add(topic)
         session.commit()

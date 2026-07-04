@@ -10,20 +10,56 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import JSON, Column
+from sqlalchemy.orm import sessionmaker
 from sqlmodel import Field, SQLModel, create_engine
 
 from app import config
 
 
+class Project(SQLModel, table=True):
+    """A durable research workspace that can hold one or more tracked topics."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: str = ""
+    status: str = Field(default="active", index=True)
+    archived_at: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class SourceRegistry(SQLModel, table=True):
+    """Persisted collection source with operator-controlled availability."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    url: str = Field(unique=True, index=True)
+    country: str = ""
+    language: str = ""
+    source_type: str = Field(default="rss", index=True)
+    quality_tier: str = Field(default="other", index=True)
+    requires_login: bool = False
+    fulltext_support: bool = False
+    enabled: bool = Field(default=True, index=True)
+    last_status: str = Field(default="never", index=True)
+    last_error: str = ""
+    last_fetched_at: Optional[datetime] = Field(default=None, index=True)
+    article_count: int = 0
+    notes: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class Topic(SQLModel, table=True):
     """一个追踪主题 = 一份会生长的专题档案。"""
     id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
     name: str = Field(index=True)
     description: str = ""
     # 多语种检索词/短语，采集时逐个查询
     queries: list = Field(default_factory=list, sa_column=Column(JSON))
     status: str = "active"          # active / archived
+    archived_at: Optional[datetime] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 class Article(SQLModel, table=True):
@@ -68,6 +104,8 @@ class Paper(SQLModel, table=True):
     authors: list = Field(default_factory=list, sa_column=Column(JSON))
     venue: str = ""
     concepts: list = Field(default_factory=list, sa_column=Column(JSON))
+    doi: str = ""
+    openalex_url: str = ""
     url: str = ""
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -132,6 +170,11 @@ class CognitionProfile(SQLModel, table=True):
     domain_label: str = ""
     level: str = Field(index=True)
     note: str = ""
+    depth: str = "none"
+    interest: str = "medium"
+    confidence: int = 50
+    evidence: str = ""
+    recommended_seed_style: str = "mechanism"
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
@@ -200,6 +243,40 @@ def _migrate() -> None:
             ("target_key", "VARCHAR DEFAULT ''"),
             ("note", "VARCHAR DEFAULT ''"),
         ],
+        "cognitionprofile": [
+            ("depth", "VARCHAR DEFAULT 'none'"),
+            ("interest", "VARCHAR DEFAULT 'medium'"),
+            ("confidence", "INTEGER DEFAULT 50"),
+            ("evidence", "VARCHAR DEFAULT ''"),
+            ("recommended_seed_style", "VARCHAR DEFAULT 'mechanism'"),
+        ],
+        "paper": [
+            ("doi", "VARCHAR DEFAULT ''"),
+            ("openalex_url", "VARCHAR DEFAULT ''"),
+        ],
+        "topic": [
+            ("project_id", "INTEGER"),
+            ("archived_at", "DATETIME"),
+            ("updated_at", "DATETIME"),
+        ],
+        "sourceregistry": [
+            ("name", "VARCHAR DEFAULT ''"),
+            ("url", "VARCHAR DEFAULT ''"),
+            ("country", "VARCHAR DEFAULT ''"),
+            ("language", "VARCHAR DEFAULT ''"),
+            ("source_type", "VARCHAR DEFAULT 'rss'"),
+            ("quality_tier", "VARCHAR DEFAULT 'other'"),
+            ("requires_login", "INTEGER DEFAULT 0"),
+            ("fulltext_support", "INTEGER DEFAULT 0"),
+            ("enabled", "INTEGER DEFAULT 1"),
+            ("last_status", "VARCHAR DEFAULT 'never'"),
+            ("last_error", "VARCHAR DEFAULT ''"),
+            ("last_fetched_at", "DATETIME"),
+            ("article_count", "INTEGER DEFAULT 0"),
+            ("notes", "VARCHAR DEFAULT ''"),
+            ("created_at", "DATETIME"),
+            ("updated_at", "DATETIME"),
+        ],
     }
     with engine.connect() as conn:
         for table, cols in adds.items():
@@ -210,6 +287,80 @@ def _migrate() -> None:
         conn.commit()
 
 
+def _backfill_projects() -> None:
+    """Give legacy topics a one-topic project without deleting or merging data."""
+    SessionLocal = sessionmaker(bind=engine)
+    with SessionLocal() as session:
+        topics = session.query(Topic).all()
+        changed = False
+        for topic in topics:
+            if topic.project_id:
+                continue
+            project = Project(
+                name=topic.name,
+                description=topic.description,
+                status=topic.status or "active",
+                archived_at=topic.archived_at,
+                created_at=topic.created_at,
+                updated_at=topic.updated_at or datetime.utcnow(),
+            )
+            session.add(project)
+            session.flush()
+            topic.project_id = project.id
+            topic.updated_at = datetime.utcnow()
+            changed = True
+        if changed:
+            session.commit()
+
+
+def _seed_source_registry() -> None:
+    """Seed configured sources once while preserving later operator edits."""
+    from app import feed_registry
+
+    def feed_bool(feed: dict, field: str, default: bool = False) -> bool:
+        value = str(feed.get(field, str(default))).strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    SessionLocal = sessionmaker(bind=engine)
+    with SessionLocal() as session:
+        existing = {source.url: source for source in session.query(SourceRegistry).all()}
+        changed = False
+        for feed in feed_registry.curated_feeds():
+            source = existing.get(feed["url"])
+            if source:
+                for field, value in (
+                    ("name", feed["name"]),
+                    ("country", feed["country"]),
+                    ("language", feed["lang"]),
+                    ("source_type", feed.get("source_type", "rss")),
+                    ("quality_tier", feed["tier"]),
+                    ("notes", feed.get("notes", "")),
+                ):
+                    if not getattr(source, field, ""):
+                        setattr(source, field, value)
+                        source.updated_at = datetime.utcnow()
+                        changed = True
+                session.add(source)
+                continue
+            session.add(SourceRegistry(
+                name=feed["name"],
+                url=feed["url"],
+                country=feed["country"],
+                language=feed["lang"],
+                source_type=feed.get("source_type", "rss"),
+                quality_tier=feed["tier"],
+                requires_login=feed_bool(feed, "requires_login"),
+                fulltext_support=feed_bool(feed, "fulltext_support"),
+                enabled=feed_bool(feed, "enabled", True),
+                notes=feed.get("notes", ""),
+            ))
+            changed = True
+        if changed:
+            session.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate()
+    _backfill_projects()
+    _seed_source_registry()

@@ -148,7 +148,7 @@ def _choose_tree_items(items: list[dict], limit: int = 5) -> list[dict]:
         run_items.sort(key=score, reverse=True)
 
     selected: list[dict] = []
-    for run_id in sorted(by_run):
+    for run_id in sorted(by_run, reverse=True):
         if len(selected) >= limit:
             break
         selected.append(by_run[run_id][0])

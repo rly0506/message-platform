@@ -1,6 +1,8 @@
 """民间情绪层: Reddit/OpenCLI posts and critical synthesis."""
 from __future__ import annotations
 
+from collections import Counter
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlmodel import Session, select
@@ -216,8 +218,90 @@ def sentiment_payload(
         "platforms": platforms,
         "warning": SENTIMENT_LAYER_WARNING,
         "posts": ranked_posts,
+        "timeline": sentiment_timeline(ranked_posts),
         "errors": errors or [],
         "summary_md": summary_md,
+    }
+
+
+def sentiment_timeline(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    buckets: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for post in posts:
+        bucket = time_bucket(post.get("created_utc"))
+        if not bucket:
+            continue
+        platform = str(post.get("platform") or "unknown")
+        buckets.setdefault((bucket, platform), []).append(post)
+
+    out = []
+    for (bucket, platform), items in sorted(buckets.items()):
+        frames = Counter(frame_for_post(item) for item in items)
+        sentiments = Counter(sentiment_for_post(item) for item in items)
+        representative = rank_posts(items)[:3]
+        out.append({
+            "time_bucket": bucket,
+            "platform": platform,
+            "dominant_frame": frames.most_common(1)[0][0],
+            "sentiment_label": sentiments.most_common(1)[0][0],
+            "sample_count": len(items),
+            "confidence": round(min(1.0, len(items) / 5), 2),
+            "representative_posts": [compact_timeline_post(item) for item in representative],
+        })
+    return out
+
+
+def time_bucket(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        numeric = float(text)
+    except ValueError:
+        numeric = 0
+    if numeric > 0:
+        return datetime.fromtimestamp(numeric, tz=timezone.utc).date().isoformat()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return text[:10] if len(text) >= 10 else ""
+
+
+def frame_for_post(post: dict[str, Any]) -> str:
+    text = post_text(post)
+    if any(term in text for term in ("shortage", "supply", "inventory", "price", "短缺", "供应", "库存", "价格")):
+        return "供应/价格焦虑"
+    if any(term in text for term in ("market", "capex", "stock", "oil", "trade", "市场", "投资", "油价", "股价")):
+        return "市场/投资影响"
+    if any(term in text for term in ("gpu", "accelerator", "chip", "model", "技术", "芯片", "算力", "模型")):
+        return "技术/产品讨论"
+    if any(term in text for term in ("war", "risk", "conflict", "战争", "风险", "冲突")):
+        return "风险/冲突担忧"
+    return "泛讨论"
+
+
+def sentiment_for_post(post: dict[str, Any]) -> str:
+    text = post_text(post)
+    if any(term in text for term in ("worried", "risk", "shortage", "tight", "panic", "担忧", "风险", "短缺", "紧张")):
+        return "担忧/风险"
+    if any(term in text for term in ("opportunity", "boom", "climbing", "growth", "机会", "上涨", "增长")):
+        return "乐观/机会"
+    return "中性/讨论"
+
+
+def post_text(post: dict[str, Any]) -> str:
+    return " ".join(
+        str(post.get(field) or "").lower()
+        for field in ("title", "selftext_snippet", "subreddit")
+    )
+
+
+def compact_timeline_post(post: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": post.get("id", ""),
+        "kind": post.get("kind", "post"),
+        "title": post.get("title", ""),
+        "score": int(post.get("score") or 0),
+        "url": post.get("url", ""),
     }
 
 

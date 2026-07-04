@@ -20,12 +20,34 @@ import type {
 type SelectOption = { key: string; label: string }
 type ArticleGroup = { category: string; items: Article[] }
 type StanceGroup = { name: string; count: number }
-type EventStructureNode = {
+type EventNetworkNode = {
   key: string
+  index: number
+  title: string
+  date: string | null
+  summary: string
+  evidence: string
+}
+type EventNetworkEdge = {
+  key: string
+  from: number
+  to: number
   label: string
-  detail: string
+  direction: 'directed' | 'symmetric'
   evidence: string
   items: string[]
+}
+type StanceTrend = {
+  label: string
+  delta: number
+  direction: string
+  firstCount: number
+  lastCount: number
+  firstShare: number
+  lastShare: number
+  turningPeriod: string
+  sources: string[]
+  representativeTitles: string[]
 }
 
 const props = defineProps<{
@@ -76,8 +98,12 @@ const props = defineProps<{
   articlePerspectives: Record<number, ArticlePerspective>
   articlePerspectiveLoading: Record<number, boolean>
   articlePerspectiveErrors: Record<number, string>
+  subtopics: string[]
+  analogues: string[]
+  searching: boolean
   keywordSize: (keyword: Keyword) => string
   toggleTimelineEvent: (index: number) => void
+  searchRelated: (term: string, kind?: 'subtopic' | 'analogue') => void
   loadCountryCompareForSelectedEvent: () => void
   showAuthoritySources: () => void
   showEarliestSources: () => void
@@ -101,85 +127,119 @@ const substanceStats = computed(() => {
   return stats
 })
 
-const eventStructureNodes = computed<EventStructureNode[]>(() => {
-  const event = props.selectedEvent
-  if (!event) return []
+const eventNetwork = computed<{ nodes: EventNetworkNode[]; edges: EventNetworkEdge[] }>(() => {
+  const nodes = props.majorEvents.map((event, index) => ({
+    key: `${event.date || 'unknown'}-${event.title_zh}-${index}`,
+    index,
+    title: event.title_zh,
+    date: event.date,
+    summary: event.summary_zh,
+    evidence: `${event.source_count || 0} 源 · ${event.article_count || event.article_ids.length} 篇`,
+  }))
+  const edges: EventNetworkEdge[] = []
 
-  const nodes: EventStructureNode[] = [
-    {
-      key: 'current',
-      label: '当前节点',
-      detail: event.summary_zh || '当前选中的事件节点。',
-      evidence: `${event.source_count || 0} 源 · ${event.article_count || 0} 篇`,
-      items: [event.title_zh],
-    },
-  ]
-
-  if (event.category || event.category_reason || event.selection_basis?.length) {
-    nodes.push({
-      key: 'trigger',
-      label: '入选/归类依据',
-      detail: `${event.category_reason || event.category || '由本地事件分类和入选依据派生'}，不代表事件触发原因。`,
-      evidence: `${event.selection_basis?.length || 0} 条依据`,
-      items: event.selection_basis?.length ? event.selection_basis.slice(0, 3) : [event.category || '本地归类'],
+  for (let index = 0; index < props.majorEvents.length - 1; index += 1) {
+    const current = props.majorEvents[index]
+    const next = props.majorEvents[index + 1]
+    edges.push({
+      key: `chronological-${index}-${index + 1}`,
+      from: index,
+      to: index + 1,
+      label: '时间顺序',
+      direction: 'directed',
+      evidence: `${current.date || '?'} → ${next.date || '?'}`,
+      items: [current.title_zh, next.title_zh],
     })
   }
 
-  const branchMap = new Map<string, { count: number; titles: string[] }>()
-  for (const source of event.source_matrix || []) {
-    const key = source.dominant_stance || source.dominant_category || '媒体分支'
-    const branch = branchMap.get(key) || { count: 0, titles: [] }
-    branch.count += source.article_count || 0
-    if (source.representative_title) branch.titles.push(source.representative_title)
-    branchMap.set(key, branch)
-  }
-  for (const [label, branch] of branchMap) {
-    nodes.push({
-      key: `branch-${label}`,
-      label,
-      detail: `来源矩阵中归入「${label}」的报道分支。`,
-      evidence: `${branch.count} 篇报道`,
-      items: branch.titles.slice(0, 3),
-    })
+  for (let left = 0; left < props.majorEvents.length; left += 1) {
+    for (let right = left + 1; right < props.majorEvents.length; right += 1) {
+      const first = props.majorEvents[left]
+      const second = props.majorEvents[right]
+      const sharedArticles = intersect(numbers(first.article_ids), numbers(second.article_ids))
+      if (sharedArticles.length) {
+        edges.push({
+          key: `same-cluster-${left}-${right}`,
+          from: left,
+          to: right,
+          label: '同组报道',
+          direction: 'symmetric',
+          evidence: `${sharedArticles.length} 篇共同报道`,
+          items: sharedArticles.slice(0, 5).map((id) => `#${id}`),
+        })
+      }
+
+      const sharedEntities = intersect(eventTerms(first), eventTerms(second))
+      if (sharedEntities.length) {
+        edges.push({
+          key: `shared-entity-${left}-${right}`,
+          from: left,
+          to: right,
+          label: '共享对象',
+          direction: 'symmetric',
+          evidence: sharedEntities.slice(0, 4).join('、'),
+          items: sharedEntities.slice(0, 6),
+        })
+      }
+
+      const sharedSources = intersect(eventSources(first), eventSources(second))
+      if (sharedSources.length) {
+        edges.push({
+          key: `source-continuation-${left}-${right}`,
+          from: left,
+          to: right,
+          label: '共同来源',
+          direction: 'symmetric',
+          evidence: sharedSources.slice(0, 4).join('、'),
+          items: sharedSources.slice(0, 6),
+        })
+      }
+    }
   }
 
-  if (props.narrativeSignals.length) {
-    nodes.push({
-      key: 'narratives',
-      label: '相似说法',
-      detail: '同一主题内多源重复出现的说法，不代表真假或操控判定。',
-      evidence: `${props.narrativeSignals.length} 条信号`,
-      items: props.narrativeSignals.map((signal) => signal.claim).slice(0, 3),
-    })
-  }
-
-  if (props.entities.length || event.location_signals?.length) {
-    const entities = props.entities.length
-      ? props.entities.map((item) => item.term)
-      : (event.location_signals || []).map((item) => item.term)
-    nodes.push({
-      key: 'entities',
-      label: '关键对象',
-      detail: '报道中反复出现的人物、组织、地点或概念。',
-      evidence: `${entities.length} 个对象`,
-      items: entities.slice(0, 5),
-    })
-  }
-
-  if (props.stancePeriods.length) {
-    nodes.push({
-      key: 'stance',
-      label: '态度变化',
-      detail: '按时间聚合的主导立场变化。',
-      evidence: `${props.stancePeriods.length} 期`,
-      items: props.stancePeriods
-        .map((period) => `${period.period} · ${period.dominant_stance}`)
-        .slice(0, 3),
-    })
-  }
-
-  return nodes
+  return { nodes, edges: edges.slice(0, 24) }
 })
+
+const stanceTrends = computed<StanceTrend[]>(() => {
+  const periods = props.stancePeriods
+  if (periods.length < 2) return []
+  const first = periods[0]
+  const last = periods[periods.length - 1]
+  const labels = new Set([...Object.keys(first.counts || {}), ...Object.keys(last.counts || {})])
+  return [...labels]
+    .map((label) => {
+      const firstCount = first.counts?.[label] || 0
+      const lastCount = last.counts?.[label] || 0
+      const delta = lastCount - firstCount
+      const firstTotal = periodCountTotal(first)
+      const lastTotal = periodCountTotal(last)
+      return {
+        label,
+        delta,
+        direction: delta > 0 ? '增强' : delta < 0 ? '减弱' : '持平',
+        firstCount,
+        lastCount,
+        firstShare: firstTotal ? Math.round((firstCount / firstTotal) * 100) : 0,
+        lastShare: lastTotal ? Math.round((lastCount / lastTotal) * 100) : 0,
+        turningPeriod: turningPeriod(label),
+        sources: trendSources(label),
+        representativeTitles: trendTitles(label),
+      }
+    })
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || b.lastCount - a.lastCount || a.label.localeCompare(b.label, 'zh-CN'))
+    .slice(0, 4)
+})
+
+const hasMeaningfulStanceTrend = computed(() => stanceTrends.value.some((item) => item.delta !== 0))
+const hasEnoughStanceTrendSample = computed(() => {
+  if (props.stancePeriods.length < 2) return false
+  return props.stancePeriods.reduce((sum, period) => sum + periodCountTotal(period), 0) >= 6
+})
+const shouldShowStanceTrends = computed(() => hasEnoughStanceTrendSample.value && hasMeaningfulStanceTrend.value)
+
+function eventEdgeConnector(edge: EventNetworkEdge) {
+  return edge.direction === 'directed' ? '→' : '↔'
+}
 
 const emit = defineEmits<{
   'update:query': [value: string]
@@ -211,6 +271,82 @@ function narrativeTimeRange(signal: NarrativeSignal): string {
   if (!signal.first_seen || first === last) return last
   if (!signal.last_seen) return first
   return `${first} 至 ${last}`
+}
+
+function numbers(values: number[] | undefined) {
+  return (values || []).filter((value) => Number.isFinite(value))
+}
+
+function intersect<T>(left: T[], right: T[]) {
+  const rightSet = new Set(right)
+  return [...new Set(left)].filter((item) => rightSet.has(item))
+}
+
+function eventTerms(event: LocalEvent) {
+  return [
+    ...(event.entities || []).map((item) => item.term),
+    ...(event.location_signals || []).map((item) => item.term),
+    ...(event.keywords || []).map((item) => item.term),
+  ].filter(Boolean)
+}
+
+function eventSources(event: LocalEvent) {
+  return [
+    ...(event.sources || []).map((source) => source.name),
+    ...(event.source_matrix || []).map((source) => source.source),
+  ].filter(Boolean)
+}
+
+function turningPeriod(label: string) {
+  let previous = 0
+  let bestPeriod = props.stancePeriods[0]?.period || ''
+  let bestDelta = 0
+  for (const period of props.stancePeriods) {
+    const current = period.counts?.[label] || 0
+    const delta = current - previous
+    if (Math.abs(delta) > Math.abs(bestDelta)) {
+      bestDelta = delta
+      bestPeriod = period.period
+    }
+    previous = current
+  }
+  return bestPeriod
+}
+
+function periodCountTotal(period: StanceEvolution) {
+  return Object.values(period.counts || {}).reduce((sum, count) => sum + count, 0)
+}
+
+function trendSources(label: string) {
+  const articleIds = new Set(
+    props.stancePeriods
+      .filter((period) => (period.counts?.[label] || 0) > 0)
+      .flatMap((period) => period.article_ids || []),
+  )
+  const counts = new Map<string, number>()
+  for (const article of props.articles) {
+    if (!articleIds.has(article.id) && article.stance !== label) continue
+    const source = article.source || '未知来源'
+    counts.set(source, (counts.get(source) || 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
+    .map(([source]) => source)
+    .slice(0, 4)
+}
+
+function trendTitles(label: string) {
+  const articleIds = new Set(
+    props.stancePeriods
+      .filter((period) => (period.counts?.[label] || 0) > 0)
+      .flatMap((period) => period.article_ids || []),
+  )
+  return props.articles
+    .filter((article) => articleIds.has(article.id) || article.stance === label)
+    .sort((a, b) => new Date(b.published_at || '').getTime() - new Date(a.published_at || '').getTime())
+    .map((article) => props.titleFor(article))
+    .filter(Boolean)
+    .slice(0, 3)
 }
 
 // 干货密度配色: 高=绿(干货), 中=灰, 低=橙(水文警示)
@@ -252,296 +388,300 @@ function emotionClass(score: number) {
           <em>{{ hasLlmAnalysis ? 'LLM 生成' : `${importanceText(event)} · ${coverageText(event)}` }}</em>
         </button>
         <div v-if="index === expandedTimelineIndex" class="timeline-inline-detail">
-          <p>{{ event.summary_zh }}</p>
-          <div class="event-tags compact-tags">
-            <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-            <span>{{ event.category || '进展/报道' }}</span>
-            <span>{{ event.article_count }} 篇报道</span>
-            <span>{{ event.source_count }} 个来源</span>
-            <span>{{ event.stance }}</span>
-          </div>
-          <div v-if="event.selection_basis?.length" class="basis-list">
-            <strong>入选依据</strong>
-            <span v-for="basis in event.selection_basis" :key="basis">{{ basis }}</span>
-          </div>
-          <div v-if="event.sources?.length" class="source-list">
-            <strong>主要来源</strong>
-            <span v-for="source in event.sources" :key="source.name">
-              {{ source.name }} {{ source.count }} · {{ source.tier_label || '其他来源' }}
-            </span>
-          </div>
-          <p v-if="event.category_reason" class="event-reason">
-            阶段依据：{{ event.category_reason }}
-          </p>
+          <article class="event-detail-inline">
+            <div class="event-title-row">
+              <div>
+                <p class="eyebrow">事件详情</p>
+                <h2>{{ event.title_zh }}</h2>
+              </div>
+              <div class="event-actions">
+                <span class="score">{{ hasLlmAnalysis ? 'LLM 生成' : `${importanceText(event)} · ${coverageText(event)}` }}</span>
+                <button
+                  type="button"
+                  class="ghost-button country-trigger"
+                  :disabled="countryCompareLoading"
+                  @click="loadCountryCompareForSelectedEvent"
+                >
+                  {{ countryCompareLoading ? '读取中...' : '各国怎么报道' }}
+                </button>
+              </div>
+            </div>
+            <p>{{ event.summary_zh }}</p>
+            <div class="event-tags compact-tags">
+              <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
+              <span>{{ event.category || '进展/报道' }}</span>
+              <span>{{ importanceText(event) }}</span>
+              <span>{{ coverageText(event) }}</span>
+              <span>{{ event.article_count }} 篇报道</span>
+              <span>{{ event.source_count }} 个来源</span>
+              <span>{{ event.stance }}</span>
+            </div>
+            <p v-if="event.category_reason" class="event-reason">
+              阶段依据：{{ event.category_reason }}
+            </p>
+            <p v-if="!hasLlmAnalysis" class="event-caveat">
+              证据范围：当前仅使用标题、摘要、来源、发布时间和链接进行本地规则判断，不等同于全文事实核查。
+            </p>
+            <p v-else class="event-caveat llm-caveat">
+              证据范围：该节点由 LLM 基于已富化报道综合生成，仍应回到原始报道核对事实与上下文。
+            </p>
+            <div v-if="event.selection_basis?.length" class="basis-list">
+              <strong>入选依据</strong>
+              <span v-for="basis in event.selection_basis" :key="basis">{{ basis }}</span>
+            </div>
+            <div v-if="event.location_signals?.length" class="basis-list">
+              <strong>地点线索</strong>
+              <span v-for="place in event.location_signals" :key="place.term">
+                {{ place.term }} {{ place.count }}
+              </span>
+            </div>
+            <div v-if="event.sources?.length" class="source-list">
+              <strong>主要来源</strong>
+              <span v-for="source in event.sources" :key="source.name">
+                {{ source.name }} {{ source.count }} · {{ source.tier_label || '其他来源' }}
+              </span>
+            </div>
+            <div v-if="event.source_tiers?.length" class="source-list">
+              <strong>来源层级</strong>
+              <span v-for="tier in event.source_tiers" :key="tier.key">
+                {{ tier.label }} {{ tier.count }}
+              </span>
+            </div>
+            <div v-if="event.source_matrix?.length" class="source-matrix">
+              <div class="evidence-header">
+                <strong>来源矩阵</strong>
+                <span>显示 {{ visibleSourceMatrix.length }} / {{ event.source_matrix.length }} 个来源</span>
+              </div>
+              <div class="source-matrix-tools">
+                <button type="button" class="ghost-button" @click="showAuthoritySources">权威来源</button>
+                <button type="button" class="ghost-button" @click="showEarliestSources">首见来源</button>
+                <button type="button" class="ghost-button" @click="showMostCoveredSources">报道最多</button>
+                <label>
+                  <span>层级</span>
+                  <select :value="sourceTierFilter" aria-label="来源层级筛选" @change="updateSourceTierFilter">
+                    <option v-for="option in sourceTierOptions" :key="option.key" :value="option.key">
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span>排序</span>
+                  <select :value="sourceMatrixSort" aria-label="来源矩阵排序" @change="updateSourceMatrixSort">
+                    <option value="tier">来源层级</option>
+                    <option value="first">首见时间</option>
+                    <option value="count">报道数量</option>
+                    <option value="stance">主导立场</option>
+                  </select>
+                </label>
+              </div>
+              <div class="source-matrix-table">
+                <div class="source-matrix-head">
+                  <span>来源</span>
+                  <span>首见时间</span>
+                  <span>分类/立场</span>
+                  <span>报道</span>
+                </div>
+                <article v-for="source in visibleSourceMatrix" :key="source.source">
+                  <div>
+                    <strong>{{ source.source }}</strong>
+                    <small>{{ source.tier_label || '其他来源' }}</small>
+                  </div>
+                  <time>{{ fmtDate(source.first_published_at, true) }}</time>
+                  <span>{{ source.dominant_category || '行动进展' }} · {{ source.dominant_stance || '中性观察' }}</span>
+                  <b>{{ source.article_count }}</b>
+                  <p>{{ source.representative_title }}</p>
+                </article>
+                <p v-if="!visibleSourceMatrix.length" class="source-matrix-empty">当前筛选下没有来源。</p>
+              </div>
+            </div>
+            <div v-if="event.evidence?.first_sources?.length" class="first-source-list">
+              <strong>首批来源</strong>
+              <article v-for="source in event.evidence.first_sources" :key="`${source.name}-${source.title}`">
+                <span>{{ fmtDate(source.published_at, true) }}</span>
+                <b>{{ source.name }}</b>
+                <em>{{ source.tier_label || '其他来源' }}</em>
+                <p>{{ source.title }}</p>
+              </article>
+            </div>
+            <div v-if="event.evidence_articles?.length" class="evidence-list compact-evidence-list">
+              <div class="evidence-header">
+                <strong>证据报道</strong>
+                <span>展示前 {{ event.evidence_articles.length }} 篇关联报道</span>
+              </div>
+              <article v-for="article in event.evidence_articles" :key="article.id">
+                <div>
+                  <time>{{ fmtDate(article.published_at, true) }}</time>
+                  <span>{{ article.source || '未知来源' }}</span>
+                  <span>{{ article.category || '行动进展' }}</span>
+                  <span>相关度 {{ percent(article.relevance) }}</span>
+                </div>
+                <h3>
+                  <a :href="article.url" target="_blank" rel="noreferrer">{{ article.title }}</a>
+                </h3>
+                <p>{{ evidenceSnippet(article) }}</p>
+              </article>
+            </div>
+            <div v-if="subtopics.length || analogues.length" class="related-threads event-detail-drilldown">
+              <div v-if="subtopics.length" class="thread-row">
+                <span class="thread-label">继续下钻</span>
+                <button
+                  v-for="topic in subtopics"
+                  :key="`event-sub-${topic}`"
+                  type="button"
+                  class="thread-chip thread-drill"
+                  :disabled="searching"
+                  @click="searchRelated(topic, 'subtopic')"
+                >
+                  {{ topic }}
+                </button>
+              </div>
+              <div v-if="analogues.length" class="thread-row">
+                <span class="thread-label">历史相似</span>
+                <button
+                  v-for="ana in analogues"
+                  :key="`event-ana-${ana}`"
+                  type="button"
+                  class="thread-chip thread-history"
+                  :disabled="searching"
+                  @click="searchRelated(ana, 'analogue')"
+                >
+                  {{ ana }}
+                </button>
+              </div>
+            </div>
+            <section class="country-compare-panel">
+              <div class="evidence-header">
+                <div>
+                  <strong>各国怎么报道</strong>
+                  <span v-if="hasCountryCompare">
+                    {{ visibleCountryCompare?.article_scope_count || 0 }} 篇关联报道 ·
+                    另有 {{ visibleCountryCompare?.unmapped_count || 0 }} 篇未识别来源国
+                  </span>
+                  <span v-else>按当前事件的关联报道生成多国媒体对比</span>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button"
+                  :disabled="countryCompareLoading"
+                  @click="loadCountryCompareForSelectedEvent"
+                >
+                  {{ hasCountryCompare ? '刷新对比' : '生成对比' }}
+                </button>
+              </div>
+              <p v-if="countryCompareError" class="country-compare-error">
+                {{ countryCompareError }}
+              </p>
+              <p v-else-if="countryCompareLoading" class="muted">正在读取多国对比...</p>
+              <template v-else-if="visibleCountryCompare">
+                <p v-if="visibleCountryCompare.unmapped_count > 0" class="coverage-gap">
+                  另有 {{ visibleCountryCompare.unmapped_count }} 篇报道暂未能根据媒体名识别来源国家。
+                </p>
+                <div class="first-reporters">
+                  <div class="evidence-header">
+                    <strong>谁先报</strong>
+                    <span>{{ firstReporterTimeline.length }} 条首报线索</span>
+                  </div>
+                  <ol v-if="firstReporterTimeline.length">
+                    <li v-for="reporter in firstReporterTimeline" :key="`${reporter.article_id}-${reporter.outlet}`">
+                      <time>{{ fmtDate(reporter.date, true) }}</time>
+                      <b>{{ countryFlag(reporter.country_code) }} {{ reporter.country_name }}</b>
+                      <span>{{ reporter.outlet }}</span>
+                      <p>{{ reporter.title }}</p>
+                    </li>
+                  </ol>
+                  <p v-else class="source-matrix-empty">当前事件没有可排序的首报记录。</p>
+                </div>
+                <div class="country-card-grid">
+                  <article
+                    v-for="country in countryCards"
+                    :key="country.code"
+                    :class="['country-card', { party: country.is_party, empty: country.article_count === 0 }]"
+                  >
+                    <div class="country-card-head">
+                      <div>
+                        <strong>{{ countryFlag(country.code) }} {{ country.name }}</strong>
+                        <small>{{ country.code }}</small>
+                      </div>
+                      <span>{{ country.article_count }} 篇</span>
+                    </div>
+                    <div class="country-badges">
+                      <span v-if="country.is_party">当事方</span>
+                      <span v-if="country.is_g20">G20</span>
+                      <span v-if="country.party_mention_count">提及 {{ country.party_mention_count }}</span>
+                    </div>
+                    <p v-if="countryCoverageNote(country)" class="country-empty-note">
+                      {{ countryCoverageNote(country) }}
+                    </p>
+                    <div v-if="topStanceEntries(country).length" class="stance-pills country-stances">
+                      <span v-for="[label, count] in topStanceEntries(country)" :key="label">
+                        {{ label }} {{ count }}
+                      </span>
+                    </div>
+                    <p class="country-outlets">
+                      <b>媒体</b>
+                      {{ outletSummary(country) }}
+                    </p>
+                    <p v-if="country.first_report" class="country-first-report">
+                      <b>首报</b>
+                      {{ fmtDate(country.first_report.date, true) }} · {{ country.first_report.outlet }}
+                    </p>
+                    <ul v-if="country.sample_titles.length" class="country-samples">
+                      <li v-for="title in country.sample_titles.slice(0, 3)" :key="title">{{ title }}</li>
+                    </ul>
+                  </article>
+                </div>
+              </template>
+            </section>
+            <div class="breakdown-grid">
+              <div v-for="item in event.score_breakdown" :key="item.label">
+                <div class="breakdown-head">
+                  <strong>{{ item.label }}</strong>
+                  <span>{{ percent(item.value) }}</span>
+                </div>
+                <i :style="{ width: percent(item.value) }" />
+                <p>{{ item.reason }}</p>
+              </div>
+            </div>
+          </article>
         </div>
       </article>
     </div>
     <p v-else class="muted">目前文章还不足以聚合出关键节点。请搜索并采集更多报道。</p>
 
-    <article v-if="selectedEvent" class="event-detail">
-      <div class="event-title-row">
-        <div>
-          <p class="eyebrow">Selected Node</p>
-          <h2>{{ selectedEvent.title_zh }}</h2>
-        </div>
-        <div class="event-actions">
-          <span class="score">{{ hasLlmAnalysis ? 'LLM 生成' : `${importanceText(selectedEvent)} · ${coverageText(selectedEvent)}` }}</span>
-          <button
-            type="button"
-            class="ghost-button country-trigger"
-            :disabled="countryCompareLoading"
-            @click="loadCountryCompareForSelectedEvent"
-          >
-            {{ countryCompareLoading ? '读取中...' : '各国怎么报道' }}
-          </button>
-        </div>
-      </div>
-      <p>{{ selectedEvent.summary_zh }}</p>
-      <div class="event-tags">
-        <span v-if="hasLlmAnalysis" class="llm-badge">LLM 生成</span>
-        <span>{{ selectedEvent.category || '进展/报道' }}</span>
-        <span>{{ importanceText(selectedEvent) }}</span>
-        <span>{{ coverageText(selectedEvent) }}</span>
-        <span>{{ selectedEvent.source_count }} 个来源</span>
-        <span>{{ selectedEvent.article_count }} 篇报道</span>
-        <span>{{ selectedEvent.stance }}</span>
-        <span v-if="selectedEvent.evidence?.date_span_days">
-          持续 {{ selectedEvent.evidence.date_span_days }} 天
-        </span>
-      </div>
-      <p v-if="selectedEvent.category_reason" class="event-reason">
-        阶段依据：{{ selectedEvent.category_reason }}
-      </p>
-      <p v-if="!hasLlmAnalysis" class="event-caveat">
-        证据范围：当前仅使用标题、摘要、来源、发布时间和链接进行本地规则判断，不等同于全文事实核查。
-      </p>
-      <p v-else class="event-caveat llm-caveat">
-        证据范围：该节点由 LLM 基于已富化报道综合生成，仍应回到原始报道核对事实与上下文。
-      </p>
-
-      <div v-if="selectedEvent.selection_basis?.length" class="basis-list">
-        <strong>入选依据</strong>
-        <span v-for="basis in selectedEvent.selection_basis" :key="basis">{{ basis }}</span>
-      </div>
-
-      <div v-if="selectedEvent.location_signals?.length" class="basis-list">
-        <strong>地点线索</strong>
-        <span v-for="place in selectedEvent.location_signals" :key="place.term">
-          {{ place.term }} {{ place.count }}
-        </span>
-      </div>
-
-      <div v-if="selectedEvent.sources?.length" class="source-list">
-        <strong>主要来源</strong>
-        <span v-for="source in selectedEvent.sources" :key="source.name">
-          {{ source.name }} {{ source.count }} · {{ source.tier_label || '其他来源' }}
-        </span>
-      </div>
-
-      <div v-if="selectedEvent.source_tiers?.length" class="source-list">
-        <strong>来源层级</strong>
-        <span v-for="tier in selectedEvent.source_tiers" :key="tier.key">
-          {{ tier.label }} {{ tier.count }}
-        </span>
-      </div>
-
-      <div v-if="selectedEvent.source_matrix?.length" class="source-matrix">
-        <div class="evidence-header">
-          <strong>来源矩阵</strong>
-          <span>显示 {{ visibleSourceMatrix.length }} / {{ selectedEvent.source_matrix.length }} 个来源</span>
-        </div>
-        <div class="source-matrix-tools">
-          <button type="button" class="ghost-button" @click="showAuthoritySources">权威来源</button>
-          <button type="button" class="ghost-button" @click="showEarliestSources">首见来源</button>
-          <button type="button" class="ghost-button" @click="showMostCoveredSources">报道最多</button>
-          <label>
-            <span>层级</span>
-            <select :value="sourceTierFilter" aria-label="来源层级筛选" @change="updateSourceTierFilter">
-              <option v-for="option in sourceTierOptions" :key="option.key" :value="option.key">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>排序</span>
-            <select :value="sourceMatrixSort" aria-label="来源矩阵排序" @change="updateSourceMatrixSort">
-              <option value="tier">来源层级</option>
-              <option value="first">首见时间</option>
-              <option value="count">报道数量</option>
-              <option value="stance">主导立场</option>
-            </select>
-          </label>
-        </div>
-        <div class="source-matrix-table">
-          <div class="source-matrix-head">
-            <span>来源</span>
-            <span>首见时间</span>
-            <span>分类/立场</span>
-            <span>报道</span>
-          </div>
-          <article v-for="source in visibleSourceMatrix" :key="source.source">
-            <div>
-              <strong>{{ source.source }}</strong>
-              <small>{{ source.tier_label || '其他来源' }}</small>
-            </div>
-            <time>{{ fmtDate(source.first_published_at, true) }}</time>
-            <span>{{ source.dominant_category || '行动进展' }} · {{ source.dominant_stance || '中性观察' }}</span>
-            <b>{{ source.article_count }}</b>
-            <p>{{ source.representative_title }}</p>
-          </article>
-          <p v-if="!visibleSourceMatrix.length" class="source-matrix-empty">当前筛选下没有来源。</p>
-        </div>
-      </div>
-
-      <div v-if="selectedEvent.evidence?.first_sources?.length" class="first-source-list">
-        <strong>首批来源</strong>
-        <article v-for="source in selectedEvent.evidence.first_sources" :key="`${source.name}-${source.title}`">
-          <span>{{ fmtDate(source.published_at, true) }}</span>
-          <b>{{ source.name }}</b>
-          <em>{{ source.tier_label || '其他来源' }}</em>
-          <p>{{ source.title }}</p>
-        </article>
-      </div>
-
-      <div v-if="selectedEvent.evidence_articles?.length" class="evidence-list">
-        <div class="evidence-header">
-          <strong>证据报道</strong>
-          <span>展示前 {{ selectedEvent.evidence_articles.length }} 篇关联报道</span>
-        </div>
-        <article v-for="article in selectedEvent.evidence_articles" :key="article.id">
-          <div>
-            <time>{{ fmtDate(article.published_at, true) }}</time>
-            <span>{{ article.source || '未知来源' }}</span>
-            <span>{{ article.collector || 'unknown' }}</span>
-            <span>{{ article.category || '行动进展' }}</span>
-            <span>相关度 {{ percent(article.relevance) }}</span>
-          </div>
-          <h3>
-            <a :href="article.url" target="_blank" rel="noreferrer">{{ article.title }}</a>
-          </h3>
-          <p>{{ evidenceSnippet(article) }}</p>
-        </article>
-      </div>
-
-      <section class="country-compare-panel">
-        <div class="evidence-header">
-          <div>
-            <strong>各国怎么报道</strong>
-            <span v-if="hasCountryCompare">
-              {{ visibleCountryCompare?.article_scope_count || 0 }} 篇关联报道 ·
-              另有 {{ visibleCountryCompare?.unmapped_count || 0 }} 篇未识别来源国
-            </span>
-            <span v-else>按当前事件的关联报道生成多国媒体对比</span>
-          </div>
-          <button
-            type="button"
-            class="ghost-button"
-            :disabled="countryCompareLoading"
-            @click="loadCountryCompareForSelectedEvent"
-          >
-            {{ hasCountryCompare ? '刷新对比' : '生成对比' }}
-          </button>
-        </div>
-
-        <p v-if="countryCompareError" class="country-compare-error">
-          {{ countryCompareError }}
-        </p>
-        <p v-else-if="countryCompareLoading" class="muted">正在读取多国对比...</p>
-
-        <template v-else-if="visibleCountryCompare">
-          <p v-if="visibleCountryCompare.unmapped_count > 0" class="coverage-gap">
-            另有 {{ visibleCountryCompare.unmapped_count }} 篇报道暂未能根据媒体名识别来源国家。
-          </p>
-
-          <div class="first-reporters">
-            <div class="evidence-header">
-              <strong>谁先报</strong>
-              <span>{{ firstReporterTimeline.length }} 条首报线索</span>
-            </div>
-            <ol v-if="firstReporterTimeline.length">
-              <li v-for="reporter in firstReporterTimeline" :key="`${reporter.article_id}-${reporter.outlet}`">
-                <time>{{ fmtDate(reporter.date, true) }}</time>
-                <b>{{ countryFlag(reporter.country_code) }} {{ reporter.country_name }}</b>
-                <span>{{ reporter.outlet }}</span>
-                <p>{{ reporter.title }}</p>
-              </li>
-            </ol>
-            <p v-else class="source-matrix-empty">当前事件没有可排序的首报记录。</p>
-          </div>
-
-          <div class="country-card-grid">
-            <article
-              v-for="country in countryCards"
-              :key="country.code"
-              :class="['country-card', { party: country.is_party, empty: country.article_count === 0 }]"
-            >
-              <div class="country-card-head">
-                <div>
-                  <strong>{{ countryFlag(country.code) }} {{ country.name }}</strong>
-                  <small>{{ country.code }}</small>
-                </div>
-                <span>{{ country.article_count }} 篇</span>
-              </div>
-              <div class="country-badges">
-                <span v-if="country.is_party">当事方</span>
-                <span v-if="country.is_g20">G20</span>
-                <span v-if="country.party_mention_count">提及 {{ country.party_mention_count }}</span>
-              </div>
-              <p v-if="countryCoverageNote(country)" class="country-empty-note">
-                {{ countryCoverageNote(country) }}
-              </p>
-              <div v-if="topStanceEntries(country).length" class="stance-pills country-stances">
-                <span v-for="[label, count] in topStanceEntries(country)" :key="label">
-                  {{ label }} {{ count }}
-                </span>
-              </div>
-              <p class="country-outlets">
-                <b>媒体</b>
-                {{ outletSummary(country) }}
-              </p>
-              <p v-if="country.first_report" class="country-first-report">
-                <b>首报</b>
-                {{ fmtDate(country.first_report.date, true) }} · {{ country.first_report.outlet }}
-              </p>
-              <ul v-if="country.sample_titles.length" class="country-samples">
-                <li v-for="title in country.sample_titles.slice(0, 3)" :key="title">{{ title }}</li>
-              </ul>
-            </article>
-          </div>
-        </template>
-      </section>
-
-      <div class="breakdown-grid">
-        <div v-for="item in selectedEvent.score_breakdown" :key="item.label">
-          <div class="breakdown-head">
-            <strong>{{ item.label }}</strong>
-            <span>{{ percent(item.value) }}</span>
-          </div>
-          <i :style="{ width: percent(item.value) }" />
-          <p>{{ item.reason }}</p>
-        </div>
-      </div>
-    </article>
-
-    <details v-if="eventStructureNodes.length" class="media-collapse event-structure-panel">
+    <details v-if="eventNetwork.nodes.length" class="media-collapse event-network-panel">
       <summary>
-        <strong>事件结构树</strong>
-        <span>{{ eventStructureNodes.length }} 节点</span>
+        <strong>事件发展网络</strong>
+        <span>{{ eventNetwork.nodes.length }} 节点 · {{ eventNetwork.edges.length }} 边</span>
       </summary>
-      <div class="collapse-body event-structure-tree">
-        <p class="event-structure-note">结构化阅读辅助，不代表因果判定。节点为并列阅读切片，非时间线或因果链。</p>
-        <ol>
-          <li v-for="node in eventStructureNodes" :key="node.key" class="event-structure-node">
-            <div class="event-structure-node-head">
-              <strong>{{ node.label }}</strong>
+      <div class="collapse-body event-network">
+        <p class="event-structure-note">本地证据边，不显示 LLM 因果假设。</p>
+        <div class="event-network-grid">
+          <article
+            v-for="node in eventNetwork.nodes"
+            :key="node.key"
+            :class="['event-network-node', { active: node.index === selectedEventIndex }]"
+          >
+            <div>
+              <time>{{ fmtDate(node.date) }}</time>
+              <strong>{{ node.title }}</strong>
               <span>{{ node.evidence }}</span>
             </div>
-            <p>{{ node.detail }}</p>
-            <ul v-if="node.items.length">
-              <li v-for="item in node.items" :key="item">{{ item }}</li>
+            <p>{{ node.summary }}</p>
+          </article>
+        </div>
+        <div class="event-network-edges">
+          <article v-for="edge in eventNetwork.edges" :key="edge.key" class="event-network-edge">
+            <div>
+              <strong>{{ edge.label }}</strong>
+              <span>#{{ edge.from + 1 }} {{ eventEdgeConnector(edge) }} #{{ edge.to + 1 }}</span>
+            </div>
+            <p>{{ edge.evidence }}</p>
+            <ul v-if="edge.items.length">
+              <li v-for="item in edge.items" :key="item">{{ item }}</li>
             </ul>
-          </li>
-        </ol>
+          </article>
+          <p v-if="!eventNetwork.edges.length" class="source-matrix-empty">暂无可连接的事件边。</p>
+        </div>
       </div>
     </details>
 
@@ -757,26 +897,67 @@ function emotionClass(score: number) {
 
     <details class="media-collapse">
       <summary>
-        <strong>态度随时间变化</strong>
+        <strong>媒体立场时间线</strong>
         <span>{{ stancePeriods.length }} 期</span>
       </summary>
       <div class="collapse-body">
         <div class="pane-header compact">
           <div>
-            <p class="eyebrow">Attitude Shift</p>
-            <h2>态度随时间变化</h2>
+            <p class="eyebrow">Media Stance Shift</p>
+            <h2>媒体立场时间线</h2>
           </div>
         </div>
-        <div v-if="stancePeriods.length" class="stance-evolution">
-          <article v-for="period in stancePeriods" :key="period.period">
-            <time>{{ period.period }}</time>
-            <strong>{{ period.dominant_stance }}</strong>
-            <div class="stance-pills">
-              <span v-for="(count, label) in period.counts" :key="label">
-                {{ label }} {{ count }}
-              </span>
+        <p class="event-structure-note">这是报道样本的立场口径分布，不代表民间舆论；民间变化请看“民间情绪”的舆论变化时间线。</p>
+        <div v-if="stancePeriods.length" class="stance-trend-panel">
+          <p v-if="!shouldShowStanceTrends" class="event-structure-note">
+            当前样本只能显示立场分布，还不足以判断增强、减弱或转折。
+          </p>
+          <section v-else class="stance-trend-summary">
+            <div class="evidence-header">
+              <strong>主要变化</strong>
+              <span>{{ stanceTrends.length }} 条趋势</span>
             </div>
-          </article>
+            <article v-for="trend in stanceTrends" :key="trend.label" class="stance-trend-card">
+              <div class="stance-trend-head">
+                <strong>{{ trend.label }}</strong>
+                <span :class="{ down: trend.delta < 0 }">
+                  {{ trend.direction }} {{ trend.delta > 0 ? '+' : '' }}{{ trend.delta }}
+                </span>
+              </div>
+              <p>
+                {{ stancePeriods[0].period }} {{ trend.firstCount }} 篇 →
+                {{ stancePeriods[stancePeriods.length - 1].period }} {{ trend.lastCount }} 篇
+              </p>
+              <p class="stance-share-change">
+                占比 {{ trend.firstShare }}% → {{ trend.lastShare }}%
+              </p>
+              <div class="stance-trend-meta">
+                <span>转折期 {{ trend.turningPeriod }}</span>
+                <span v-if="trend.sources.length">推动来源 {{ trend.sources.join('、') }}</span>
+              </div>
+              <div v-if="trend.representativeTitles.length" class="stance-trend-evidence">
+                <b>代表报道</b>
+                <ul>
+                  <li v-for="title in trend.representativeTitles" :key="title">{{ title }}</li>
+                </ul>
+              </div>
+            </article>
+          </section>
+          <section class="stance-evolution">
+            <div class="evidence-header">
+              <strong>时间分布</strong>
+              <span>{{ stancePeriods.length }} 期</span>
+            </div>
+            <article v-for="period in stancePeriods" :key="period.period">
+              <time>{{ period.period }}</time>
+              <strong>{{ period.dominant_stance }}</strong>
+              <div class="stance-pills">
+                <span v-for="(count, label) in period.counts" :key="label">
+                  {{ label }} {{ count }}
+                </span>
+              </div>
+            </article>
+          </section>
         </div>
         <p v-else class="muted">需要更多带时间的报道才能观察态度变化。</p>
       </div>

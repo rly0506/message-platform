@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AcademicFoundationalPaper, AcademicPaper } from '../types/dossier'
+import type { AcademicFoundationalPaper, AcademicLayer, AcademicPaper } from '../types/dossier'
 
 type StepState = { key: string; label: string; status: string }
 type AcademicSchool = {
@@ -20,6 +20,7 @@ const props = defineProps<{
   academicSteps: StepState[]
   academicLoading: boolean
   academicError: string
+  academicLayer: AcademicLayer | null
   academicPapers: AcademicPaper[]
   academicCitationEdges: AcademicCitationEdge[]
   academicSchools: AcademicSchool[]
@@ -86,6 +87,18 @@ const academicSignalSummary = computed(() => {
   }
   return counts
 })
+
+const literatureNetwork = computed(() => props.academicLayer?.literature_network || { nodes: [], edges: [] })
+const literatureNetworkNodes = computed(() => literatureNetwork.value.nodes || [])
+const literatureNetworkEdges = computed(() => literatureNetwork.value.edges || [])
+
+function paperDoiUrl(paper: AcademicPaper) {
+  return paper.doi || ''
+}
+
+function paperOpenAlexUrl(paper: AcademicPaper) {
+  return paper.openalex_url || paper.openalex_id
+}
 </script>
 
 <template>
@@ -191,16 +204,31 @@ const academicSignalSummary = computed(() => {
           </div>
         </div>
 
-        <div class="academic-section">
+        <div class="academic-section academic-literature-network">
           <div class="evidence-header">
-            <strong>引用图</strong>
+            <strong>文献网络</strong>
             <span>{{ academicCitationEdges.length }} 条样本内部引用</span>
           </div>
-          <p v-if="!academicCitationEdges.length" class="source-matrix-empty">暂无内部引用关系。</p>
-          <div v-else class="academic-edge-list">
-            <span v-for="edge in academicCitationEdges.slice(0, 16)" :key="`${edge.citing_openalex_id}-${edge.cited_openalex_id}`">
-              {{ edge.citing_openalex_id.split('/').pop() }} → {{ edge.cited_openalex_id.split('/').pop() }}
-            </span>
+          <p v-if="!literatureNetworkEdges.length" class="source-matrix-empty">暂无内部引用关系。</p>
+          <div v-else class="academic-network">
+            <div v-if="literatureNetworkNodes.length" class="academic-network-nodes">
+              <article v-for="node in literatureNetworkNodes.slice(0, 8)" :key="node.id" class="academic-network-node">
+                <b>{{ node.citation_key }}</b>
+                <strong>{{ node.title }}</strong>
+                <span>{{ node.year || '未知年份' }} · {{ node.venue || 'Unknown venue' }} · 被引 {{ node.cited_by_count }}</span>
+              </article>
+            </div>
+            <div class="academic-network-edges">
+              <article
+                v-for="edge in literatureNetworkEdges.slice(0, 12)"
+                :key="`${edge.citing_openalex_id}-${edge.cited_openalex_id}`"
+                class="academic-network-edge"
+              >
+                <strong>{{ edge.citing_title || edge.citing_openalex_id.split('/').pop() }}</strong>
+                <span>引用</span>
+                <strong>{{ edge.cited_title || edge.cited_openalex_id.split('/').pop() }}</strong>
+              </article>
+            </div>
           </div>
         </div>
 
@@ -225,7 +253,11 @@ const academicSignalSummary = computed(() => {
               <h3>
                 <a :href="academicPaperUrl(paper)" target="_blank" rel="noreferrer">{{ paper.title }}</a>
               </h3>
-              <p>{{ academicAuthors(paper) }}</p>
+              <p>{{ paper.citation || `${academicAuthors(paper)} · ${academicVenue(paper)}` }}</p>
+              <div class="academic-paper-links">
+                <a v-if="paperDoiUrl(paper)" :href="paperDoiUrl(paper)" target="_blank" rel="noreferrer">DOI</a>
+                <a v-if="paperOpenAlexUrl(paper)" :href="paperOpenAlexUrl(paper)" target="_blank" rel="noreferrer">OpenAlex</a>
+              </div>
             </article>
           </div>
         </div>

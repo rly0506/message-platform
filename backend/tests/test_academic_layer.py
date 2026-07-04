@@ -264,6 +264,101 @@ def test_synthesize_academic_consensus_uses_compact_prompt(monkeypatch):
     assert len(captured["prompt"]) < 6000
 
 
+def test_synthesize_academic_consensus_requires_cited_review_format(monkeypatch):
+    captured = {}
+    papers = [
+        {
+            "openalex_id": "https://openalex.org/W1",
+            "title": "Cited paper",
+            "abstract": "Evidence about sanctions.",
+            "year": 2020,
+            "cited_by_count": 5,
+            "authors": ["A. Scholar"],
+            "venue": "Security Journal",
+            "doi": "https://doi.org/10.123/example",
+            "openalex_url": "https://openalex.org/W1",
+            "concepts": [{"name": "Sanctions"}],
+        }
+    ]
+    schools_data = academic.analyze_schools(papers, [])
+
+    def fake_chat(model, prompt, max_tokens, system):
+        captured["prompt"] = prompt
+        captured["system"] = system
+        return "summary"
+
+    monkeypatch.setattr(academic.llm, "chat", fake_chat)
+
+    topic = Topic(name="Prompt Topic", description="", queries=["Prompt Topic"])
+    academic.synthesize_academic_consensus(topic, papers, [], schools_data)
+
+    assert "学界综述" in captured["prompt"]
+    assert "参考文献" in captured["prompt"]
+    assert "[W1]" in captured["prompt"]
+    assert "https://doi.org/10.123/example" in captured["prompt"]
+    assert "引用每一条判断" in captured["prompt"]
+    assert "不编造文献" in captured["system"]
+
+
+def test_academic_payload_exposes_citation_metadata_and_readable_literature_network():
+    topic_id = _seed_topic(name="Academic Citation Metadata Topic")
+
+    with Session(engine) as session:
+        cited = Paper(
+            openalex_id="https://openalex.org/W1",
+            title="Foundational sanctions paper",
+            abstract="",
+            year=2018,
+            cited_by_count=100,
+            authors=["A"],
+            venue="Security Journal",
+            concepts=[{"name": "Sanctions"}],
+            url="https://example.com/w1",
+            doi="https://doi.org/10.1000/w1",
+            openalex_url="https://openalex.org/W1",
+        )
+        citing = Paper(
+            openalex_id="https://openalex.org/W2",
+            title="Follow-up sanctions paper",
+            abstract="",
+            year=2021,
+            cited_by_count=20,
+            authors=["B"],
+            venue="Policy Journal",
+            concepts=[{"name": "Sanctions"}],
+            url="https://example.com/w2",
+            doi="10.1000/w2",
+            openalex_url="https://openalex.org/W2",
+        )
+        session.add(cited)
+        session.add(citing)
+        session.commit()
+        session.refresh(cited)
+        session.refresh(citing)
+        session.add(TopicPaper(topic_id=topic_id, paper_id=cited.id, relevance=1.0))
+        session.add(TopicPaper(topic_id=topic_id, paper_id=citing.id, relevance=1.0))
+        session.add(PaperCitation(citing_paper_id=citing.id, cited_paper_id=cited.id))
+        topic = session.get(Topic, topic_id)
+        session.commit()
+
+        payload = academic.academic_payload(session, topic)
+
+    paper = {item["openalex_id"]: item for item in payload["papers"]}
+    assert paper["https://openalex.org/W1"]["doi"] == "https://doi.org/10.1000/w1"
+    assert paper["https://openalex.org/W1"]["citation_key"] == "W1"
+    assert "A" in paper["https://openalex.org/W1"]["citation"]
+    assert payload["literature_network"]["nodes"][0]["citation_key"] in {"W1", "W2"}
+    assert payload["literature_network"]["edges"] == [
+        {
+            "citing_openalex_id": "https://openalex.org/W2",
+            "cited_openalex_id": "https://openalex.org/W1",
+            "citing_title": "Follow-up sanctions paper",
+            "cited_title": "Foundational sanctions paper",
+            "relation": "cites",
+        }
+    ]
+
+
 def test_academic_api_endpoints_use_background_job_and_return_payload(monkeypatch):
     topic_id = _seed_topic(name="Academic API Topic")
     started = []
