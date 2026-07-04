@@ -208,6 +208,18 @@ test('summarizes source coverage, freshness, and failed sources', async ({ page 
   await expect(summary.getByText('Bellingcat Monitor：HTTP 403 blocked')).toBeVisible()
 })
 
+test('shows source type and quality-tier coverage mix', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '管理项目' }).click()
+
+  const mix = page.locator('.source-coverage-mix')
+  await expect(mix.getByText('来源构成')).toBeVisible()
+  await expect(mix.getByText('层级：wire 1、professional 1')).toBeVisible()
+  await expect(mix.getByText('类型：rss 2')).toBeVisible()
+})
+
 test('explains the source-ingestion path for feeds, newsletters, alerts and video leads', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')

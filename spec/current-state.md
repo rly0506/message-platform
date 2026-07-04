@@ -18,12 +18,12 @@ Coordination split:
 Latest coordination state:
 
 - #5 OpenCLI WinError 193 has a tested fix in the working tree and Claude has reviewed it as acceptable.
-- #2 freshness diagnosis: the collector/DB/payload/UI chain is not proven broken; old topics were not re-collected. Fresh July articles exist in the DB for newer topics. A product fix still needs human-approved auto/stale-refresh behavior.
-- #2 frontend stale-state explanation now exists: stale latest-report dates are labeled as last collected time with a manual refresh fallback. Backend auto-refresh still needs the human A/B/C decision before implementation.
+- #2 freshness diagnosis: the collector/DB/payload/UI chain is not proven broken; old topics were not re-collected. Fresh July articles exist in the DB for newer topics.
+- #2 frontend stale-state explanation now exists: stale latest-report dates are labeled as last collected time with a manual refresh fallback. The human chose option B, backend auto-refresh implementation is now present in the working tree with backend pytest passing, and Codex has wired the frontend auto-refresh status/run UI to the new API shape. Claude still needs to perform line-1 backend final verification before #2 can be final-green.
 - Codex-side P1 frontend slices have targeted desktop e2e evidence, but full sprint completion is not yet proven.
-- Fresh full gate is green, but completion is still blocked by product-scope decisions/reviews: #2 backend auto-refresh, #3 source-quality scope, #6/#7/#8 semantic overclaiming review, #10 academic second source, #11 literature-network source hygiene, and #13 source-ingestion scope.
+- Fresh full gate is green, but completion is still blocked by product-scope decisions/reviews: #2 backend auto-refresh final verification/full gate, #3 mainstream source expansion, #6/#7/#8 semantic overclaiming review, #10 academic second source, #11 literature-network source hygiene, and #13 source-ingestion scope.
 - The current 14-point acceptance ledger is `spec/14-point-acceptance-2026-07-04.md`; use it instead of older audit summaries when deciding what remains.
-- The remaining decision packet is `spec/14-point-remaining-decisions-2026-07-04.md`; use it to turn the open items into human/Claude choices before any final completion claim. It now includes Codex's read-only evidence audit for #3/#10/#11/#13.
+- The remaining decision packet is `spec/14-point-remaining-decisions-2026-07-04.md`; use it to turn the open items into human/Claude choices before any final completion claim. It now records the human decision for #2 option B and the human override that #3 needs mainstream source expansion.
 - `.agent-bridge/BOARD.md` has been synced with this 14-point sprint state; older 2026-07-03 blocks in that file are historical records only.
 
 ## Dirty Worktree Snapshot
@@ -214,6 +214,15 @@ Most recent recorded full-gate verification before the latest P0/P1 follow-up:
 
 Fresh targeted verification from 2026-07-04 after the P0/P1 follow-up:
 
+- Fresh full gate after auto-refresh frontend wiring and GitNexus reindex:
+  - `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 39.31s`.
+  - `cd frontend; npm run build` -> passed.
+  - `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+  - `git diff --check` -> pass, existing LF/CRLF warnings only.
+  - `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+  - `node .gitnexus/run.cjs analyze` -> repository indexed successfully; FTS extension unavailable warning only.
+  - `node .gitnexus/run.cjs status` -> index up-to-date at current commit `d028496`.
+  - `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `medium`, `16 files`, `45 symbols`, `1` affected execution flow (`RunCrossSynthesis -> FetchCrossSynthesis`).
 - Fresh stage-5 full gate refresh:
   - `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings in 13.40s`.
   - `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 396ms).
@@ -232,6 +241,37 @@ Fresh targeted verification from 2026-07-04 after the P0/P1 follow-up:
 - Fresh Codex high-risk frontend retest after reading the latest `TO_CODEX.md`:
   - `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `25 passed (49.2s)`.
   - Covered parent-context drilldown, selected-event drilldown, stale refresh context, media stance trend and small-sample downgrade, event network semantics, selected-node inline detail, LLM-refresh reuse, sentiment timeline/OpenCLI diagnostics, and cognition cards.
+- Fresh source-ingestion guide frontend verification:
+  - `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts -g "source-ingestion path"` -> red first, then `1 passed`.
+  - `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts -g "coverage mix"` -> red first, then `1 passed`.
+  - `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `6 passed`.
+  - `cd frontend; npm run build` -> passed.
+  - The source manager now visibly explains RSS / Newsletter / Google Alerts import, B站视频 / webpage leads, V1 no-transcript boundary, failed-source status, and current source type/quality-tier mix. This strengthens #3/#13 V1 evidence without implementing video transcription or broader crawler coverage.
+- Fresh academic source-scope frontend verification:
+  - `cd frontend; npm run test:e2e -- --project=desktop academic-panel.spec.ts -g "priority-reading"` -> red first, then `1 passed`.
+  - `cd frontend; npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `2 passed`.
+  - `cd frontend; npm run build` -> passed.
+  - The academic panel now visibly states that the current sample is OpenAlex, that academic reviews must preserve author/year/venue/DOI-or-source links, and that the literature network only shows sample-internal citations. This strengthens #10/#11 UI evidence without resolving the OpenAlex-only backend source limitation.
+- Fresh backend auto-refresh review:
+  - `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/services/auto_refresh.py" --direction upstream --include-tests` -> target not indexed yet, risk `UNKNOWN`.
+  - `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/api.py" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+  - `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/config.py" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+  - `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_auto_refresh.py -q` -> `8 passed`.
+  - `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_api_helpers.py tests/test_discovery.py tests/test_source_registry.py -q` -> `56 passed`.
+  - `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings`.
+  - `git diff --check -- backend/app/config.py backend/app/api.py backend/app/services/auto_refresh.py backend/tests/test_auto_refresh.py` -> pass with existing LF/CRLF warning.
+  - Codex review sent to `.agent-bridge/TO_CLAUDE.md` found two status-semantics risks; Claude later fixed both: topic-level failures now surface through `news_errors`, and synchronous `refresh_once()` returns after `running=False`.
+- Fresh frontend auto-refresh status wiring:
+  - `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`.
+  - `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/api/dossierApi.ts" --direction upstream --include-tests` -> risk `MEDIUM`.
+  - `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`.
+  - `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+  - `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "auto-refresh status"` -> red first, then `1 passed`.
+  - `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `15 passed`.
+  - `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `26 passed`.
+  - `cd frontend; npm run build` -> passed.
+  - `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+  - `git diff --check -- frontend/src/App.vue frontend/src/api/dossierApi.ts frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-matrix.spec.ts` -> pass with existing LF/CRLF warning.
 - `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `31 passed` in 49.8s on the latest Codex-owned frontend retest.
 - `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `25 passed` in 49.3s after the latest bridge-plan review.
 - `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `26 passed`.
@@ -280,14 +320,13 @@ These numbers are recorded for context. Future agents must rerun the relevant co
 
 Recommended next sprint actions:
 
-1. Human decision on freshness/automatic update direction:
-   - A. stale warning + one-click refresh;
-   - B. backend-running auto refresh for news/frontier;
-   - C. both, with C recommended by Codex because it combines automation with visible failure/stale state.
-2. Claude implements or specifies backend freshness/auto-refresh after human approval.
-3. Codex reviews the backend freshness change and adds frontend stale/auto status UX plus e2e if needed.
+1. Claude performs the #2 backend auto-refresh final verification and confirms the API/status shape is final, then the team reruns the full gate.
+2. Claude implements #3 classified mainstream-source expansion:
+   - enable fresh public RSS sources;
+   - expose limited/paywalled/API-only/stale sources such as WSJ/AFP/Xinhua without pretending they are full fresh feeds.
+3. Codex keeps the existing frontend stale/auto-refresh status UX and e2e current; only add more UI if Claude changes the API/status shape.
 4. Claude reviews Codex P1 frontend slices for pseudo-trend or overclaiming risk.
-5. Continue #3/#10/#11/#13 source and academic work. The academic layer still needs an OpenAlex-plus-one-source decision or implementation before the user's "OpenAlex 是否单薄" concern can be final-green.
+5. Continue #10/#11/#13 source and academic work. The academic layer still needs an OpenAlex-plus-one-source decision or implementation before the user's "OpenAlex 是否单薄" concern can be final-green.
 6. Before any commit or completion claim, rerun the full acceptance gate and produce a 14-point table using only:
    - `Done`
    - `V1 Done with known limitation`

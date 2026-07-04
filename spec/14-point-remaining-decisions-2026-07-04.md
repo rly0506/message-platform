@@ -6,14 +6,14 @@ It does not replace `spec/14-point-acceptance-2026-07-04.md`. The acceptance mat
 
 ## Human Decision Brief
 
-To close the current integration tree without starting a new feature direction, four decisions are still required:
+To close the current integration tree without starting a new feature direction, the remaining decisions and implementation choices are:
 
 1. #2 freshness automation:
-   - Recommended reply: `C`
-   - Meaning: auto refresh news/frontier while the backend is running, keep visible stale-state explanation, and keep manual refresh fallback.
+   - Human decision recorded: `B`
+   - Meaning: auto refresh news/frontier while the backend is running. The backend auto-refresh implementation and Codex frontend status UI/e2e are now present and verified; Claude still needs to explicitly confirm `#2 ready for human final review: yes/no`.
 2. #3/#13 source ingestion scope:
-   - Recommended reply: `accept V1 limitation`
-   - Meaning: source registry, RSS/newsletter/Google Alerts import, failure reasons, and documented Bilibili lead are accepted for this sprint; full crawler, paywalled exclusives, G20 same-event coverage, and video transcript ingestion are deferred.
+   - Human decision recorded for #3: expand mainstream news sources, especially WSJ, The Guardian, AFP, Xinhua, and similar high-quality outlets.
+   - Meaning: source registry, source status explanation, and RSS/newsletter/Google Alerts import remain useful, but #3 cannot close as V1 limitation until Claude implements classified mainstream-source expansion and verifies it. #13 video/web/newsletter ingestion scope remains separate.
 3. #6/#7/#8 semantic review:
    - Recommended reply from Claude: `V1 acceptable`
    - Meaning: media/community trends are sample signals, and event network edges are local evidence links, not causal proof.
@@ -25,15 +25,16 @@ Do not mark the sprint complete until these decisions are recorded, any chosen i
 
 ## Current Proven State
 
-Fresh full gate evidence is green:
+Fresh full gate evidence after auto-refresh frontend wiring and GitNexus reindex is green:
 
-- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings in 13.40s`.
-- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 396ms).
-- `cd frontend; npm run test:e2e -- --workers=1` -> `76 passed (2.3m)`.
-- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 39.31s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 460ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+- `git diff --check` -> pass, existing LF/CRLF warnings only.
 - `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
-- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `8731f0e`.
-- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully; FTS extension unavailable warning only.
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `d028496`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `medium`, `16 files`, `45 symbols`, `1` affected execution flow (`RunCrossSynthesis -> FetchCrossSynthesis`).
 
 The sprint is still open because several user-facing requirements need a scope decision or Claude-owned backend/source review.
 
@@ -44,8 +45,8 @@ If no further implementation is chosen, the current matrix can only close after 
 | Item | Current finalizable status | What prevents final closure |
 |---|---|---|
 | #1 | `Done` | Nothing item-specific. |
-| #2 | `Done` for parent-context drilldown and stale/manual fallback; auto-refresh remains undecided. | Human must choose A/B/C; B/C requires Claude backend work. |
-| #3 | `V1 Done with known limitation` if accepted. | Claude/human must accept V1 source scope or request more source families. |
+| #2 | `Done` for parent-context drilldown, stale/manual fallback, backend-running auto-refresh, and frontend status UI/e2e. | Claude must explicitly confirm no remaining backend blocker before human final review. |
+| #3 | Not final-green while mainstream source expansion is unimplemented. | Human requested broader mainstream sources; Claude needs classified source expansion and tests. |
 | #4 | `Done` | Nothing item-specific. |
 | #5 | `Done` for Windows runner/diagnostics; external platform login/API may be `Blocked by external account/API`. | Real platform login/API failures remain environment-dependent. |
 | #6 | `V1 Done with known limitation` if accepted. | Claude semantic review for pseudo-trend risk. |
@@ -78,8 +79,14 @@ Current implementation evidence:
 
 Codex read-only conclusion:
 
-- The implemented #3 scope is strong enough for `V1 Done with known limitation` if the human accepts that full crawler, paywalled exclusives, and same-event G20 coverage are outside this sprint.
-- It is not enough for a final claim of broad global coverage or all G20 same-event reporting.
+- The implemented #3 scope is no longer enough for final closure because the human explicitly requested broader mainstream source coverage after the earlier V1-limitation proposal.
+- Current `feeds.json` already includes some mainstream/professional sources, so the next work is not "add any source"; it is classified source expansion with honest coverage limits.
+- Quick source audit from Codex on 2026-07-04:
+  - WSJ World RSS `https://feeds.a.dj.com/rss/RSSWorldNews.xml` was reachable but showed `lastBuildDate` / item dates around 2025-01-27, so it must not be treated as freshness-reliable without further validation.
+  - AFP configured RSS `https://www.afp.com/en/rss.xml` returned AFP.com site/agency items rather than a fresh AFP newswire stream; treat AFP news coverage as API/license or Google-News-proxy-limited unless a fresh public feed is found.
+  - Xinhua official RSS index `https://english.news.cn/rss/index.htm` exists, but linked `xinhuanet.com/english/rss/*rss.xml` samples were stale, mostly 2017-2020; do not enable as a fresh news source without a newer feed.
+  - Guardian public RSS parsed successfully with the project-style `feedparser` check: 45 entries, feed updated `2026-07-04T11:52:59Z`; treat it as a direct fresh public RSS candidate, while still recording runtime source status normally.
+- Full crawler, paywalled exclusives, and same-event G20 coverage remain outside this sprint unless the human explicitly expands scope again.
 
 ### #10 Academic Source Breadth Evidence
 
@@ -165,24 +172,22 @@ Current proof:
 - Evidence package/local pre-analysis tests exist.
 - Newsletter/RSS and Google Alerts import paths have frontend e2e coverage.
 
-Open question:
+Human decision:
 
-- Is this enough for a V1 limitation, or must this sprint keep expanding source families?
+- Expand mainstream source coverage in this sprint.
 
-Recommended decision:
+Recommended implementation:
 
-- Accept `V1 Done with known limitation` for this sprint.
-
-Reason:
-
-- The user's full wish includes deep exclusive reporting and same-event G20 coverage, but that is bigger than a safe closure pass.
-- Current implementation is honest about source status and failure, which directly fixes the "why did sources become fewer" experience.
+- Use classified expansion instead of blind enablement:
+  - directly enable public RSS sources that are fresh and collector-compatible;
+  - add visible limited entries for important sources that are paywalled, API/license-only, stale-RSS, summary-only, or Google-News-proxy-only;
+  - keep disabled/limited sources out of collection while showing the user why they are not fully usable.
 
 Known limitation to state:
 
-- Full crawler, paywalled exclusives, and same-event G20 coverage are not guaranteed in V1.
+- Full crawler, paywalled exclusives, AFP licensed wire access, and same-event G20 coverage are not guaranteed in this sprint.
 
-Required owner if more implementation is demanded: Claude.
+Required owner: Claude for backend source registry/feed implementation and tests; Codex for source-manager UI/e2e if coverage metadata changes.
 
 ## Decision 3: #6 Media and Community Trend Semantics
 
@@ -197,6 +202,13 @@ Current proof:
   - `当前样本只能显示立场分布`
   - `样本趋势，非事实时间线`
   - `小样本线索`
+- Fresh Codex self-audit command:
+  - `rg -n "报道样本|不代表民间舆论|当前样本只能显示立场分布|样本趋势，非事实时间线|小样本线索|情绪样本，非事实来源" frontend/src/components frontend/tests/e2e`
+  - Confirmed matching boundary copy in `MediaPanel.vue`, `SentimentPanel.vue`, `source-matrix.spec.ts`, and `sentiment-panel.spec.ts`.
+- Current pseudo-trend risk assessment:
+  - Media trend cards only render trend deltas when sample size and changed counts are sufficient.
+  - Small samples explicitly show distribution-only language.
+  - Community posts/comments are labeled `情绪样本，非事实来源`.
 
 Recommended decision:
 
@@ -208,6 +220,28 @@ Known limitation to state:
 
 Required owner if copy/data semantics need more changes: Codex for frontend copy/e2e, Claude for backend data semantics.
 
+## Codex Frontend Closure Note: #12 Cognition Expansion Cards
+
+Current proof:
+
+- Cognition boundary cards show a visible summary, report connection, deep-dive reason, recommendation reason, suggested path, profile evidence, and analysis workflow.
+- The discovery cognition e2e asserts the core card fields:
+  - `摘要`
+  - `相关日报线索`
+  - `深入理由`
+  - `建议路径`
+- Fresh Codex self-audit command:
+  - `rg -n "摘要|相关日报线索|深入理由|建议路径|本地相似信号，不代表因果链" frontend/src/components/DiscoveryPanel.vue frontend/tests/e2e/discovery-cognition.spec.ts`
+  - Confirmed matching UI copy and e2e assertions.
+
+Recommended decision:
+
+- Keep #12 as `V1 Done with known limitation`.
+
+Known limitation to state:
+
+- Long-term cognition profile calibration remains future work; current cards are evidence-linked prompts, not proof that the system fully understands the user's blind spots.
+
 ## Decision 4: #7/#8 Event Development Network
 
 Current proof:
@@ -216,6 +250,13 @@ Current proof:
 - Selected node details stay inline.
 - Edge types distinguish chronology, shared articles, shared entities, and shared sources.
 - Codex semantic scan found no unqualified causal wording; UI says local evidence edge and no LLM causal hypothesis.
+- Fresh Codex self-audit command:
+  - `rg -n "本地证据边，不显示 LLM 因果假设|本地相似信号，不代表因果链|导致|证明|根因|真因" frontend/src/components frontend/tests/e2e`
+  - Confirmed the positive boundary copy exists in `MediaPanel.vue`, `DiscoveryPanel.vue`, and e2e assertions. Any `导致/证明/根因/真因` matches should be treated as suspect; current event-network UI does not use these words as causal claims.
+- Current pseudo-causality risk assessment:
+  - Edge labels are evidence-relation labels: `时间顺序`, `同组报道`, `共享对象`, `共同来源`.
+  - The network explicitly says it does not show LLM causal hypotheses.
+  - The cognition timeline tree explicitly says local similarity is not causality.
 
 Recommended decision:
 
@@ -286,6 +327,9 @@ Current proof:
 - Original video/link feedback is recorded in `spec/2026-07-03-frontend-feedback.md`.
 - Newsletter/RSS and Google Alerts source import have tests.
 - Bilibili remains a documented lead, not a full transcript ingestion pipeline.
+- Fresh Codex self-audit command:
+  - `rg -n "情报源导入路径|RSS / Newsletter / Google Alerts|B站视频 / 网页线索|V1 不做视频转录" frontend/src/App.vue frontend/tests/e2e/source-registry.spec.ts`
+  - Confirmed visible UI copy and e2e assertions for the source-ingestion path.
 
 Options:
 
@@ -306,8 +350,8 @@ Recommended decision:
 
 For fastest safe closure of the current 47-file integration tree:
 
-1. Human chooses #2 option C or defers auto-refresh to next backend slice.
-2. Human accepts #3 as `V1 Done with known limitation`.
+1. Claude confirms #2 is ready for human final review, or names the exact remaining backend blocker.
+2. Claude implements #3 classified mainstream-source expansion.
 3. Claude marks #6/#7/#8 semantic review as acceptable or names exact copy changes.
 4. Human chooses #10:
    - implement second academic source now, or
@@ -320,8 +364,8 @@ For fastest safe closure of the current 47-file integration tree:
 
 | Item | If recommended decision is accepted |
 |---|---|
-| #2 | `Done` if C is implemented; `V1 Done with known limitation` if auto-refresh is deferred |
-| #3 | `V1 Done with known limitation` |
+| #2 | `Done` after Claude confirms no remaining backend blocker and human final review accepts the line |
+| #3 | `Done` or `V1 Done with known limitation` only after classified mainstream-source expansion is implemented and limitations are visible |
 | #6 | `V1 Done with known limitation` |
 | #7/#8 | `V1 Done with known limitation` |
 | #10 | `Done` if second source is added; `V1 Done with known limitation` if OpenAlex-only is accepted |

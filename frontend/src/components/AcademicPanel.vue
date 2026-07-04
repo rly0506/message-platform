@@ -126,6 +126,12 @@ function paperOpenAlexUrl(paper: AcademicPaper) {
       <p v-else-if="academicError" class="country-compare-error">{{ academicError }}</p>
 
       <template v-else>
+        <div class="academic-source-scope" aria-label="学界样本范围">
+          <strong>当前学界样本：OpenAlex</strong>
+          <span>综述引用必须保留作者、年份、期刊/会议、DOI 或来源链接。</span>
+          <span>文献网络只显示样本内部引用，不代表完整学术谱系。</span>
+        </div>
+
         <div class="academic-metrics">
           <div>
             <strong>{{ academicPapers.length }}</strong>

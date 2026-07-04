@@ -170,6 +170,11 @@ test('shows academic priority-reading summary and neutral paper labels', async (
   await page.goto('/')
   await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
 
+  const scope = page.locator('.academic-source-scope')
+  await expect(scope).toContainText('当前学界样本：OpenAlex')
+  await expect(scope).toContainText('综述引用必须保留作者、年份、期刊/会议、DOI 或来源链接')
+  await expect(scope).toContainText('文献网络只显示样本内部引用')
+
   const summary = page.locator('.academic-signal-summary')
   await expect(summary).toContainText('优先阅读信号')
   await expect(summary).toContainText('高引用')

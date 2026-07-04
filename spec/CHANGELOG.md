@@ -2,6 +2,153 @@
 
 ## 2026-07-04
 
+### Acceptance Ledger Status Cleanup
+
+- Cleaned stale #2 wording in the acceptance ledger and current-state handoff:
+  - backend-running auto-refresh is now recorded as implemented and verified in the latest gate;
+  - the remaining #2 action is Claude's explicit `ready for human final review: yes/no` plus human final review;
+  - #3 mainstream source expansion and #10 academic second-source breadth remain open.
+- No business code changed.
+
+### Verification
+
+```powershell
+rg -n "still needs to implement|implementation remain|can become `Done` after implementation|backend auto-refresh work|backend auto-refresh,|final-green|#2 backend auto-refresh" spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/14-point-remaining-decisions-2026-07-04.md .agent-bridge/BOARD.md
+git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/CHANGELOG.md
+```
+
+### Full Gate After Auto-Refresh Frontend Wiring
+
+- Reran the main acceptance gate after the auto-refresh frontend status UI and e2e were added.
+- Reindexed GitNexus because `status` initially reported a stale index at `8731f0e` while the current commit was `d028496`.
+- The refreshed `detect-changes` result is now risk `medium`, not the earlier stale-index result; it reports one affected execution flow and no high/critical warning.
+- Kept the sprint open: source expansion (#3), academic second source (#10), and Claude semantic/source reviews (#6/#7/#8/#11/#13) remain unresolved despite the green gate.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 39.31s`.
+- `cd frontend; npm run build` -> passed.
+- `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully; FTS extension unavailable warning only.
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `d028496`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `medium`, `16 files`, `45 symbols`, `1` affected execution flow (`RunCrossSynthesis -> FetchCrossSynthesis`).
+
+### Auto-Refresh Frontend Status
+
+- Wired the frontend to the backend auto-refresh status API:
+  - `GET /api/auto-refresh/status` is shown in the topic summary area;
+  - `POST /api/auto-refresh/run` can be triggered from the same status strip;
+  - status shows enabled/running state, last finish time, news refresh count, frontier refresh, skipped active jobs, and per-topic errors;
+  - failures are displayed inline without breaking topic reading.
+- Kept the existing stale-topic manual collection fallback. The auto-refresh run button does not rewrite the search box, switch topics, or drop the current topic context.
+- Kept the sprint open: #2 still needs Claude line-1 backend final verification and a full sprint gate before final-green; #3/#10/#11/#13 remain unresolved.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/api/dossierApi.ts" --direction upstream --include-tests` -> risk `MEDIUM`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "auto-refresh status"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `15 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `26 passed`.
+- `cd frontend; npm run build` -> passed.
+- `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+- `git diff --check -- frontend/src/App.vue frontend/src/api/dossierApi.ts frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-matrix.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Auto-Refresh Backend Review
+
+- Reviewed the backend-running auto-refresh implementation that is now present in the working tree:
+  - `backend/app/services/auto_refresh.py`
+  - `backend/app/config.py`
+  - `backend/app/api.py`
+  - `backend/tests/test_auto_refresh.py`
+- Verified the core behavior:
+  - stale active topics are refreshed with `collect_topic(... use_curated_feeds=True)` followed by local `analyze_topic(... persist=True)`;
+  - empty/fresh/archived topics are skipped;
+  - active jobs cause topic skip;
+  - frontier refresh uses `run_and_save(annotate=False)`;
+  - no LLM/OpenCLI/academic/sentiment/cross-synthesis auto-run path is exercised in tests.
+- Sent review notes to `.agent-bridge/TO_CLAUDE.md` instead of editing Claude-owned backend files:
+  - topic-level auto-refresh failures are isolated but not yet exposed in status;
+  - synchronous `refresh_once()` can return a snapshot with `running=True`.
+- Claude later fixed both review findings:
+  - topic-level failures now surface through `news_errors`;
+  - synchronous `refresh_once()` returns after `running=False`.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/services/auto_refresh.py" --direction upstream --include-tests` -> target not indexed yet, risk `UNKNOWN`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/api.py" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/config.py" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_auto_refresh.py -q` -> `8 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_api_helpers.py tests/test_discovery.py tests/test_source_registry.py -q` -> `56 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings`.
+- `git diff --check -- backend/app/config.py backend/app/api.py backend/app/services/auto_refresh.py backend/tests/test_auto_refresh.py` -> pass with existing LF/CRLF warning only.
+
+### 14-Point Sprint Decision Update
+
+- Updated the 14-point acceptance and remaining-decision documents after the latest Claude inbox:
+  - #2 now records the human decision to implement option B, backend-running auto refresh for news/frontier;
+  - #3 no longer closes as an accepted V1 limitation, because the human requested broader mainstream source expansion;
+  - #3 now requires classified source expansion that distinguishes fresh public RSS from paywalled, API/license-only, stale-RSS, summary-only, or Google-News-proxy-only sources.
+- Wrote the updated split plan to `.agent-bridge/TO_CLAUDE.md` and synced `.agent-bridge/BOARD.md`.
+- No business code changed in this coordination update.
+
+### Verification
+
+- Read latest `.agent-bridge/TO_CODEX.md`, `.agent-bridge/BOARD.md`, `spec/14-point-acceptance-2026-07-04.md`, and `spec/14-point-remaining-decisions-2026-07-04.md`.
+- Ran quick source availability checks for WSJ/Guardian/AFP/Xinhua-style feeds to inform the classification plan; results are recorded in `spec/14-point-remaining-decisions-2026-07-04.md`.
+
+### Academic Source Scope Boundary
+
+- Added a visible academic source-scope note to the Academic panel:
+  - current academic sample is OpenAlex;
+  - academic review citations must keep author, year, venue, DOI or source link;
+  - literature network only shows sample-internal citations and does not represent the full academic lineage.
+- Kept #10 strict: this does not add Crossref/Semantic Scholar/arXiv and does not make OpenAlex-only final-green.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/AcademicPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/academic-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop academic-panel.spec.ts -g "priority-reading"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `2 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Source Manager Coverage Mix
+
+- Added a visible source mix summary to the source manager:
+  - quality-tier mix, ordered by source quality tier such as `wire`, `professional`, `mainstream`, `newsletter`, `research`, and `user`;
+  - source-type mix such as `rss`.
+- This strengthens #3's user-facing explanation for "why did media resources become fewer" by making the current source composition inspectable beside total/enabled/failed counts and latest success time.
+- Kept the limitation explicit: this is source-status transparency, not full crawler coverage or same-event G20 reporting.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts -g "coverage mix"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `6 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Source-Ingestion Guide V1
+
+- Added a visible source-ingestion guide to the source manager:
+  - RSS / Newsletter / Google Alerts feed URLs enter the source registry and local pre-analysis path;
+  - B站视频 / webpage links are treated as V1 leads or platform samples, not full video-transcript ingestion;
+  - failed-source causes remain visible in the source status table.
+- Kept the boundary explicit for #13: this improves the user-facing ingestion path, but does not implement Bilibili transcript review, Filo Mail integration, or a general web crawler.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/source-registry.spec.ts" --direction upstream --include-tests` -> target not found in index; treated as e2e-only verification target.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts -g "source-ingestion path"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `5 passed`.
+- `cd frontend && npm run build` -> passed.
+
 ### Codex High-Risk Frontend Retest After Latest Inbox Read
 
 - Reread the latest `TO_CODEX.md`, acceptance matrix, remaining-decision packet, and current-state snapshot.
