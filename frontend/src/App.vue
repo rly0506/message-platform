@@ -2,12 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   fetchArticlePerspective,
+  fetchAutoRefreshStatus,
   fetchCognitionMarks,
   fetchCognitionProfile,
   fetchCountryCompare,
   fetchSources,
   createSource,
   importSources,
+  runAutoRefreshNow,
   saveCognitionMark,
   updateSource,
 } from './api/dossierApi'
@@ -26,6 +28,7 @@ import type {
   AcademicPaper,
   Article,
   ArticlePerspective,
+  AutoRefreshStatus,
   CognitionLabel,
   CognitionMark,
   CognitionProfileItem,
@@ -152,6 +155,10 @@ const sourceImportDraft = ref({
   source_type: 'rss',
   quality_tier: 'user',
 })
+const autoRefreshStatus = ref<AutoRefreshStatus | null>(null)
+const autoRefreshLoading = ref(false)
+const autoRefreshRunning = ref(false)
+const autoRefreshError = ref('')
 const staleTopicDays = 7
 const sourceManagerStats = computed(() => {
   const enabled = sources.value.filter((source) => source.enabled).length
@@ -174,6 +181,13 @@ const sourceManagerStats = computed(() => {
       .map((source) => `${source.name}：${source.last_error || '最近采集失败，暂无详细原因'}`),
   }
 })
+const sourceCoverageMix = computed(() => ({
+  tiers: countByLabel(
+    sources.value.map((source) => source.quality_tier || 'unknown'),
+    ['wire', 'professional', 'mainstream', 'newsletter', 'research', 'user'],
+  ),
+  types: countByLabel(sources.value.map((source) => source.source_type || 'unknown')),
+}))
 const topicFreshnessWarning = computed(() => {
   const latest = selectedTopic.value?.latest_published_at
   if (!latest) return ''
@@ -183,6 +197,41 @@ const topicFreshnessWarning = computed(() => {
   if (ageDays < staleTopicDays) return ''
   return `最后采集时间是 ${fmtDate(latest)}，这只说明本地档案停在这里，不代表世界没有新报道。需要最新报道时请刷新采集。`
 })
+const autoRefreshSummary = computed(() => {
+  const status = autoRefreshStatus.value
+  if (!status) return ''
+  const parts = [`自动刷新：${status.enabled ? '已开启' : '未开启'}`]
+  if (status.running) parts.push('正在运行')
+  if (status.last_finished_at) parts.push(`上次完成 ${fmtDate(status.last_finished_at, true)}`)
+  else if (status.last_started_at) parts.push(`上次开始 ${fmtDate(status.last_started_at, true)}`)
+  parts.push(`新闻刷新 ${status.news_refreshed} 个`)
+  if (status.frontier_refreshed) parts.push('前沿日报已更新')
+  if (status.skipped_active) parts.push(`跳过 ${status.skipped_active} 个活跃任务`)
+  return parts.join(' · ')
+})
+const autoRefreshErrors = computed(() => {
+  const status = autoRefreshStatus.value
+  if (!status) return []
+  return [status.last_error, ...(status.news_errors || [])].filter(Boolean)
+})
+
+function countByLabel(labels: string[], priority: string[] = []) {
+  const counts = new Map<string, number>()
+  for (const label of labels) {
+    counts.set(label, (counts.get(label) || 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((left, right) => {
+      const leftPriority = priority.indexOf(left[0])
+      const rightPriority = priority.indexOf(right[0])
+      if (leftPriority >= 0 || rightPriority >= 0) {
+        return (leftPriority >= 0 ? leftPriority : 999) - (rightPriority >= 0 ? rightPriority : 999)
+      }
+      return right[1] - left[1] || left[0].localeCompare(right[0], 'zh-CN')
+    })
+    .map(([label, count]) => `${label} ${count}`)
+    .join('、')
+}
 
 function openNewTopic(projectId: number | null = null) {
   activeManagerForm.value = 'topic'
@@ -400,6 +449,18 @@ async function importSourceDraft() {
   }
 }
 
+async function loadAutoRefreshStatus() {
+  autoRefreshLoading.value = true
+  autoRefreshError.value = ''
+  try {
+    autoRefreshStatus.value = await fetchAutoRefreshStatus()
+  } catch (err) {
+    autoRefreshError.value = readableError(err)
+  } finally {
+    autoRefreshLoading.value = false
+  }
+}
+
 const {
   query,
   selectedEventIndex,
@@ -531,7 +592,7 @@ const {
 })
 
 onMounted(async () => {
-  await loadTopics()
+  await Promise.all([loadTopics(), loadAutoRefreshStatus()])
 })
 
 watch(appMode, (mode) => {
@@ -585,6 +646,19 @@ async function refreshSelectedTopicCollection() {
   if (!term.trim()) return
   eventSearch.value = term.trim()
   await runEventSearch()
+}
+
+async function triggerAutoRefreshNow() {
+  if (autoRefreshRunning.value) return
+  autoRefreshRunning.value = true
+  autoRefreshError.value = ''
+  try {
+    autoRefreshStatus.value = await runAutoRefreshNow()
+  } catch (err) {
+    autoRefreshError.value = readableError(err)
+  } finally {
+    autoRefreshRunning.value = false
+  }
 }
 
 // 情报台「正在追踪」: 点已建专题 -> 切到事件分析台并选中它 (watch(selectedTopicId) 自动加载档案)。
@@ -979,6 +1053,11 @@ function countryCoverageNote(country: CountryCompareCountry) {
           <span>最近成功 {{ fmtDate(sourceManagerStats.latestSuccessAt, true) }}</span>
           <small v-for="note in sourceManagerStats.failedNotes" :key="note">{{ note }}</small>
         </div>
+        <div v-if="sources.length" class="source-coverage-mix" aria-label="来源构成">
+          <strong>来源构成</strong>
+          <span>层级：{{ sourceCoverageMix.tiers || '暂无' }}</span>
+          <span>类型：{{ sourceCoverageMix.types || '暂无' }}</span>
+        </div>
         <div class="source-ingestion-guide" aria-label="情报源导入路径">
           <strong>情报源导入路径</strong>
           <span>RSS / Newsletter / Google Alerts：粘贴 feed URL 后进入采集与本地预分析。</span>
@@ -1291,6 +1370,21 @@ function countryCoverageNote(country: CountryCompareCountry) {
           <button type="button" class="ghost-button" :disabled="searching" @click="refreshSelectedTopicCollection">
             {{ searching ? '刷新中...' : '刷新采集' }}
           </button>
+        </div>
+        <div class="auto-refresh-status">
+          <span v-if="autoRefreshSummary">{{ autoRefreshSummary }}</span>
+          <span v-else-if="autoRefreshLoading">正在读取自动刷新状态...</span>
+          <span v-else>自动刷新状态暂不可用。</span>
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="autoRefreshRunning || autoRefreshLoading"
+            @click="triggerAutoRefreshNow"
+          >
+            {{ autoRefreshRunning ? '运行中...' : '立即运行' }}
+          </button>
+          <small v-if="autoRefreshError">{{ autoRefreshError }}</small>
+          <small v-for="item in autoRefreshErrors" :key="item">{{ item }}</small>
         </div>
       </section>
 

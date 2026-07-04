@@ -250,6 +250,18 @@ export type OpenCliDiagnostics = {
   message: string
 }
 
+export type AutoRefreshStatus = {
+  enabled: boolean
+  running: boolean
+  last_started_at: string | null
+  last_finished_at: string | null
+  last_error: string
+  news_refreshed: number
+  news_errors: string[]
+  frontier_refreshed: boolean
+  skipped_active: number
+}
+
 export type CrossSynthesis = {
   topic_id: number
   topic_name: string

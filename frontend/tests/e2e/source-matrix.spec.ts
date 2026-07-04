@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 
 let startedJobs: string[] = []
 let searchPayloads: Array<{ query: string }> = []
+let autoRefreshRuns = 0
 
 const topic = {
   id: 101,
@@ -237,6 +238,7 @@ const articles = {
 async function mockApi(page: Page) {
   startedJobs = []
   searchPayloads = []
+  autoRefreshRuns = 0
   await page.route('**/api/topics', async (route) => {
     await route.fulfill({ json: [topic] })
   })
@@ -294,6 +296,37 @@ async function mockApi(page: Page) {
   })
   await page.route('**/api/topics/101/local-events', async (route) => {
     await route.fulfill({ json: localEvents })
+  })
+  await page.route('**/api/auto-refresh/status', async (route) => {
+    await route.fulfill({
+      json: {
+        enabled: true,
+        running: false,
+        last_started_at: '2026-07-04T12:00:00',
+        last_finished_at: '2026-07-04T12:01:00',
+        last_error: '',
+        news_refreshed: 2,
+        news_errors: ['美伊战争：RuntimeError: feed timeout'],
+        frontier_refreshed: true,
+        skipped_active: 1,
+      },
+    })
+  })
+  await page.route('**/api/auto-refresh/run', async (route) => {
+    autoRefreshRuns += 1
+    await route.fulfill({
+      json: {
+        enabled: true,
+        running: false,
+        last_started_at: '2026-07-04T12:30:00',
+        last_finished_at: '2026-07-04T12:31:00',
+        last_error: '',
+        news_refreshed: 3,
+        news_errors: [],
+        frontier_refreshed: false,
+        skipped_active: 0,
+      },
+    })
   })
   await page.route('**/api/cognition/marks', async (route) => {
     const body = route.request().postDataJSON()
@@ -459,6 +492,26 @@ test('refreshes stale topics with the current topic context', async ({ page }) =
   await page.locator('.freshness-warning').getByRole('button', { name: '刷新采集' }).click()
 
   await expect.poll(() => searchPayloads.map((payload) => payload.query)).toEqual(['美伊战争'])
+})
+
+test('shows backend auto-refresh status and can trigger it without losing topic context', async ({ page }) => {
+  await page.goto('/')
+
+  const status = page.locator('.auto-refresh-status')
+  await expect(status.getByText('自动刷新：已开启')).toBeVisible()
+  await expect(status.getByText('上次完成 2026/07/04 12:01')).toBeVisible()
+  await expect(status.getByText('新闻刷新 2 个')).toBeVisible()
+  await expect(status.getByText('前沿日报已更新')).toBeVisible()
+  await expect(status.getByText('跳过 1 个活跃任务')).toBeVisible()
+  await expect(status.getByText('feed timeout')).toBeVisible()
+
+  await status.getByRole('button', { name: '立即运行' }).click()
+
+  await expect.poll(() => autoRefreshRuns).toBe(1)
+  await expect(status.getByText('上次完成 2026/07/04 12:31')).toBeVisible()
+  await expect(status.getByText('新闻刷新 3 个')).toBeVisible()
+  await expect(status.getByText('feed timeout')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '美伊战争' })).toBeVisible()
 })
 
 test('filters and sorts the event source matrix', async ({ page }) => {

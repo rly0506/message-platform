@@ -26,7 +26,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, country_compare, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services import article_perspective, auto_refresh, country_compare, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.pipeline import academic, cross_synthesis, sentiment
 
 DEFAULT_COGNITION_PROFILE = [
@@ -207,6 +207,12 @@ app.add_middleware(
 def on_startup() -> None:
     init_db()
     search_service.mark_interrupted_search_jobs()
+    auto_refresh.start_auto_refresh_scheduler()
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    auto_refresh.stop_auto_refresh_scheduler()
 
 
 @app.get("/api/health")
@@ -616,6 +622,18 @@ def get_discovery_timeline_tree() -> dict[str, Any]:
     from app.discovery import run as discovery_run
 
     return discovery_run.timeline_tree()
+
+
+@app.get("/api/auto-refresh/status")
+def get_auto_refresh_status() -> dict[str, Any]:
+    """自动刷新状态(供前端显示"上次自动更新 X 前"、开关状态)。"""
+    return auto_refresh.status_snapshot()
+
+
+@app.post("/api/auto-refresh/run")
+def trigger_auto_refresh() -> dict[str, Any]:
+    """手动立即触发一轮自动刷新(自动之外的兜底按钮)。同步跑一轮并返回统计。"""
+    return auto_refresh.refresh_once()
 
 
 @app.post("/api/discovery/jobs")

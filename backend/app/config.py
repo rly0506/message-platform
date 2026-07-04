@@ -53,6 +53,14 @@ RSS_PROXY = os.getenv("RSS_PROXY", "").strip()                   # 显式代理 
 FULLTEXT_FETCH_TIMEOUT = float(os.getenv("FULLTEXT_FETCH_TIMEOUT", "8"))  # 单篇全文抓取超时 (秒)
 ENRICH_FETCH_FULLTEXT = os.getenv("ENRICH_FETCH_FULLTEXT", "1").strip() not in ("0", "false", "False", "")  # 关掉则省钱省时, 退回纯标题+摘要判分
 
+# 后端运行期自动刷新 (方案B): 仅自动重采"过期话题的新闻"+"前沿日报", 绝不自动跑 LLM/学界/民间/三方。
+# 本地工具: "自动"只在后端进程开着时有效, 关机不更新。红线: 不烧 LLM、不碰 OpenCLI。
+AUTO_REFRESH_ENABLED = os.getenv("AUTO_REFRESH_ENABLED", "1").strip() not in ("0", "false", "False", "")
+AUTO_REFRESH_INITIAL_DELAY_SECONDS = float(os.getenv("AUTO_REFRESH_INITIAL_DELAY_SECONDS", "60"))  # 首跑延迟, 避开启动拥挤/测试
+AUTO_REFRESH_NEWS_INTERVAL_HOURS = float(os.getenv("AUTO_REFRESH_NEWS_INTERVAL_HOURS", "6"))
+AUTO_REFRESH_FRONTIER_INTERVAL_HOURS = float(os.getenv("AUTO_REFRESH_FRONTIER_INTERVAL_HOURS", "12"))
+AUTO_REFRESH_MAX_TOPICS_PER_CYCLE = int(os.getenv("AUTO_REFRESH_MAX_TOPICS_PER_CYCLE", "3"))  # 每轮最多刷几个话题, 防网络突刺
+
 # Google News RSS 的多语种 locale: (hl, gl, ceid)
 # 用于跨语言围绕主题做检索式 RSS。
 GNEWS_LOCALES = [

@@ -3,6 +3,7 @@ import type {
   AcademicLayer,
   Article,
   ArticlePerspective,
+  AutoRefreshStatus,
   CognitionLabel,
   CognitionMark,
   CognitionProfileItem,
@@ -186,6 +187,16 @@ export async function fetchSentiment(topicId: number) {
 
 export async function fetchOpenCliDiagnostics() {
   const res = await axios.get<OpenCliDiagnostics>(`${API_BASE}/api/integrations/opencli/diagnostics`)
+  return res.data
+}
+
+export async function fetchAutoRefreshStatus() {
+  const res = await axios.get<AutoRefreshStatus>(`${API_BASE}/api/auto-refresh/status`)
+  return res.data
+}
+
+export async function runAutoRefreshNow() {
+  const res = await axios.post<AutoRefreshStatus>(`${API_BASE}/api/auto-refresh/run`)
   return res.data
 }
 
