@@ -253,12 +253,24 @@ def _framing_from_evolution(
 def _trend_for_stance(stance: str, evolution: list[dict[str, Any]]) -> str:
     if len(evolution) < 2:
         return "样本不足"
-    midpoint = max(1, len(evolution) // 2)
-    early = sum(item["counts"].get(stance, 0) for item in evolution[:midpoint])
-    late = sum(item["counts"].get(stance, 0) for item in evolution[midpoint:])
-    if late >= early + 3:
+    total = sum(sum(item["counts"].values()) for item in evolution)
+    if total < 6:
+        return "样本不足"
+
+    first = evolution[0]
+    last = evolution[-1]
+    early = first["counts"].get(stance, 0)
+    late = last["counts"].get(stance, 0)
+    early_total = sum(first["counts"].values())
+    late_total = sum(last["counts"].values())
+    early_share = early / early_total if early_total else 0
+    late_share = late / late_total if late_total else 0
+    delta = late - early
+    share_delta = late_share - early_share
+
+    if delta >= 3 and share_delta >= 0.20:
         return "近期增强"
-    if early >= late + 3:
+    if delta <= -3 and share_delta <= -0.20:
         return "近期减弱"
     return "基本稳定"
 def _analysis_text(name: str, events: list[dict[str, Any]], framing: list[dict[str, Any]]) -> str:

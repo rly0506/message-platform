@@ -713,6 +713,40 @@ test('degrades media stance timeline when the sample is too small', async ({ pag
   await expect(panel.getByText('冲突安全 1')).toBeVisible()
 })
 
+test('keeps media stance timeline distribution-only when the shift is weak', async ({ page }) => {
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({
+      json: {
+        ...localEvents,
+        stance_evolution: [
+          {
+            period: '2026-05',
+            dominant_stance: 'neutral',
+            counts: { neutral: 4, conflict: 3 },
+            article_ids: [1, 2, 3],
+          },
+          {
+            period: '2026-06',
+            dominant_stance: 'neutral',
+            counts: { neutral: 3, conflict: 4 },
+            article_ids: [1, 2, 3],
+          },
+        ],
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.locator('details.media-collapse > summary').filter({
+    hasText: /媒体立场时间线.*2 期/,
+  }).click()
+
+  const panel = page.locator('.stance-trend-panel')
+  await expect(panel.locator('.stance-trend-card')).toHaveCount(0)
+  await expect(panel.getByText('2026-06')).toBeVisible()
+  await expect(panel.getByText('conflict 4')).toBeVisible()
+})
+
 test('shows an event structure tree from existing media signals', async ({ page }) => {
   await page.goto('/')
 

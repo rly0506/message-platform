@@ -84,6 +84,25 @@ def test_empty_topic_shape_uses_entity_group_list():
     assert data["entity_groups"] == []
 
 
+def test_stance_trend_requires_enough_total_samples():
+    evolution = [
+        {"period": "2026-05", "counts": {}, "article_ids": []},
+        {"period": "2026-06", "counts": {"conflict": 3}, "article_ids": [1, 2, 3]},
+    ]
+
+    assert local_analyze._trend_for_stance("conflict", evolution) == "样本不足"
+
+
+def test_stance_trend_compares_first_and_last_period_conservatively():
+    evolution = [
+        {"period": "2026-04", "counts": {"conflict": 2, "neutral": 2}, "article_ids": [1, 2, 3, 4]},
+        {"period": "2026-05", "counts": {"conflict": 8}, "article_ids": [5, 6, 7, 8, 9, 10, 11, 12]},
+        {"period": "2026-06", "counts": {"conflict": 2, "neutral": 2}, "article_ids": [13, 14, 15, 16]},
+    ]
+
+    assert local_analyze._trend_for_stance("conflict", evolution) == "基本稳定"
+
+
 def test_report_category_inference_uses_stable_product_labels():
     assert local_analyze.infer_report_category("油价上涨，美伊战争影响市场") == "影响后果"
     assert local_analyze.infer_report_category("白宫回应伊朗警告") == "各方回应"

@@ -226,11 +226,12 @@ const stanceTrends = computed<StanceTrend[]>(() => {
         representativeTitles: trendTitles(label),
       }
     })
+    .filter((item) => Math.abs(item.delta) >= 3 && Math.abs(item.lastShare - item.firstShare) >= 20)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || b.lastCount - a.lastCount || a.label.localeCompare(b.label, 'zh-CN'))
     .slice(0, 4)
 })
 
-const hasMeaningfulStanceTrend = computed(() => stanceTrends.value.some((item) => item.delta !== 0))
+const hasMeaningfulStanceTrend = computed(() => stanceTrends.value.length > 0)
 const hasEnoughStanceTrendSample = computed(() => {
   if (props.stancePeriods.length < 2) return false
   return props.stancePeriods.reduce((sum, period) => sum + periodCountTotal(period), 0) >= 6
