@@ -6,7 +6,9 @@ This file is the context reset point for future agents. Read it before choosing 
 
 ## Active Sprint
 
-Current active work is the **14 点反馈验收修复 Sprint**. Do not describe the working tree as complete until the 14-point acceptance table is proved item by item.
+Current active work is the **14-point feedback repair residual-delta round** on `feature/academic-reading-signals`.
+
+Do not describe the 14-point work as finally closed. Treat `d028496` through `e6e277f` as a staged, audited baseline that remains open for targeted optimization. The branch has 5 pushed repair commits in that baseline, not 4, and the branch should not be merged back to `master` until the user explicitly asks for it.
 
 Coordination split:
 
@@ -17,22 +19,34 @@ Coordination split:
 
 Latest coordination state:
 
+- 2026-07-05 Fable 5 / Claude bug audit is recorded in `spec/bug-audit-2026-07-05.md`. Treat the five P0 bugs there as higher priority than Stage 0B source expansion, 14-point final closure, or merging to `master`.
+- The most urgent confirmed risk is the auto-refresh data-damage chain:
+  - `backend/app/services/auto_refresh.py:167` calls `collect_topic()` without `min_rel`;
+  - `backend/app/services/auto_refresh.py:169` then calls `analyze_topic(..., persist=True)`;
+  - `backend/app/topic_ops.py:494` deletes all `Analysis` rows for the topic before writing local analysis.
+  This can pollute stale topics with unrelated articles and erase paid LLM deep analysis. Disable or fix auto-refresh before long real-data backend sessions.
+- Do not merge this branch to `master` while the `spec/bug-audit-2026-07-05.md` P0 list remains open.
 - #5 OpenCLI WinError 193 has a tested fix in the working tree and Claude has reviewed it as acceptable.
 - #2 freshness diagnosis: the collector/DB/payload/UI chain is not proven broken; old topics were not re-collected. Fresh July articles exist in the DB for newer topics.
 - #2 frontend stale-state explanation now exists: stale latest-report dates are labeled as last collected time with a manual refresh fallback. The human chose option B, backend auto-refresh implementation is now present in the working tree with backend pytest passing, and Codex has wired the frontend auto-refresh status/run UI to the new API shape. Claude has now replied `ready for human final review = YES`; human final review and final full gate remain before any completion claim.
 - #2 event-detail drilldown now has a fallback: if no backend subtopic suggestions exist, the inline selected-event detail shows `围绕此事件` and searches with the parent topic context, such as `俄乌战争 前线态势更新`, instead of a naked event phrase.
 - #3 source registry now persists and returns classified source coverage metadata: `coverage`, `access`, `last_tested`, `coverage_reason`, and `state_media`. The frontend Source Manager displays these fields and counts limited sources separately.
 - #3 collection boundary is now protected: if source registry rows exist but are all disabled/limited, `collect_topic()` no longer falls back to the raw curated `feeds.json` list. The raw curated fallback is only for empty-registry bootstrap. This supports "limited sources visible but not collected".
-- #3 first classified fresh-source batch is now accepted for this repair sprint as `V1 Done with known limitation`: `backend/config/feeds.json` has 25 curated feeds, including 8 `fresh_rss` + `public` sources (UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, WTO News). This still does not mean full WSJ/AFP/Xinhua/paywalled-wire/API-only/multilingual/G20 coverage; those are future source batches.
+- #3 Stage 0B classified source batch is now present as a residual-delta patch: `backend/config/feeds.json` has 38 curated feeds. Fresh public RSS now includes UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, WTO News, U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza. OECD/World Bank/IMF/Reuters candidates stay disabled with honest `zombie/proxy_only/api_license` reasons; RT/TASS/RIA are disabled `state_media=true` narrative samples. This still does not mean full WSJ/AFP/Xinhua/paywalled-wire/API-only/multilingual/G20 coverage; those are future source batches.
 - #10/#11 academic layer now has a Crossref second-source backend path in addition to OpenAlex, and Claude accepted it on 2026-07-05. Crossref-only fallback, DOI merge, OpenAlex survival when Crossref fails, `sources/source_count/source_links` persistence, and OpenAlex + Crossref academic-summary/source wording are covered by backend tests. The frontend Academic panel can show `OpenAlex + Crossref`, `来源 N`, and Crossref links per paper. #10 is `Done` for V1 source breadth; #11 is `V1 Done with known limitation`.
 - #6 sentiment timeline now labels its linked evidence as `代表样本`, so the user can see which posts support each platform/time/frame bucket.
 - #12 cognition boundary cards now use the explicit label `为什么现在重要`, in addition to summary, report connection, deep-dive reason, and suggested path.
-- Codex-side P1 frontend slices have fresh targeted desktop e2e evidence: `contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `27 passed (50.8s)`, followed by `npm run build` passing in 428ms and full frontend e2e `84 passed (2.5m)`. The latest 2026-07-05 final gate has backend pytest `218 passed`, frontend build passing in 565ms, and full frontend e2e `88 passed (2.5m)`.
-- Fresh final gate evidence is green for backend/frontend/hygiene after Claude's final review and the latest status-doc updates. GitNexus `detect-changes` is now `low` (`19 files`, `41 symbols`, `0` affected processes) after commit1 separated the backend/source/academic integration tree; the earlier pre-final `critical` warning remains historically important for reviewing commit1 but no longer applies to the remaining commit2 frontend/spec surface.
+- Codex-side P1 frontend slices have historical targeted desktop e2e evidence: `contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `27 passed (50.8s)`, followed by `npm run build` passing in 428ms and full frontend e2e `84 passed (2.5m)`.
+- Fresh residual-delta gate on 2026-07-05 after Stage 0B source, media-trend, OpenCLI diagnostics, and status-doc updates: backend pytest `223 passed, 5 warnings in 31.06s`; frontend build passed in `410ms`; full frontend e2e `90 passed (2.6m)`; `git diff --check` passed; secret/local-file status check produced no output for `backend/.env`, `backend/dossier.db`, `.agent-bridge`, or `.agents`; GitNexus `status` is up-to-date at `e6e277f`; GitNexus `detect-changes` is `low` (`18 files`, `40 symbols`, `0` affected processes).
 - The current 14-point acceptance ledger is `spec/14-point-acceptance-2026-07-04.md`; use it instead of older audit summaries when deciding what remains.
 - The remaining decision packet is `spec/14-point-remaining-decisions-2026-07-04.md`; it now records Claude's #3/#10/#11/#13 final acceptance and the final-gate-only closure path.
 - The human final-review packet is `spec/14-point-human-review-2026-07-05.md`; use it as the short decision view for final gate evidence, GitNexus risk, and commit strategy.
 - `.agent-bridge/BOARD.md` has been synced with this 14-point sprint state; older 2026-07-03 blocks in that file are historical records only.
+- 2026-07-05 residual-delta patch updates the staged baseline rather than closing it:
+  - media stance trend semantics now use conservative first-period vs last-period comparison; total sample `< 6` and weak count/share deltas stay distribution-only;
+  - OpenCLI diagnostics now expose structured `start_error` so command-not-found, cannot-start, and startup-timeout are distinguishable from platform login/API failures;
+  - source registry collection skips sources classified as `coverage in {zombie, proxy_only}` or `access in {paywalled, api_license}`, even if accidentally enabled;
+  - Stage 0B source work adds fresh public RSS for U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza; OECD/World Bank/IMF/Reuters candidates are disabled with honest reasons; RT/TASS/RIA/RT Russian are disabled state-media narrative samples.
 
 ## Dirty Worktree Snapshot
 

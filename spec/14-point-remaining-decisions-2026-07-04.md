@@ -13,7 +13,7 @@ To close the current integration tree without starting a new feature direction, 
    - Meaning: auto refresh news/frontier while the backend is running. The backend auto-refresh implementation and Codex frontend status UI/e2e are now present and verified; Claude has now explicitly confirmed `#2 ready for human final review: YES`.
 2. #3/#13 source ingestion scope:
    - Human decision recorded for #3: expand mainstream news sources, especially WSJ, The Guardian, AFP, Xinhua, and similar high-quality outlets.
-   - Current working tree: the first classified fresh-source batch is now present: 25 curated feeds total, including 8 `fresh_rss` + `public` sources (UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, WTO News).
+   - Current working tree: the Stage 0B classified source batch is now present: 38 curated feeds total, including fresh public RSS sources from UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, WTO News, U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza.
    - Claude final review recorded on 2026-07-05: accept #3 as `V1 Done with known limitation` and #13 as `V1 Done with known limitation`.
    - Meaning: #3/#13 are no longer waiting for product-scope review in this repair sprint. Known limitations remain explicit: WSJ/AFP/Xinhua/paywalled-wire/API-only/multilingual/G20 coverage and video transcript ingestion are future work.
 3. #6/#7/#8 semantic review:
@@ -29,17 +29,18 @@ Do not mark the sprint complete until the full gate is rerun after the latest st
 
 ## Current Proven State
 
-Fresh full pre-final gate evidence on 2026-07-05 is green:
+Fresh residual-delta gate on 2026-07-05 after Stage 0B source, media-trend, OpenCLI diagnostics, and status-doc updates:
 
-- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 24.34s`.
-- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 451ms).
-- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.6m)`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `223 passed, 5 warnings in 31.06s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 410ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `90 passed (2.6m)`.
 - `git diff --check` -> pass, existing LF/CRLF warnings only.
-- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
-- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `5ed0022`.
-- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `27 files`, `101 symbols`, `54` affected processes.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> no output.
+- `git check-ignore -v backend/.env backend/dossier.db .agent-bridge .agents` -> all four paths are ignored by `.gitignore`.
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `e6e277f`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `18 files`, `40 symbols`, `0` affected processes.
 
-The sprint is still open because the final gate must be rerun after the latest status/doc updates.
+The sprint is still open at product level because the user chose continued optimization rather than final 14-point closure.
 
 ## Final Status Projection
 
@@ -70,7 +71,9 @@ Codex reviewed the current source/academic implementation without changing code.
 Current implementation evidence:
 
 - `backend/config/feeds.json` includes wire/mainstream/professional/newsletter/research feeds.
-- Current tree has 25 curated feeds, including 8 `fresh_rss` + `public` feeds: UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, and WTO News.
+- Current tree has 38 curated feeds. Fresh public RSS sources include UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, WTO News, U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza.
+- OECD, World Bank, IMF, and Reuters candidates are visible but disabled with `zombie`, `proxy_only`, or `api_license` classifications.
+- RT Russian, TASS, and RIA Novosti are visible but disabled `state_media=true` narrative samples, not neutral authority sources.
 - `backend/app/feed_registry.py` validates curated feeds and exposes only enabled RSS registry rows for collection.
 - `backend/app/services/source_registry.py` supports list/create/import/update and records source metadata.
 - `backend/tests/test_source_registry.py` covers:
@@ -83,8 +86,8 @@ Current implementation evidence:
 
 Codex read-only conclusion:
 
-- The implemented #3 scope is stronger than the earlier V1-limitation proposal because the current tree now includes a first classified fresh-source batch.
-- Claude accepted that first batch as enough for this repair sprint V1 on 2026-07-05.
+- The implemented #3 scope is stronger than the earlier V1-limitation proposal because the current tree now includes Stage 0B classified source expansion.
+- Claude accepted the earlier batch as enough for this repair sprint V1 on 2026-07-05; the residual-delta patch improves that baseline without claiming full source closure.
 - Quick source audit from Codex on 2026-07-04:
   - WSJ World RSS `https://feeds.a.dj.com/rss/RSSWorldNews.xml` was reachable but showed `lastBuildDate` / item dates around 2025-01-27, so it must not be treated as freshness-reliable without further validation.
   - AFP configured RSS `https://www.afp.com/en/rss.xml` returned AFP.com site/agency items rather than a fresh AFP newswire stream; treat AFP news coverage as API/license or Google-News-proxy-limited unless a fresh public feed is found.
@@ -177,9 +180,11 @@ Current proof:
 - Source manager shows total/enabled/failed sources, latest successful fetch time, and failure reasons.
 - Evidence package/local pre-analysis tests exist.
 - Newsletter/RSS and Google Alerts import paths have frontend e2e coverage.
-- `backend/config/feeds.json` now has 25 curated feeds.
-- 8 feeds are classified as `fresh_rss` + `public`: UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, and WTO News.
-- Current backend verification after this source state: `tests/test_source_registry.py` -> `11 passed`; `tests/test_topic_ops.py tests/test_api_helpers.py` -> `13 passed`; full backend pytest -> `218 passed, 5 warnings in 36.44s`.
+- `backend/config/feeds.json` now has 38 curated feeds.
+- Stage 0B adds fresh public RSS for U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza.
+- OECD, World Bank, IMF, and Reuters candidates are disabled with honest `zombie`, `proxy_only`, or `api_license` classification.
+- RT Russian, TASS, and RIA Novosti are disabled `state_media=true` narrative samples.
+- Current backend targeted verification after this source state: `tests/test_source_registry.py` -> `13 passed`.
 
 Human decision:
 
@@ -187,7 +192,7 @@ Human decision:
 
 Recommended closure decision:
 
-- Accept the first classified fresh-source batch as the repair sprint V1 if this scope is enough:
+- Accept the Stage 0B classified fresh-source batch as the repair sprint V1 if this scope is enough:
   - directly enable public RSS sources that are fresh and collector-compatible;
   - keep visible limited entries for important sources that are paywalled, API/license-only, stale-RSS, summary-only, or Google-News-proxy-only;
   - keep disabled/limited sources out of collection while showing the user why they are not fully usable.

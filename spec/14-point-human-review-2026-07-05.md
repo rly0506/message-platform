@@ -1,29 +1,30 @@
 # 14-Point Human Review Packet - 2026-07-05
 
-This packet summarizes the current **14 点反馈验收修复 Sprint** state for human final review.
+This packet summarizes the current **14-point feedback repair staged baseline** and the residual-delta patch direction.
 
 It is not a completion claim. The source of truth remains `spec/14-point-acceptance-2026-07-04.md`; this file is the shorter decision view.
 
-Update after Claude final review on 2026-07-05:
+Update after Claude review and the user's later decision on 2026-07-05:
 
 - #3 accepted as `V1 Done with known limitation`.
 - #10 accepted as `Done`.
 - #11 accepted as `V1 Done with known limitation`.
 - #13 accepted as `V1 Done with known limitation`.
-- No further source/academic code changes are required before the final gate.
+- The user chose not to treat the 14 points as finally closed while optimization space remains.
+- `feature/academic-reading-signals` keeps the staged audited baseline; do not merge it back to `master` without explicit user approval.
 
 ## Latest Gate
 
-Fresh final gate on 2026-07-05 after Claude final review and status-doc updates:
+Fresh residual-delta gate on 2026-07-05 after Stage 0B source, media-trend, OpenCLI diagnostics, and status-doc updates:
 
-- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 31.31s`.
-- `cd frontend; npm run build` -> passed, built in `565ms`.
-- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.5m)`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `223 passed, 5 warnings in 31.06s`.
+- `cd frontend; npm run build` -> passed, built in `410ms`.
+- `cd frontend; npm run test:e2e -- --workers=1` -> `90 passed (2.6m)`.
 - `git diff --check` -> pass, existing LF/CRLF warnings only.
-- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
-- `node .gitnexus/run.cjs analyze` -> indexed current commit `0a9a97b`.
-- `node .gitnexus/run.cjs status` -> up-to-date at `0a9a97b`.
-- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> `low`, `19 files`, `41 symbols`, `0` affected processes.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> no output.
+- `git check-ignore -v backend/.env backend/dossier.db .agent-bridge .agents` -> all four paths are ignored by `.gitignore`.
+- `node .gitnexus/run.cjs status` -> up-to-date at `e6e277f`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> `low`, `18 files`, `40 symbols`, `0` affected processes.
 
 ## Gate Risk
 
@@ -34,7 +35,7 @@ The earlier pre-final GitNexus `critical` result applied to the full integration
 - `_migrate`
 - `_seed_source_registry`
 
-Current commit2 frontend/spec surface is lower risk after reindexing: `detect-changes` is `low`, with `0` affected processes. Commit1 still carries the broader backend/source/academic review context and is already separated as `0a9a97b`.
+Current residual-delta surface is lower risk after reindexing: `detect-changes` is `low`, with `0` affected processes. The earlier broader backend/source/academic review context remains historically relevant, but it is not the current residual-delta risk result.
 
 ## Human Decisions
 
@@ -42,8 +43,15 @@ Current commit2 frontend/spec surface is lower risk after reindexing: `detect-ch
 
 Current evidence:
 
-- `backend/config/feeds.json` has `25` curated feeds.
-- `8` feeds are classified as `fresh_rss` + `public`:
+- `backend/config/feeds.json` has `38` curated feeds.
+- Stage 0B adds `6` fresh public RSS sources:
+  - U.S. State Department Press Releases
+  - European Commission Press Corner
+  - France 24 Spanish
+  - Folha Mundo
+  - France 24 Arabic
+  - Meduza
+- Previous fresh public RSS sources remain present:
   - UN News
   - NPR World
   - The Conversation
@@ -52,17 +60,19 @@ Current evidence:
   - Federal Reserve
   - European Central Bank
   - WTO News
+- OECD, World Bank, IMF, and Reuters candidates remain disabled with honest `zombie`, `proxy_only`, or `api_license` classification.
+- RT Russian, TASS, and RIA Novosti are recorded as disabled `state_media=true` narrative samples, not neutral authority sources.
 - Source registry exposes `coverage/access/last_tested/coverage_reason/state_media`.
 - Disabled/limited sources do not silently fall back into collection.
 
 Decision:
 
-- Accepted by Claude as `V1 Done with known limitation`.
+- Still `V1 Done with known limitation`; Stage 0B improves the baseline but does not close the broader source-quality problem.
 
 Known limitation to approve explicitly:
 
 - WSJ/AFP/Xinhua/paywalled-wire/API-only sources are not fully covered.
-- Multilingual source expansion is not done.
+- Multilingual source expansion has begun, but is not complete.
 - Same-event G20 coverage and full crawler behavior are not guaranteed.
 
 ### Decision B: #10 Crossref Academic Second Source

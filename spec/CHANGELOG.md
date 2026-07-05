@@ -2,6 +2,46 @@
 
 ## 2026-07-04
 
+### 2026-07-05 Fable 5 Bug Audit Record
+
+- Added `spec/bug-audit-2026-07-05.md` to preserve the Fable 5 whole-project bug audit supplied by the user and Claude's follow-up spot-check.
+- Recorded five P0 findings, with the auto-refresh data-damage chain marked as the immediate stop-the-line priority:
+  - `backend/app/pipeline/narrative_signals.py:29` mixed `datetime`/`str` sort key;
+  - `backend/app/topic_ops.py:494` destructive local-analysis persistence;
+  - `backend/app/services/auto_refresh.py:167` missing `min_rel`;
+  - `frontend/src/components/DiscoveryPanel.vue:388` cognition-mark error branch interrupting report rendering;
+  - `frontend/src/composables/useJobRunner.ts:240` event-search concurrency race.
+- Linked the audit from `spec/README.md` and raised the P0 stop-the-line warning in `spec/current-state.md`.
+- No production code was changed in this record-only update.
+
+### Verification
+
+- Source spot-checks with `rg` / file reads confirmed the P0 coordinates listed above exist in the current workspace.
+- `git diff --check` must be rerun after this documentation update before any commit or completion claim.
+
+### 2026-07-05 Residual-Delta Patch
+
+- Implemented the next residual-delta patch on top of the staged 14-point baseline instead of declaring final closure:
+  - added `.agents/` to `.gitignore` and removed the tracked empty `.gitigmore`;
+  - unified media trend semantics around conservative first-period vs last-period comparison, with distribution-only behavior for small or weak-shift samples;
+  - extended OpenCLI diagnostics with optional structured `start_error` so command-not-found, cannot-start, and startup-timeout cases are distinct from platform login/API failures;
+  - expanded Stage 0B source classification in `backend/config/feeds.json` with fresh public RSS from U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza;
+  - kept OECD/World Bank/IMF/Reuters disabled with honest `zombie`, `proxy_only`, or `api_license` reasons;
+  - recorded RT Russian, TASS, and RIA Novosti as disabled `state_media=true` narrative samples rather than neutral authority sources;
+  - added a source-registry guard so `coverage in {zombie, proxy_only}` or `access in {paywalled, api_license}` is not collected even if accidentally enabled.
+- Updated current-state, remaining-decisions, acceptance, and human-review docs so the branch is described as a staged audited baseline that remains open for targeted optimization.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `223 passed, 5 warnings in 31.06s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 410ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `90 passed (2.6m)`.
+- `git diff --check` -> pass, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> no output.
+- `git check-ignore -v backend/.env backend/dossier.db .agent-bridge .agents` -> all four paths are ignored by `.gitignore`.
+- `node .gitnexus/run.cjs status` -> index up-to-date at commit `e6e277f`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `18 files`, `40 symbols`, `0` affected processes.
+
 ### 2026-07-05 Claude Final Review Acceptance
 
 - Recorded Claude's final review from `.agent-bridge/TO_CODEX.md`:
