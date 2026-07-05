@@ -28,3 +28,4 @@ frontend/playwright-report/
 
 # AI 协作临时通道 (Claude×GPT inbox，不入库；结论沉淀到 spec/)
 .agent-bridge/
+.agents/
