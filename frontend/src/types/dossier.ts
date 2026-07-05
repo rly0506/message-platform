@@ -255,6 +255,11 @@ export type OpenCliDiagnostics = {
   resolved_path: string
   recommended_command: string
   browser_required_platforms: string[]
+  start_error?: {
+    kind: string
+    errno: number | null
+    detail: string
+  } | null
   message: string
 }
 
