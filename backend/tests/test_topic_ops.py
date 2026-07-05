@@ -1,5 +1,5 @@
 from app import topic_ops
-from app.db import Article, SourceRegistry, Topic, TopicArticle, engine, init_db
+from app.db import Analysis, Article, SourceFraming, SourceRegistry, TimelineEvent, Topic, TopicArticle, engine, init_db
 from sqlmodel import Session, select
 
 
@@ -177,3 +177,49 @@ def test_collect_topic_curated_feed_adds_metadata_and_filters_by_relevance(monke
                     session.delete(article)
             session.delete(topic)
             session.commit()
+
+
+def test_local_analysis_persist_preserves_existing_llm_analysis():
+    init_db()
+
+    with Session(engine) as session:
+        topic = Topic(name="俄乌战争", queries=["俄乌战争"])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        article = Article(
+            url=f"https://example.com/llm-preserve/{topic.id}",
+            title="俄乌战争 前线态势更新",
+            source="Reuters",
+            source_lang="zh",
+            published_at=None,
+            snippet="俄乌战争前线态势出现新变化。",
+            collector="test",
+        )
+        session.add(article)
+        session.commit()
+        session.refresh(article)
+        session.add(TopicArticle(topic_id=topic.id, article_id=article.id, relevance=0.9))
+        session.add(TimelineEvent(topic_id=topic.id, title_zh="LLM 时间线", summary_zh="LLM 生成"))
+        session.add(SourceFraming(topic_id=topic.id, party="LLM 来源", stance="综合", summary_zh="LLM 观点"))
+        session.add(Analysis(topic_id=topic.id, content_md=f"{topic_ops.LLM_ANALYSIS_MARKER}\nLLM 深度分析"))
+        session.commit()
+
+        topic_ops.analyze_topic(session, topic, persist=True)
+
+        analyses = session.exec(select(Analysis).where(Analysis.topic_id == topic.id)).all()
+        timeline = session.exec(select(TimelineEvent).where(TimelineEvent.topic_id == topic.id)).all()
+        framing = session.exec(select(SourceFraming).where(SourceFraming.topic_id == topic.id)).all()
+
+        assert len(analyses) == 1
+        assert topic_ops.LLM_ANALYSIS_MARKER in analyses[0].content_md
+        assert "LLM 深度分析" in analyses[0].content_md
+        assert [row.title_zh for row in timeline] == ["LLM 时间线"]
+        assert [row.party for row in framing] == ["LLM 来源"]
+
+        for row in [*timeline, *framing, *analyses]:
+            session.delete(row)
+        session.delete(session.get(TopicArticle, (topic.id, article.id)))
+        session.delete(article)
+        session.delete(topic)
+        session.commit()

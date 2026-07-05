@@ -217,6 +217,24 @@ test('marks a frontier seed as known from the cognition boundary queue and close
   })
 })
 
+test('keeps discovery report visible when cognition marking fails', async ({ page }) => {
+  await page.route('**/api/cognition/marks', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({ status: 500, json: { detail: 'mark service unavailable' } })
+      return
+    }
+    await route.fallback()
+  })
+  await openDiscovery(page)
+
+  await page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' }).locator('.boundary-got-it').click()
+
+  await expect(page.locator('.country-compare-error')).toContainText('mark service unavailable')
+  await expect(page.locator('.boundary-queue')).toBeVisible()
+  await expect(page.locator('.boundary-list')).toContainText('New nuclear battery')
+  await expect(page.locator('.discovery-report')).toContainText('Latest frontier report')
+})
+
 test('collapses rest seeds and does not duplicate boundary-queue seeds', async ({ page }) => {
   const manySeeds = Array.from({ length: 12 }, (_, i) => ({
     title: `Seed number ${i}`,

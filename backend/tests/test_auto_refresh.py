@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 import pytest
 
 from app import config, topic_ops
-from app.db import Article, SearchJob, Topic, TopicArticle, engine, init_db
+from app.db import Analysis, Article, SearchJob, Topic, TopicArticle, engine, init_db
 from app.discovery import run as discovery_run
 from app.services import auto_refresh
 
@@ -112,6 +112,18 @@ def test_collect_then_analyze_with_curated_feeds(monkeypatch):
     assert any(cid == tid and persist is True for cid, persist in calls.get("analyze", []))
 
 
+def test_news_refresh_uses_relevance_threshold(monkeypatch):
+    now = datetime(2026, 7, 4, 12, 0, 0)
+    tid = _seed_topic("threshold", now - timedelta(hours=10))
+    calls: dict = {}
+    _patch_collectors(monkeypatch, calls)
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: {"run_id": "20260704T115900Z"})
+
+    auto_refresh.refresh_once(now=now)
+
+    assert any(cid == tid and kw.get("min_rel") == 0.2 for cid, kw in calls.get("collect", []))
+
+
 def test_topic_error_isolated(monkeypatch):
     now = datetime(2026, 7, 4, 12, 0, 0)
     t1 = _seed_topic("boom", now - timedelta(hours=10))
@@ -183,6 +195,54 @@ def test_never_calls_llm_or_opencli(monkeypatch):
     _forbid_llm_opencli(monkeypatch)
 
     auto_refresh.refresh_once(now=now)  # 若碰到 LLM/OpenCLI 会 AssertionError
+
+
+def test_refresh_collect_analyze_chain_filters_irrelevant_articles_and_preserves_llm(monkeypatch):
+    now = datetime(2026, 7, 4, 12, 0, 0)
+    topic_id = _seed_topic("Battery supply chain", now - timedelta(hours=10), n=1)
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: {"run_id": "20260704T115900Z"})
+    monkeypatch.setattr(topic_ops.rss, "collect_gnews", lambda query: [])
+    monkeypatch.setattr(
+        topic_ops.feed_registry,
+        "enabled_registry_feeds",
+        lambda session: [{
+            "name": "Example Wire",
+            "url": "https://example.com/feed",
+            "country": "United States",
+            "lang": "en",
+            "tier": "wire",
+            "source_id": None,
+        }],
+    )
+
+    def fake_collect_feed(url, metadata=None):
+        return [
+            {
+                "url": "https://example.com/irrelevant-local-sports",
+                "title": "Local football results",
+                "source": metadata["name"],
+                "source_lang": metadata["lang"],
+                "source_country": metadata["country"],
+                "published_at": now,
+                "snippet": "Sports results and entertainment.",
+                "collector": "rss",
+            }
+        ]
+
+    monkeypatch.setattr(topic_ops.rss, "collect_feed", fake_collect_feed)
+    with Session(engine) as session:
+        session.add(Analysis(topic_id=topic_id, content_md=f"{topic_ops.LLM_ANALYSIS_MARKER}\nLLM 深度分析"))
+        session.commit()
+
+    result = auto_refresh.refresh_once(now=now)
+
+    assert result["news_refreshed"] == 1
+    with Session(engine) as session:
+        assert session.exec(select(Article).where(Article.url == "https://example.com/irrelevant-local-sports")).first() is None
+        analyses = session.exec(select(Analysis).where(Analysis.topic_id == topic_id)).all()
+        assert len(analyses) == 1
+        assert topic_ops.LLM_ANALYSIS_MARKER in analyses[0].content_md
+        assert "LLM 深度分析" in analyses[0].content_md
 
 
 def test_scheduler_start_idempotent_and_stop(monkeypatch):

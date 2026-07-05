@@ -492,8 +492,15 @@ def remove_topic(session: Session, topic_id: int, *, dry_run: bool = True) -> di
 
 
 def _persist_analysis(session: Session, topic_id: int, data: dict[str, Any]) -> None:
+    analysis_md = data.get("analysis_md", "")
+    incoming_is_llm = LLM_ANALYSIS_MARKER in analysis_md
+    existing_analyses = session.exec(select(Analysis).where(Analysis.topic_id == topic_id)).all()
+    if not incoming_is_llm and any(LLM_ANALYSIS_MARKER in (row.content_md or "") for row in existing_analyses):
+        return
+
     for model in (TimelineEvent, SourceFraming, Analysis):
-        for old in session.exec(select(model).where(model.topic_id == topic_id)).all():
+        rows = existing_analyses if model is Analysis else session.exec(select(model).where(model.topic_id == topic_id)).all()
+        for old in rows:
             session.delete(old)
     session.commit()
 
@@ -513,7 +520,7 @@ def _persist_analysis(session: Session, topic_id: int, data: dict[str, Any]) -> 
             summary_zh=fr.get("summary_zh", ""),
             article_ids=fr.get("article_ids", []),
         ))
-    session.add(Analysis(topic_id=topic_id, content_md=data.get("analysis_md", "")))
+    session.add(Analysis(topic_id=topic_id, content_md=analysis_md))
     session.commit()
 
 

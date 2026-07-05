@@ -262,3 +262,35 @@ test('offers an event-title drilldown when no suggested subtopics exist', async 
     '俄乌战争 前线态势更新',
   ])
 })
+
+test('ignores duplicate event-search triggers while a search is starting', async ({ page }) => {
+  const searchPayloads = await mockApi(page)
+  const releaseSearches: Array<() => void> = []
+  await page.route('**/api/search/jobs', async (route) => {
+    const body = route.request().postDataJSON() as { query: string }
+    searchPayloads.push(body)
+    await new Promise<void>((resolve) => {
+      releaseSearches.push(resolve)
+    })
+    await route.fulfill({
+      json: {
+        id: `search-${searchPayloads.length}`,
+        query: body.query,
+        status: 'done',
+        steps: [],
+        created_at: '2026-07-03T09:00:00',
+        updated_at: '2026-07-03T09:00:00',
+        result: null,
+        error: '',
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.locator('.event-input').fill('俄乌战争')
+  await page.locator('.event-input').press('Enter')
+  await page.locator('.event-input').press('Enter')
+  await expect.poll(() => searchPayloads.length).toBe(1)
+
+  for (const release of releaseSearches) release()
+})

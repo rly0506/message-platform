@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from datetime import datetime
 from typing import Any
 
 from app.pipeline.local_analyze import ArticleRow
@@ -26,7 +27,15 @@ def detect_narrative_signals(rows: list[ArticleRow], limit: int = 5) -> list[dic
         if len(items) < 3 or len(sources) < 2:
             continue
         dated = [item.published_at for item in items if item.published_at]
-        ordered = sorted(items, key=lambda item: item.published_at or item.title)
+        ordered = sorted(
+            items,
+            key=lambda item: (
+                item.published_at is None,
+                item.published_at or datetime.max,
+                item.title,
+                item.id,
+            ),
+        )
         signals.append({
             "claim": phrase,
             "source_count": len(sources),

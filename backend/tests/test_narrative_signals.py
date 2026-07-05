@@ -14,6 +14,17 @@ def row(idx: int, title: str, source: str, day: int = 0) -> ArticleRow:
     )
 
 
+def undated_row(idx: int, title: str, source: str) -> ArticleRow:
+    return ArticleRow(
+        id=idx,
+        title=title,
+        source=source,
+        published_at=None,
+        snippet="",
+        relevance=0.8,
+    )
+
+
 def test_narrative_signals_group_repeated_topic_phrases():
     from app.pipeline import narrative_signals
 
@@ -44,6 +55,22 @@ def test_narrative_signals_stay_empty_for_low_sample():
     ]
 
     assert narrative_signals.detect_narrative_signals(rows) == []
+
+
+def test_narrative_signals_handle_mixed_dated_and_undated_rows():
+    from app.pipeline import narrative_signals
+
+    rows = [
+        row(1, "AI capex boom will reshape data centers", "Reuters"),
+        undated_row(2, "AI capex boom draws chip investors", "Financial Times"),
+        row(3, "Analysts say AI capex boom is accelerating", "Bloomberg", 2),
+    ]
+
+    signals = narrative_signals.detect_narrative_signals(rows)
+
+    assert signals[0]["claim"] == "ai capex boom"
+    assert signals[0]["article_ids"] == [1, 3, 2]
+    assert signals[0]["representative_titles"][-1] == "AI capex boom draws chip investors"
 
 
 def test_local_events_payload_includes_narrative_signals(monkeypatch):

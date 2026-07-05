@@ -385,9 +385,9 @@ function styleLabel(style: string | undefined) {
 
       <p v-if="loading" class="muted">正在读取最新日报...</p>
       <p v-else-if="error" class="country-compare-error">{{ error }}</p>
-      <p v-if="cognitionMarkError" class="country-compare-error">{{ cognitionMarkError }}</p>
+      <p v-if="cognitionMarkError" class="country-compare-error cognition-mark-error">{{ cognitionMarkError }}</p>
 
-      <template v-else-if="hasReport">
+      <template v-if="!loading && !error && hasReport">
         <div v-if="report?.run_id" class="discovery-archive-bar">
           <p class="discovery-meta">
             报告时间：{{ fmtRunId(report.run_id) }}

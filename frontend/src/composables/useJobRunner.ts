@@ -239,7 +239,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
 
   async function runEventSearch() {
     const term = eventSearch.value.trim()
-    if (!term) return
+    if (!term || searching.value) return
     searching.value = true
     error.value = ''
     searchMessage.value = ''

@@ -165,7 +165,7 @@ def _refresh_due_news(now: datetime) -> tuple[int, int, list[str]]:
                 continue
             try:
                 topic_ops.collect_topic(session, topic, gnews=True, gdelt_on=False,
-                                        use_curated_feeds=True)
+                                        use_curated_feeds=True, min_rel=0.2)
                 topic_ops.analyze_topic(session, topic, persist=True)
                 refreshed += 1
             except Exception as exc:  # 单话题失败隔离, 继续下一个, 但记录原因(失败可见)
