@@ -549,6 +549,19 @@ function emotionClass(score: number) {
                 </button>
               </div>
             </div>
+            <div v-else class="related-threads event-detail-drilldown">
+              <div class="thread-row">
+                <span class="thread-label">围绕此事件</span>
+                <button
+                  type="button"
+                  class="thread-chip thread-drill"
+                  :disabled="searching"
+                  @click="searchRelated(event.title_zh, 'subtopic')"
+                >
+                  {{ event.title_zh }}
+                </button>
+              </div>
+            </div>
             <section class="country-compare-panel">
               <div class="evidence-header">
                 <div>

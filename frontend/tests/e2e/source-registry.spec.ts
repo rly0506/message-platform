@@ -64,11 +64,29 @@ const failedSource = {
   article_count: 0,
 }
 
+const limitedSource = {
+  ...source,
+  id: 6,
+  name: 'WSJ World News',
+  url: 'https://example.com/wsj.xml',
+  country: 'United States',
+  quality_tier: 'mainstream',
+  enabled: false,
+  last_status: 'never',
+  last_error: '',
+  last_fetched_at: null,
+  article_count: 0,
+  coverage: 'summary_only',
+  access: 'paywalled',
+  last_tested: '2026-07-04',
+  coverage_reason: 'RSS 只提供短摘要，全文需要订阅，当前不计入完整报道覆盖。',
+}
+
 async function mockApi(page: Page) {
   let patchedSource: any = null
   let createdSourcePayload: any = null
   let importedSourcePayload: any = null
-  let sourceRows = [source, failedSource]
+  let sourceRows = [source, failedSource, limitedSource]
   await page.route('**/api/projects', async (route) => {
     await route.fulfill({ json: [project] })
   })
@@ -201,8 +219,9 @@ test('summarizes source coverage, freshness, and failed sources', async ({ page 
   await page.getByRole('button', { name: '管理项目' }).click()
 
   const summary = page.locator('.source-manager').locator('.source-status-summary')
-  await expect(summary.getByText('共 2 个源')).toBeVisible()
+  await expect(summary.getByText('共 3 个源')).toBeVisible()
   await expect(summary.getByText('启用 1 个')).toBeVisible()
+  await expect(summary.getByText('受限 1 个')).toBeVisible()
   await expect(summary.getByText('失败 1 个')).toBeVisible()
   await expect(summary.getByText(/最近成功.*2026\/07\/03 08:00/)).toBeVisible()
   await expect(summary.getByText('Bellingcat Monitor：HTTP 403 blocked')).toBeVisible()
@@ -216,8 +235,24 @@ test('shows source type and quality-tier coverage mix', async ({ page }) => {
 
   const mix = page.locator('.source-coverage-mix')
   await expect(mix.getByText('来源构成')).toBeVisible()
-  await expect(mix.getByText('层级：wire 1、professional 1')).toBeVisible()
-  await expect(mix.getByText('类型：rss 2')).toBeVisible()
+  await expect(mix.getByText('层级：wire 1、professional 1、mainstream 1')).toBeVisible()
+  await expect(mix.getByText('类型：rss 3')).toBeVisible()
+})
+
+test('shows classified source coverage limits without counting them as fresh feeds', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '管理项目' }).click()
+
+  const panel = page.locator('.source-manager')
+  const limitedRow = panel.locator('.source-table article').filter({ hasText: 'WSJ World News' })
+  await expect(limitedRow.locator('strong').getByText('WSJ World News', { exact: true })).toBeVisible()
+  await expect(limitedRow.getByText('摘要源')).toBeVisible()
+  await expect(limitedRow.getByText('付费墙')).toBeVisible()
+  await expect(limitedRow.getByText('实测 2026/07/04')).toBeVisible()
+  await expect(limitedRow.getByText('RSS 只提供短摘要，全文需要订阅，当前不计入完整报道覆盖。')).toBeVisible()
+  await expect(panel.locator('.source-status-summary').getByText('受限 1 个')).toBeVisible()
 })
 
 test('explains the source-ingestion path for feeds, newsletters, alerts and video leads', async ({ page }) => {

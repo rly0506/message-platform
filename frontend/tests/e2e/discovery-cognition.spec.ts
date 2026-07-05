@@ -277,6 +277,7 @@ test('shows seed summary, report connection and suggested path in boundary cards
   await expect(item).toContainText('Older report seed')
   await expect(item).toContainText('深入理由')
   await expect(item).toContainText('Energy is outside the current cognition boundary')
+  await expect(item).toContainText('为什么现在重要')
   await expect(item).toContainText('建议路径')
   await expect(item).toContainText('送进事件分析台')
 })

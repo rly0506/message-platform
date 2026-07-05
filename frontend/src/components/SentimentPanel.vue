@@ -187,6 +187,7 @@ function timelineConfidence(item: SentimentTimelineItem) {
               <h3>{{ item.dominant_frame || '未识别叙事框架' }}</h3>
               <p>{{ item.sentiment_label || 'unknown' }}</p>
               <div v-if="item.representative_posts?.length" class="sentiment-timeline-samples">
+                <b>代表样本</b>
                 <a
                   v-for="post in item.representative_posts.slice(0, 3)"
                   :key="`${post.platform}-${post.id}-${post.url}`"

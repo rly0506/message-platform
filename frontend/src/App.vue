@@ -163,6 +163,7 @@ const staleTopicDays = 7
 const sourceManagerStats = computed(() => {
   const enabled = sources.value.filter((source) => source.enabled).length
   const failedSources = sources.value.filter((source) => source.last_status === 'failed')
+  const limitedSources = sources.value.filter((source) => isLimitedSource(source))
   const latestSuccess = sources.value
     .filter((source) => source.last_status === 'ok' && source.last_fetched_at)
     .sort((left, right) => {
@@ -175,6 +176,7 @@ const sourceManagerStats = computed(() => {
     total: sources.value.length,
     enabled,
     failed: failedSources.length,
+    limited: limitedSources.length,
     latestSuccessAt: latestSuccess?.last_fetched_at || null,
     failedNotes: failedSources
       .slice(0, 3)
@@ -741,6 +743,35 @@ function coverageText(event: LocalEvent) {
   return event.coverage_label || `${event.source_count} 个来源`
 }
 
+function isLimitedSource(source: SourceRegistry) {
+  return !source.enabled && Boolean(source.coverage || source.access || source.coverage_reason)
+}
+
+function sourceCoverageLabel(value?: string) {
+  const labels: Record<string, string> = {
+    fresh_rss: '新鲜 RSS',
+    summary_only: '摘要源',
+    zombie: '已失活',
+    proxy_only: '代理限定',
+    paywalled: '付费墙',
+    api_license: '授权/API',
+    anti_bot: '反爬限制',
+    scrapling: '需抓取器',
+  }
+  return value ? labels[value] || value : ''
+}
+
+function sourceAccessLabel(value?: string) {
+  const labels: Record<string, string> = {
+    public: '公开访问',
+    paywalled: '付费墙',
+    api_license: '授权/API',
+    anti_bot: '反爬限制',
+    proxy_only: '代理限定',
+  }
+  return value ? labels[value] || value : ''
+}
+
 function titleFor(article: Article) {
   return article.title_zh || article.title || '未命名报道'
 }
@@ -1049,6 +1080,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
         <div v-if="sources.length" class="source-status-summary" aria-label="情报源状态摘要">
           <span>共 {{ sourceManagerStats.total }} 个源</span>
           <span>启用 {{ sourceManagerStats.enabled }} 个</span>
+          <span v-if="sourceManagerStats.limited" class="warning">受限 {{ sourceManagerStats.limited }} 个</span>
           <span :class="{ warning: sourceManagerStats.failed > 0 }">失败 {{ sourceManagerStats.failed }} 个</span>
           <span>最近成功 {{ fmtDate(sourceManagerStats.latestSuccessAt, true) }}</span>
           <small v-for="note in sourceManagerStats.failedNotes" :key="note">{{ note }}</small>
@@ -1134,6 +1166,16 @@ function countryCoverageNote(country: CountryCompareCountry) {
               {{ source.enabled ? '暂停' : '恢复' }}
             </button>
             <small v-if="source.last_error">{{ source.last_error }}</small>
+            <div
+              v-if="source.coverage || source.access || source.last_tested || source.coverage_reason || source.state_media"
+              class="source-limit-details"
+            >
+              <span v-if="source.coverage">{{ sourceCoverageLabel(source.coverage) }}</span>
+              <span v-if="source.access">{{ sourceAccessLabel(source.access) }}</span>
+              <span v-if="source.last_tested">实测 {{ fmtDate(source.last_tested) }}</span>
+              <span v-if="source.state_media">国家媒体/官方叙事样本</span>
+              <small v-if="source.coverage_reason">{{ source.coverage_reason }}</small>
+            </div>
           </article>
           <p v-if="!sourceManagerLoading && !sources.length" class="source-empty">暂无情报源。</p>
         </div>

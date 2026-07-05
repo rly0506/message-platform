@@ -467,7 +467,7 @@ function styleLabel(style: string | undefined) {
                       <dd>{{ seedDeepReason(item) }}</dd>
                     </div>
                     <div>
-                      <dt>推荐原因</dt>
+                      <dt>为什么现在重要</dt>
                       <dd>{{ recommendationText(item) }}</dd>
                     </div>
                     <div>

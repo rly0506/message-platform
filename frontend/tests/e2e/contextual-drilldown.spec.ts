@@ -185,7 +185,6 @@ test('keeps parent topic context when drilling into a suggested subtopic', async
 
   await page.locator('.event-input').fill('俄乌战争')
   await page.getByRole('button', { name: '搜集并生成时间轴' }).click()
-  await expect(page.getByRole('button', { name: '前线态势' })).toBeVisible()
   await expect(page.locator('.summary-band').getByRole('button', { name: '前线态势' })).toBeVisible()
 
   await page.locator('.summary-band').getByRole('button', { name: '前线态势' }).click()
@@ -213,5 +212,53 @@ test('shows contextual drilldown inside the selected event detail', async ({ pag
   await expect.poll(() => searchPayloads.map((payload) => payload.query)).toEqual([
     '俄乌战争',
     '俄乌战争 前线态势',
+  ])
+})
+
+test('offers an event-title drilldown when no suggested subtopics exist', async ({ page }) => {
+  const searchPayloads = await mockApi(page)
+  const eventWithoutParentContext = {
+    ...localEvents,
+    events: [
+      {
+        ...localEvents.events[0],
+        title_zh: '前线态势更新',
+      },
+    ],
+  }
+  await page.route('**/api/topics/501/local-events', async (route) => {
+    await route.fulfill({ json: eventWithoutParentContext })
+  })
+  await page.route('**/api/search/jobs/*', async (route) => {
+    const id = route.request().url().split('/').pop() || ''
+    const index = Number(id.replace('search-', '')) - 1
+    const query = searchPayloads[index]?.query || ''
+    await route.fulfill({
+      json: {
+        id,
+        query,
+        status: 'done',
+        steps: [],
+        created_at: '2026-07-03T09:00:00',
+        updated_at: '2026-07-03T09:00:00',
+        result: { ...searchResult(query, []), ...eventWithoutParentContext },
+        error: '',
+      },
+    })
+  })
+  await page.goto('/')
+
+  await page.locator('.event-input').fill('俄乌战争')
+  await page.getByRole('button', { name: '搜集并生成时间轴' }).click()
+
+  await page.locator('.timeline-node').filter({ hasText: '前线态势更新' }).click()
+
+  const detail = page.locator('.timeline-item').filter({ hasText: '前线态势更新' }).locator('.event-detail-inline')
+  await expect(detail.getByText('围绕此事件')).toBeVisible()
+  await detail.getByRole('button', { name: '前线态势更新' }).click()
+
+  await expect.poll(() => searchPayloads.map((payload) => payload.query)).toEqual([
+    '俄乌战争',
+    '俄乌战争 前线态势更新',
   ])
 })

@@ -91,6 +91,19 @@ const academicSignalSummary = computed(() => {
 const literatureNetwork = computed(() => props.academicLayer?.literature_network || { nodes: [], edges: [] })
 const literatureNetworkNodes = computed(() => literatureNetwork.value.nodes || [])
 const literatureNetworkEdges = computed(() => literatureNetwork.value.edges || [])
+const academicSourceSummary = computed(() => {
+  const labels = new Map<string, string>()
+  for (const paper of props.academicPapers) {
+    for (const source of paper.sources || []) {
+      labels.set(source.toLowerCase(), academicSourceLabel(source))
+    }
+    for (const link of paper.source_links || []) {
+      labels.set(link.source.toLowerCase(), academicSourceLabel(link.source))
+    }
+    if (paper.openalex_id || paper.openalex_url) labels.set('openalex', 'OpenAlex')
+  }
+  return [...labels.values()]
+})
 
 function paperDoiUrl(paper: AcademicPaper) {
   return paper.doi || ''
@@ -98,6 +111,42 @@ function paperDoiUrl(paper: AcademicPaper) {
 
 function paperOpenAlexUrl(paper: AcademicPaper) {
   return paper.openalex_url || paper.openalex_id
+}
+
+function academicSourceLabel(source: string) {
+  const normalized = source.trim().toLowerCase()
+  const labels: Record<string, string> = {
+    openalex: 'OpenAlex',
+    crossref: 'Crossref',
+    semantic_scholar: 'Semantic Scholar',
+    semanticscholar: 'Semantic Scholar',
+    arxiv: 'arXiv',
+  }
+  return labels[normalized] || source
+}
+
+function paperSourceLabels(paper: AcademicPaper) {
+  const labels = new Map<string, string>()
+  for (const source of paper.sources || []) {
+    labels.set(source.toLowerCase(), academicSourceLabel(source))
+  }
+  for (const link of paper.source_links || []) {
+    labels.set(link.source.toLowerCase(), academicSourceLabel(link.source))
+  }
+  if (!labels.size && (paper.openalex_id || paper.openalex_url)) labels.set('openalex', 'OpenAlex')
+  return [...labels.values()]
+}
+
+function paperSourceCount(paper: AcademicPaper) {
+  return paper.source_count || paperSourceLabels(paper).length
+}
+
+function paperSourceLinks(paper: AcademicPaper) {
+  const links = [...(paper.source_links || [])]
+  if (paperOpenAlexUrl(paper) && !links.some((link) => link.source.toLowerCase() === 'openalex')) {
+    links.unshift({ source: 'openalex', url: paperOpenAlexUrl(paper) })
+  }
+  return links.filter((link) => link.url)
 }
 </script>
 
@@ -127,7 +176,7 @@ function paperOpenAlexUrl(paper: AcademicPaper) {
 
       <template v-else>
         <div class="academic-source-scope" aria-label="学界样本范围">
-          <strong>当前学界样本：OpenAlex</strong>
+          <strong>当前学界样本：{{ academicSourceSummary.length ? academicSourceSummary.join(' + ') : 'OpenAlex' }}</strong>
           <span>综述引用必须保留作者、年份、期刊/会议、DOI 或来源链接。</span>
           <span>文献网络只显示样本内部引用，不代表完整学术谱系。</span>
         </div>
@@ -251,6 +300,8 @@ function paperOpenAlexUrl(paper: AcademicPaper) {
                 </span>
                 <b>{{ paper.year || '未知年份' }}</b>
                 <b>被引 {{ paper.cited_by_count }}</b>
+                <b>来源 {{ paperSourceCount(paper) || 1 }}</b>
+                <span>{{ paperSourceLabels(paper).join(' + ') || 'OpenAlex' }}</span>
                 <span>{{ academicVenue(paper) }}</span>
                 <span v-for="signal in academicSignals(paper)" :key="signal" class="academic-signal-badge">
                   {{ signal }}
@@ -262,7 +313,15 @@ function paperOpenAlexUrl(paper: AcademicPaper) {
               <p>{{ paper.citation || `${academicAuthors(paper)} · ${academicVenue(paper)}` }}</p>
               <div class="academic-paper-links">
                 <a v-if="paperDoiUrl(paper)" :href="paperDoiUrl(paper)" target="_blank" rel="noreferrer">DOI</a>
-                <a v-if="paperOpenAlexUrl(paper)" :href="paperOpenAlexUrl(paper)" target="_blank" rel="noreferrer">OpenAlex</a>
+                <a
+                  v-for="link in paperSourceLinks(paper)"
+                  :key="`${paper.openalex_id}-${link.source}-${link.url}`"
+                  :href="link.url"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {{ academicSourceLabel(link.source) }}
+                </a>
               </div>
             </article>
           </div>

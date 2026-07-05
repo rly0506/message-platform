@@ -43,6 +43,11 @@ export type SourceRegistry = {
   last_fetched_at: string | null
   article_count: number
   notes: string
+  coverage?: string
+  access?: string
+  coverage_reason?: string
+  last_tested?: string | null
+  state_media?: boolean
   created_at: string | null
   updated_at: string | null
 }
@@ -127,6 +132,9 @@ export type AcademicPaper = {
   concepts?: AcademicPaperConcept[]
   doi?: string
   openalex_url?: string
+  sources?: string[]
+  source_count?: number
+  source_links?: { source: string; url: string }[]
   url: string
 }
 

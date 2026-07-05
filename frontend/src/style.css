@@ -435,6 +435,31 @@ code {
   color: #6b7c86;
 }
 
+.source-limit-details {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: #53636e;
+  font-size: 12px;
+}
+
+.source-limit-details span,
+.source-limit-details small {
+  padding: 4px 7px;
+  border: 1px solid #f0dbc9;
+  border-radius: 6px;
+  background: #fff8f1;
+  color: #7b4d24;
+  font-weight: 700;
+}
+
+.source-limit-details small {
+  flex-basis: 100%;
+  line-height: 1.45;
+}
+
 .source-status {
   width: fit-content;
   padding: 3px 7px;

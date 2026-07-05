@@ -565,7 +565,7 @@ export function useJobRunner(options: UseJobRunnerOptions) {
 
   function contextualSubtopicQuery(term: string) {
     const subtopic = term.trim()
-    const parent = selectedTopic.value?.name?.trim() || ''
+    const parent = selectedTopic.value?.name?.trim() || terminalJob.value?.query?.trim() || eventSearch.value.trim()
     if (!parent || subtopic.includes(parent) || parent.includes(subtopic)) return subtopic
     return `${parent} ${subtopic}`
   }

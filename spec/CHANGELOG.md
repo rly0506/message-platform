@@ -2,6 +2,264 @@
 
 ## 2026-07-04
 
+### 2026-07-05 Claude Final Review Acceptance
+
+- Recorded Claude's final review from `.agent-bridge/TO_CODEX.md`:
+  - #3 accepted as `V1 Done with known limitation` for the first classified fresh-source batch;
+  - #10 accepted as `Done` for OpenAlex + Crossref V1 academic source breadth;
+  - #11 accepted as `V1 Done with known limitation` for the sample-internal readable literature network;
+  - #13 accepted as `V1 Done with known limitation` for source-ingestion leads without video transcription.
+- Updated the acceptance matrix, remaining-decisions packet, current-state reset, and human-review packet so they no longer describe #3/#10/#11/#13 as pending Claude review.
+- Kept the final completion gate open: backend pytest, frontend build/e2e, `git diff --check`, secret/local-file status, and GitNexus `detect-changes` must be rerun after these status updates before any completion claim.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 31.31s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 565ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.5m)`.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully at current commit `0a9a97b`; FTS unavailable warning only.
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `0a9a97b`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `19 files`, `41 symbols`, `0` affected processes.
+
+### 2026-07-05 #3 Source Expansion State Alignment
+
+- Verified the current `backend/config/feeds.json` source-expansion state:
+  - 25 curated feeds total;
+  - 8 feeds classified as `coverage=fresh_rss` and `access=public`: UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, and WTO News;
+  - 5 official sources in the fresh batch: UN News, The White House, Federal Reserve, European Central Bank, and WTO News.
+- Updated the acceptance matrix, current-state reset, remaining-decisions packet, and bridge board so #3 no longer reads as "classified expansion unimplemented".
+- Kept the sprint open: #3 still needs Claude/human V1 acceptance because WSJ/AFP/Xinhua/paywalled-wire/API-only/multilingual/G20 coverage is not proven.
+
+### Verification
+
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/feed_registry.py" --direction upstream --include-tests` -> risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py -q` -> `11 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_topic_ops.py tests/test_api_helpers.py -q` -> `13 passed, 4 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 36.44s`.
+
+### 2026-07-05 Full Pre-Final Gate Refresh
+
+- Reran the backend, frontend, and repo hygiene checks after the #3 source-expansion state alignment.
+- Backend pytest, frontend build, and full frontend e2e are green.
+- Added `spec/14-point-human-review-2026-07-05.md` as the short human final-review packet for #3/#10/#11/#13 decisions, GitNexus risk, and commit strategy.
+- `git diff --check` remains clean except for existing LF/CRLF warnings.
+- Secret/database status check remains clean: `backend/.env` and `backend/dossier.db` are not listed; only local `.agents/` is untracked.
+- GitNexus `detect-changes` reports `critical` because this broad integration tree touches central DB/source-registry symbols that fan out into many job flows. Treat this as a required review warning, not as a reason to claim completion.
+- The sprint remains open for #3 V1 source-expansion acceptance, Claude #10/#11 review, #13 acceptance, human final review, and final commit decision.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 24.34s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 451ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.6m)`.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `27 files`, `101 symbols`, `54` affected processes.
+
+### Academic Crossref Backend Second Source
+
+- Added and verified the #10 backend second-source academic path:
+  - `backend/app/collectors/crossref.py` collects Crossref works via `query.bibliographic`;
+  - `backend/app/pipeline/academic.py` merges OpenAlex + Crossref by normalized DOI, with title/first-author/year fallback;
+  - paper payloads preserve `sources`, `source_count`, and `source_links`;
+  - Crossref collector failures fail soft so OpenAlex-only results still persist.
+- Hardened the Crossref collector:
+  - encoded DOI path slashes in Crossref work URLs;
+  - removed the placeholder `mailto:research@example.com` from the User-Agent;
+  - added collector-level tests for normalization, request params, User-Agent, 429 retry, and rows capping.
+- This means the academic backend is no longer OpenAlex-only at V1 source-breadth level. The sprint still requires Claude review of Crossref merge semantics and academic-summary citation discipline before #10/#11 can final-green.
+- Updated the academic-summary prompt and `sort_strategy` so they describe the sample as OpenAlex + Crossref. They no longer tell the LLM or UI that the academic sample is OpenAlex-only or OpenAlex top-N only.
+
+### Verification
+
+- GitNexus impact:
+  - `crossref_work_url` -> risk `LOW`;
+  - `File:backend/app/collectors/crossref.py` -> risk `LOW`;
+  - `search_works` was ambiguous across OpenAlex/Crossref, but both candidates reported max risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_crossref_collector.py -q` -> red first for unencoded DOI path and placeholder User-Agent email, then `4 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_run_academic_analysis_keeps_openalex_when_crossref_fails -q` -> `1 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_synthesize_academic_consensus_describes_multi_source_sample -q` -> red first for the stale OpenAlex-only prompt, then `1 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_run_academic_analysis_uses_crossref_when_openalex_has_no_results -q` -> red first for the stale OpenAlex-only `sort_strategy`, then `1 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_crossref_collector.py tests/test_openalex_collector.py -q` -> `8 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py -q` -> `16 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 29.11s`.
+
+### Acceptance Ledger Status Alignment
+
+- Updated the 14-point acceptance ledger and current-state reset note so they no longer list outdated Claude-review blockers for #2 and #6/#7/#8:
+  - #2 is now recorded as waiting for human final review and the final sprint gate, after Claude's `ready for human final review = YES` reply.
+  - #6/#7/#8 are now recorded as Claude semantic-review PASS, with V1 limitation wording preserved for human final review.
+- Kept #3 and #10 open: classified mainstream-source expansion and the second academic source remain Claude-owned implementation work before the sprint can close.
+
+### Disabled Source Collection Boundary
+
+- Fixed a #3 source-registry boundary: if the registry has rows but all of them are disabled/limited, collection no longer falls back to the raw curated `feeds.json` list.
+- The curated-feed fallback is now only a bootstrap path when the registry is empty.
+- This keeps paywalled/stale/API-only/limited sources visible in the Source Manager without silently collecting them as if they were fresh enabled feeds.
+- This does not implement the actual mainstream source expansion; it only protects the visible-but-not-collected invariant that Claude's source classification work needs.
+
+### Verification
+
+- GitNexus impact:
+  - `collect_topic` -> risk `LOW`.
+  - `File:backend/app/topic_ops.py` -> risk `LOW`.
+  - `File:backend/app/feed_registry.py` -> risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py::test_collect_topic_does_not_fallback_to_curated_feeds_when_registry_sources_are_disabled -q` -> red first because collection fell back to all curated feeds, then `1 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py -q` -> `11 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_topic_ops.py tests/test_api_helpers.py -q` -> `13 passed, 4 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `210 passed, 5 warnings in 18.98s`.
+
+### Source Registry Classified Metadata Persistence
+
+- Added backend persistence and API payload support for classified source metadata:
+  - `SourceRegistry.coverage`
+  - `SourceRegistry.access`
+  - `SourceRegistry.coverage_reason`
+  - `SourceRegistry.last_tested`
+  - `SourceRegistry.state_media`
+- Extended the lightweight SQLite migration and curated-feed seeding so future `feeds.json` entries can carry these fields.
+- Extended source create/import/update/list payloads so the frontend Source Manager can display limited/paywalled/stale/API-only/state-media status from real API data.
+- This closes the schema/payload gap for #3 but does not add the actual mainstream source batch or perform feed freshness testing; Claude still owns classified source expansion.
+
+### Verification
+
+- GitNexus impact:
+  - `SourceRegistry` / `File:backend/app/db.py` -> risk `CRITICAL` because the central DB model is imported broadly; change is additive fields plus migration.
+  - `source_payload` -> risk `LOW`.
+  - `File:backend/app/services/source_registry.py` -> risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py::test_sources_api_preserves_classified_coverage_metadata -q` -> red first for missing `coverage`, then `1 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py -q` -> `10 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_api_helpers.py tests/test_topic_ops.py tests/test_deep_analysis.py -q` -> `26 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `209 passed, 5 warnings in 41.60s`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `7 passed`.
+- `cd frontend; npm run build` -> passed.
+- `git diff --check -- backend/app/db.py backend/app/services/source_registry.py backend/tests/test_source_registry.py frontend/src/App.vue frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-registry.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Academic Multi-Source Provenance Display
+
+- Added frontend support for future OpenAlex + Crossref academic provenance without touching the then-unfinished backend academic collector work:
+  - optional `sources`, `source_count`, and `source_links` fields on `AcademicPaper`;
+  - Academic panel sample scope now derives and displays sources from the current paper sample, e.g. `OpenAlex + Crossref`;
+  - paper cards show `来源 N`, source labels, and source links such as Crossref.
+- At the time, this prepared #10/#11 UI while keeping the source limitation explicit. That backend limitation is superseded by the later "Academic Crossref Backend Second Source" entry above.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/AcademicPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`, direct import dependents only; fields are optional and backwards-compatible.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/academic-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop academic-panel.spec.ts -g "source provenance"` -> red first for fixed `当前学界样本：OpenAlex`, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `3 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts academic-panel.spec.ts` -> `10 passed`.
+- `cd frontend; npm run build` -> passed.
+- `git diff --check -- frontend/src/components/AcademicPanel.vue frontend/src/types/dossier.ts frontend/tests/e2e/academic-panel.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Source Manager Classified Coverage Display
+
+- Added frontend support for classified source-coverage metadata without touching Claude-owned backend source expansion:
+  - optional `coverage`, `access`, `last_tested`, `coverage_reason`, and `state_media` fields on `SourceRegistry`;
+  - source manager summary now counts limited sources separately from enabled and failed sources;
+  - each source row can show coverage/access labels, tested date, state-media warning, and a human-readable limitation reason.
+- This prepares the UI for #3 classified mainstream-source expansion so WSJ/AFP/Xinhua-style limited sources can remain visible instead of silently disappearing or being misrepresented as fresh full-coverage feeds.
+- The backend still needs Claude's actual source expansion/classification; this slice only proves the frontend can present those fields once the API returns them.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`, direct import dependents only; fields are optional and backwards-compatible.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/source-registry.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts -g "classified source coverage"` -> red first for missing `摘要源`, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `7 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts --workers=1` -> `15 passed`.
+- `cd frontend; npm run build` -> passed.
+- `git diff --check -- frontend/src/App.vue frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-registry.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Backend And GitNexus Baseline Refresh
+
+- Reran backend full pytest after the latest #2/#6-#12 coordination updates.
+- Reindexed GitNexus because the index was stale at `d028496` while the current commit is `5ed0022`.
+- The latest detect-changes result is now low risk with no affected processes.
+- Reran full `git diff --check` after reviewing Claude's #3/#10 plan; no whitespace errors were reported, only existing LF/CRLF warnings.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 52.41s`.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully at current commit `5ed0022`; FTS unavailable warning only.
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `13 files`, `13 symbols`, `0` affected processes.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+
+### #3/#10 Source-Layer Plan Review
+
+- Reviewed Claude's combined #3 mainstream-source expansion and #10 academic second-source plan.
+- Accepted the classified expansion direction and Crossref as the preferred lightweight second academic source.
+- Recommended a small schema refinement: keep `coverage` for freshness/content path, add `access` or at least `coverage_reason` for user-visible limitations.
+- Recommended that RT/TASS-style state-media sources may be included only with explicit state-media/stance warning and never as neutral authority ranking.
+
+### Codex-Owned Frontend Retest
+
+- Reran the high-risk Codex-owned frontend slice after reading the latest `TO_CODEX.md`.
+- The retest covers parent-context drilldown, selected-event fallback drilldown, stale refresh context, auto-refresh status/run UI, media stance trend, small-sample downgrade, event network semantics, selected-node inline detail, LLM-refresh reuse, sentiment timeline/OpenCLI diagnostics, and cognition cards.
+- This is frontend evidence only; it does not close Claude-owned #3 mainstream source expansion, #10 academic second source, or semantic/source review.
+
+### Verification
+
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `27 passed (50.8s)`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 428ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `84 passed (2.5m)`.
+
+### Cognition Card Importance Label
+
+- Renamed the boundary-card motivation label from `推荐原因` to `为什么现在重要`.
+- This keeps the existing recommendation logic but makes the card answer the user's stated question directly: why this seed is worth reading now.
+- The card still shows summary, report connection, deep-dive reason, suggested path, profile evidence, and analysis workflow.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/DiscoveryPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/discovery-cognition.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop discovery-cognition.spec.ts -g "seed summary"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop discovery-cognition.spec.ts` -> `6 passed`.
+- `cd frontend; npm run build` -> passed.
+
+### Sentiment Timeline Evidence Label
+
+- Added an explicit `代表样本` label before representative post links in the sentiment timeline.
+- This makes each platform/time/frame bucket easier to audit: the timeline now visibly ties platform, time, sample count, confidence, and representative posts together.
+- Kept the product boundary unchanged: this is still sample-level sentiment evidence, not whole-network public opinion.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/SentimentPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/sentiment-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop sentiment-panel.spec.ts -g "sentiment change timeline"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop sentiment-panel.spec.ts` -> `3 passed`.
+- `cd frontend; npm run build` -> passed.
+
+### Event-Detail Drilldown Fallback
+
+- Added an inline fallback drilldown in selected event details:
+  - when backend subtopic/analogue suggestions are absent, the event detail still shows `围绕此事件`;
+  - clicking the fallback searches with parent topic context, e.g. `俄乌战争 前线态势更新`, instead of a naked event phrase;
+  - existing suggested subtopic chips keep their current behavior.
+- This tightens #2/#9 without touching backend/source/academic files.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/MediaPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/composables/useJobRunner.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/contextual-drilldown.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts -g "event-title drilldown"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts` -> `3 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "selected event detail|event structure tree|local evidence edges"` -> `3 passed` after rerunning serially; an earlier parallel run failed from dev-server port refusal.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `15 passed`.
+- `cd frontend; npm run build` -> passed.
+
 ### Acceptance Ledger Status Cleanup
 
 - Cleaned stale #2 wording in the acceptance ledger and current-state handoff:
@@ -316,7 +574,7 @@ git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/current-state.md
   - academic paper cards expose authors/citation text, year, venue, DOI link, and OpenAlex link;
   - priority-reading signals remain neutral (`高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`);
   - literature network renders readable nodes and explicit `引用` edges instead of an unreadable citation-chip graph.
-- Kept the source limitation explicit: the academic collector is still OpenAlex-only until Claude adds a second source path or asks the human to accept that V1 limitation.
+- At the time, kept the source limitation explicit: the academic collector was still OpenAlex-only. That limitation is superseded by the later "Academic Crossref Backend Second Source" entry above.
 
 ### Verification
 

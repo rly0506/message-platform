@@ -199,6 +199,7 @@ test('renders sentiment change timeline as platform-frame samples', async ({ pag
   await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('supply anxiety')
   await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('anxious')
   await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('2 条样本')
+  await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('代表样本')
   await expect(timeline.locator('.sentiment-timeline-item').first()).toContainText('GPU shortage is back')
   await expect(timeline.locator('.sentiment-timeline-item').nth(1)).toContainText('小样本线索')
   await expect(timeline).toContainText('样本趋势，非事实时间线')

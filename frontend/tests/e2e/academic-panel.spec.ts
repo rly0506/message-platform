@@ -42,6 +42,12 @@ const academicLayer = {
       concepts: [{ name: 'Artificial intelligence', score: 0.9, level: 1 }],
       doi: 'https://doi.org/10.1000/foundation',
       openalex_url: 'https://openalex.org/W1',
+      source_links: [
+        { source: 'openalex', url: 'https://openalex.org/W1' },
+        { source: 'crossref', url: 'https://api.crossref.org/works/10.1000/foundation' },
+      ],
+      sources: ['openalex', 'crossref'],
+      source_count: 2,
       citation_key: 'W1',
       citation: 'A. Scholar (2018). Foundational compute scaling paper. Journal of AI Systems. https://doi.org/10.1000/foundation',
       url: 'https://example.com/foundation',
@@ -214,4 +220,20 @@ test('shows citation metadata and readable literature network', async ({ page })
   await expect(network).toContainText('引用')
   await expect(network).toContainText('Foundational compute scaling paper')
   await expect(page.locator('.academic-edge-list')).toHaveCount(0)
+})
+
+test('shows academic source provenance for multi-source papers', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
+
+  const scope = page.locator('.academic-source-scope')
+  await expect(scope).toContainText('当前学界样本：OpenAlex + Crossref')
+
+  const foundational = page.locator('.academic-paper-list article').filter({ hasText: 'Foundational compute scaling paper' })
+  await expect(foundational).toContainText('来源 2')
+  await expect(foundational).toContainText('OpenAlex + Crossref')
+  await expect(foundational.getByRole('link', { name: 'Crossref' })).toHaveAttribute(
+    'href',
+    'https://api.crossref.org/works/10.1000/foundation',
+  )
 })

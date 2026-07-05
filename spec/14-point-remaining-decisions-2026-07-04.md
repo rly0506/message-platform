@@ -10,52 +10,55 @@ To close the current integration tree without starting a new feature direction, 
 
 1. #2 freshness automation:
    - Human decision recorded: `B`
-   - Meaning: auto refresh news/frontier while the backend is running. The backend auto-refresh implementation and Codex frontend status UI/e2e are now present and verified; Claude still needs to explicitly confirm `#2 ready for human final review: yes/no`.
+   - Meaning: auto refresh news/frontier while the backend is running. The backend auto-refresh implementation and Codex frontend status UI/e2e are now present and verified; Claude has now explicitly confirmed `#2 ready for human final review: YES`.
 2. #3/#13 source ingestion scope:
    - Human decision recorded for #3: expand mainstream news sources, especially WSJ, The Guardian, AFP, Xinhua, and similar high-quality outlets.
-   - Meaning: source registry, source status explanation, and RSS/newsletter/Google Alerts import remain useful, but #3 cannot close as V1 limitation until Claude implements classified mainstream-source expansion and verifies it. #13 video/web/newsletter ingestion scope remains separate.
+   - Current working tree: the first classified fresh-source batch is now present: 25 curated feeds total, including 8 `fresh_rss` + `public` sources (UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, WTO News).
+   - Claude final review recorded on 2026-07-05: accept #3 as `V1 Done with known limitation` and #13 as `V1 Done with known limitation`.
+   - Meaning: #3/#13 are no longer waiting for product-scope review in this repair sprint. Known limitations remain explicit: WSJ/AFP/Xinhua/paywalled-wire/API-only/multilingual/G20 coverage and video transcript ingestion are future work.
 3. #6/#7/#8 semantic review:
-   - Recommended reply from Claude: `V1 acceptable`
+   - Claude reply recorded: `PASS`
    - Meaning: media/community trends are sample signals, and event network edges are local evidence links, not causal proof.
 4. #10/#11 academic source breadth:
-   - Choice needed: `implement second academic source now` or `accept OpenAlex-only V1 limitation`
-   - If the sprint must fully answer the user's OpenAlex concern, choose `implement second academic source now`; otherwise accept OpenAlex-only for this sprint and schedule Crossref/Semantic Scholar as the next backend slice.
+   - Human direction recorded: implement second academic source now.
+   - Current working tree: Crossref is now wired as the second academic source alongside OpenAlex, with DOI merge and provenance tests.
+   - Claude final review recorded on 2026-07-05: accept #10 as `Done` and #11 as `V1 Done with known limitation`.
+   - Meaning: #10/#11 are no longer blocked on academic-source review in this repair sprint. Formal journal ranking, Semantic Scholar, and full bibliometric maps remain future work.
 
-Do not mark the sprint complete until these decisions are recorded, any chosen implementation is verified, and the full gate is rerun.
+Do not mark the sprint complete until the full gate is rerun after the latest status/doc updates.
 
 ## Current Proven State
 
-Fresh full gate evidence after auto-refresh frontend wiring and GitNexus reindex is green:
+Fresh full pre-final gate evidence on 2026-07-05 is green:
 
-- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 39.31s`.
-- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 460ms).
-- `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 24.34s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 451ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.6m)`.
 - `git diff --check` -> pass, existing LF/CRLF warnings only.
 - `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
-- `node .gitnexus/run.cjs analyze` -> repository indexed successfully; FTS extension unavailable warning only.
-- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `d028496`.
-- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `medium`, `16 files`, `45 symbols`, `1` affected execution flow (`RunCrossSynthesis -> FetchCrossSynthesis`).
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `27 files`, `101 symbols`, `54` affected processes.
 
-The sprint is still open because several user-facing requirements need a scope decision or Claude-owned backend/source review.
+The sprint is still open because the final gate must be rerun after the latest status/doc updates.
 
 ## Final Status Projection
 
-If no further implementation is chosen, the current matrix can only close after the remaining decisions are explicitly accepted. This projection is not a completion claim.
+The remaining product-scope decisions have been explicitly accepted by Claude. This projection is still not a completion claim because the final gate has not been freshly rerun after the latest status/doc updates.
 
 | Item | Current finalizable status | What prevents final closure |
 |---|---|---|
 | #1 | `Done` | Nothing item-specific. |
-| #2 | `Done` for parent-context drilldown, stale/manual fallback, backend-running auto-refresh, and frontend status UI/e2e. | Claude must explicitly confirm no remaining backend blocker before human final review. |
-| #3 | Not final-green while mainstream source expansion is unimplemented. | Human requested broader mainstream sources; Claude needs classified source expansion and tests. |
+| #2 | `Done` for parent-context drilldown, stale/manual fallback, backend-running auto-refresh, and frontend status UI/e2e. | Final full gate remains. |
+| #3 | `V1 Done with known limitation`. | Final full gate remains; future source batches should not reopen this sprint. |
 | #4 | `Done` | Nothing item-specific. |
 | #5 | `Done` for Windows runner/diagnostics; external platform login/API may be `Blocked by external account/API`. | Real platform login/API failures remain environment-dependent. |
-| #6 | `V1 Done with known limitation` if accepted. | Claude semantic review for pseudo-trend risk. |
-| #7/#8 | `V1 Done with known limitation` if accepted. | Claude/human acceptance that this is a local evidence network, not a causal graph. |
+| #6 | `V1 Done with known limitation`. | Final full gate remains. |
+| #7/#8 | `V1 Done with known limitation`. | Final full gate remains. |
 | #9 | `Done` | Nothing item-specific. |
-| #10 | Not final-green as `Done` while OpenAlex-only. | Claude implements a second academic source, or human accepts OpenAlex-only V1 limitation. |
-| #11 | `V1 Done with known limitation`, tied to #10. | Source hygiene follows #10. |
+| #10 | `Done` for V1 source breadth. | Final full gate remains. |
+| #11 | `V1 Done with known limitation`. | Final full gate remains. |
 | #12 | `V1 Done with known limitation` | Nothing item-specific for this sprint. |
-| #13 | `V1 Done with known limitation` if accepted. | Claude/human must accept docs/import V1 or request ingestion entry implementation. |
+| #13 | `V1 Done with known limitation`. | Final full gate remains. |
 | #14 | `Done` | Nothing item-specific. |
 
 ## Codex Read-Only Evidence Audit
@@ -67,6 +70,7 @@ Codex reviewed the current source/academic implementation without changing code.
 Current implementation evidence:
 
 - `backend/config/feeds.json` includes wire/mainstream/professional/newsletter/research feeds.
+- Current tree has 25 curated feeds, including 8 `fresh_rss` + `public` feeds: UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, and WTO News.
 - `backend/app/feed_registry.py` validates curated feeds and exposes only enabled RSS registry rows for collection.
 - `backend/app/services/source_registry.py` supports list/create/import/update and records source metadata.
 - `backend/tests/test_source_registry.py` covers:
@@ -79,8 +83,8 @@ Current implementation evidence:
 
 Codex read-only conclusion:
 
-- The implemented #3 scope is no longer enough for final closure because the human explicitly requested broader mainstream source coverage after the earlier V1-limitation proposal.
-- Current `feeds.json` already includes some mainstream/professional sources, so the next work is not "add any source"; it is classified source expansion with honest coverage limits.
+- The implemented #3 scope is stronger than the earlier V1-limitation proposal because the current tree now includes a first classified fresh-source batch.
+- Claude accepted that first batch as enough for this repair sprint V1 on 2026-07-05.
 - Quick source audit from Codex on 2026-07-04:
   - WSJ World RSS `https://feeds.a.dj.com/rss/RSSWorldNews.xml` was reachable but showed `lastBuildDate` / item dates around 2025-01-27, so it must not be treated as freshness-reliable without further validation.
   - AFP configured RSS `https://www.afp.com/en/rss.xml` returned AFP.com site/agency items rather than a fresh AFP newswire stream; treat AFP news coverage as API/license or Google-News-proxy-limited unless a fresh public feed is found.
@@ -92,17 +96,19 @@ Codex read-only conclusion:
 
 Current implementation evidence:
 
-- `backend/app/pipeline/academic.py` calls `openalex.search_works(search_query, top_n=top_n)` directly in `run_academic_analysis`.
-- No second academic collector is wired into `run_academic_analysis`.
-- The synthesis prompt explicitly names OpenAlex top-N search and tells the LLM not to invent outside literature.
-- `backend/tests/test_academic_layer.py` covers metadata, citation formatting, DOI normalization, readable literature network payload, academic job API, CJK topic translation, and LLM timeout degradation.
-- `frontend/tests/e2e/academic-panel.spec.ts` covers authors, venue, DOI, OpenAlex link, priority-reading signals, and readable literature network.
+- `backend/app/pipeline/academic.py` now fetches OpenAlex + Crossref through `fetch_academic_papers`.
+- `backend/app/collectors/crossref.py` is wired as the second academic collector.
+- OpenAlex + Crossref results merge by normalized DOI, with title/first-author/year fallback.
+- Paper payloads preserve `sources`, `source_count`, and `source_links`.
+- The synthesis prompt tells the LLM not to invent outside literature.
+- `backend/tests/test_crossref_collector.py` covers Crossref normalization, request params, User-Agent, 429 retry, and rows capping.
+- `backend/tests/test_academic_layer.py` covers Crossref-only fallback, DOI merge, Crossref fail-soft behavior, metadata, citation formatting, DOI normalization, readable literature network payload, academic job API, CJK topic translation, and LLM timeout degradation.
+- `frontend/tests/e2e/academic-panel.spec.ts` covers authors, venue, DOI/OpenAlex links, OpenAlex + Crossref provenance display, priority-reading signals, and readable literature network.
 
 Codex read-only conclusion:
 
-- Academic metadata and review-discipline UI are V1-ready.
-- Academic source breadth is not final-green: the collector is still OpenAlex-only.
-- #10 needs either Claude implementation of a second source path, or a human decision to accept OpenAlex-only as `V1 Done with known limitation`.
+- Academic metadata, review-discipline UI, and V1 second-source breadth are now implemented.
+- Claude accepted the Crossref/OpenAlex merge semantics and academic-summary citation discipline on 2026-07-05.
 
 ### #11 Literature Network Evidence
 
@@ -115,7 +121,7 @@ Current implementation evidence:
 Codex read-only conclusion:
 
 - #11 UI readability is V1-ready.
-- Source hygiene depends on #10. If #10 is accepted as OpenAlex-only V1, #11 should inherit that limitation explicitly.
+- Source hygiene now includes OpenAlex + Crossref provenance, but the literature network remains a readable sample-internal reference graph rather than a full bibliometric map. Claude should confirm that this is an honest V1 boundary.
 
 ### #13 Source-Ingestion Lead Evidence
 
@@ -171,23 +177,28 @@ Current proof:
 - Source manager shows total/enabled/failed sources, latest successful fetch time, and failure reasons.
 - Evidence package/local pre-analysis tests exist.
 - Newsletter/RSS and Google Alerts import paths have frontend e2e coverage.
+- `backend/config/feeds.json` now has 25 curated feeds.
+- 8 feeds are classified as `fresh_rss` + `public`: UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, and WTO News.
+- Current backend verification after this source state: `tests/test_source_registry.py` -> `11 passed`; `tests/test_topic_ops.py tests/test_api_helpers.py` -> `13 passed`; full backend pytest -> `218 passed, 5 warnings in 36.44s`.
 
 Human decision:
 
 - Expand mainstream source coverage in this sprint.
 
-Recommended implementation:
+Recommended closure decision:
 
-- Use classified expansion instead of blind enablement:
+- Accept the first classified fresh-source batch as the repair sprint V1 if this scope is enough:
   - directly enable public RSS sources that are fresh and collector-compatible;
-  - add visible limited entries for important sources that are paywalled, API/license-only, stale-RSS, summary-only, or Google-News-proxy-only;
+  - keep visible limited entries for important sources that are paywalled, API/license-only, stale-RSS, summary-only, or Google-News-proxy-only;
   - keep disabled/limited sources out of collection while showing the user why they are not fully usable.
+- If this is not enough, add only one minimal next batch rather than starting a crawler or paywalled-source integration inside this repair sprint.
 
 Known limitation to state:
 
 - Full crawler, paywalled exclusives, AFP licensed wire access, and same-event G20 coverage are not guaranteed in this sprint.
 
 Required owner: Claude for backend source registry/feed implementation and tests; Codex for source-manager UI/e2e if coverage metadata changes.
+Current owner action after the first batch: Claude reviews whether to accept this as `V1 Done with known limitation`; Codex reruns final gate after review.
 
 ## Decision 3: #6 Media and Community Trend Semantics
 
@@ -273,31 +284,28 @@ Required owner if more semantic work is needed: Codex, after Claude/human specif
 
 Current proof:
 
-- Academic UI shows authors, year, venue, DOI/OpenAlex links, priority-reading signals, and readable literature network.
+- Academic UI shows authors, year, venue, DOI/OpenAlex/Crossref links, priority-reading signals, source provenance, and readable literature network.
 - Academic prompt asks for review discipline and source citation.
-- Backend tests pass.
+- Crossref is implemented as a second backend source and backend tests pass.
 
-Open problem:
+Remaining review problem:
 
-- Academic collector is still OpenAlex-only.
-- The user explicitly asked whether one academic source is too thin.
+- The user explicitly asked whether one academic source is too thin; the implementation now addresses that at V1 breadth level.
+- Claude still needs to review whether the Crossref merge and academic summary citation discipline are semantically acceptable.
 
 Options:
 
-- A. Add a second academic source in this sprint.
-  - Recommended source: Crossref or Semantic Scholar.
-  - Pros: satisfies the user's source-breadth concern directly.
-  - Cons: backend collector/merge/dedup work and new tests required.
-  - Required owner: Claude.
-- B. Ask the human to accept OpenAlex-only as V1 limitation.
-  - Pros: closes the sprint without expanding backend scope.
-  - Cons: does not fully satisfy the user's stated concern.
-  - Final status if accepted: `V1 Done with known limitation`.
+- A. Accept OpenAlex + Crossref as the V1 academic source-breadth answer after Claude review.
+  - Pros: directly answers the OpenAlex-only concern without adding another API dependency.
+  - Cons: not a formal journal-ranking or full bibliometric system.
+  - Final status if review and final gate pass: `Done` for #10 V1 source breadth.
+- B. Request a third academic source such as Semantic Scholar now.
+  - Pros: richer citation graph and metadata.
+  - Cons: adds rate-limit/API complexity and expands the sprint again.
 
 Recommended decision:
 
-- If this sprint must fully answer the user's "OpenAlex-only too thin" concern, choose A.
-- If the priority is to close the current broad integration tree, choose B and schedule the second source as the next backend slice.
+- Choose A for this repair sprint, then consider Semantic Scholar or journal-ranking as a later academic-quality iteration.
 
 ## Decision 6: #11 Literature Network Source Hygiene
 
@@ -309,11 +317,11 @@ Current proof:
 Open problem:
 
 - Network semantics are only as strong as the source data.
-- If #10 remains OpenAlex-only, #11 should inherit the same limitation.
+- Even with OpenAlex + Crossref provenance, the network is still sample-internal and not a full bibliometric map.
 
 Recommended decision:
 
-- Accept `V1 Done with known limitation` only after #10 is either implemented with a second source or explicitly accepted as OpenAlex-only V1.
+- Accept `V1 Done with known limitation` after Claude confirms the sample-internal boundary is honest with the Crossref-backed #10 data.
 
 Required owner:
 
@@ -348,26 +356,21 @@ Recommended decision:
 
 ## Recommended Closure Path
 
-For fastest safe closure of the current 47-file integration tree:
+For fastest safe closure after Claude's final review:
 
-1. Claude confirms #2 is ready for human final review, or names the exact remaining backend blocker.
-2. Claude implements #3 classified mainstream-source expansion.
-3. Claude marks #6/#7/#8 semantic review as acceptable or names exact copy changes.
-4. Human chooses #10:
-   - implement second academic source now, or
-   - accept OpenAlex-only V1 limitation.
-5. #11 follows the #10 decision.
-6. Human accepts #13 as `V1 Done with known limitation`, unless a new ingestion feature is explicitly approved.
-7. Rerun the full gate before any final completion claim or commit.
+1. Rerun the full final gate after the latest status/doc updates.
+2. Record the final gate result and GitNexus risk explanation in the acceptance matrix/current-state/changelog.
+3. Stage only the intended frontend/spec files for commit2; exclude `.agent-bridge/`, `.agents/`, `backend/.env`, `backend/dossier.db`, `AGENTS.md`, and `CLAUDE.md`.
+4. Commit and push only after the staged-file safety check is clean.
 
 ## Final Status Mapping After Decisions
 
 | Item | If recommended decision is accepted |
 |---|---|
-| #2 | `Done` after Claude confirms no remaining backend blocker and human final review accepts the line |
-| #3 | `Done` or `V1 Done with known limitation` only after classified mainstream-source expansion is implemented and limitations are visible |
+| #2 | `Done` |
+| #3 | `V1 Done with known limitation` |
 | #6 | `V1 Done with known limitation` |
 | #7/#8 | `V1 Done with known limitation` |
-| #10 | `Done` if second source is added; `V1 Done with known limitation` if OpenAlex-only is accepted |
-| #11 | `V1 Done with known limitation`, tied to #10 |
+| #10 | `Done` |
+| #11 | `V1 Done with known limitation` |
 | #13 | `V1 Done with known limitation` |
