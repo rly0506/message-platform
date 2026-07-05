@@ -17,6 +17,8 @@ REQUIRED_FIELDS = {"name", "url", "country", "lang", "tier"}
 # last_tested: 实测新鲜度日期, 判 zombie
 OPTIONAL_FIELDS = {"source_type", "enabled", "requires_login", "fulltext_support", "notes",
                    "coverage", "access", "coverage_reason", "last_tested", "state_media"}
+UNCOLLECTABLE_COVERAGE = {"zombie", "proxy_only"}
+UNCOLLECTABLE_ACCESS = {"paywalled", "api_license"}
 
 
 @lru_cache(maxsize=1)
@@ -63,7 +65,7 @@ def enabled_registry_feeds(session: Session) -> list[dict[str, Any]]:
         .where(SourceRegistry.source_type == "rss")
         .order_by(SourceRegistry.id)
     ).all()
-    return [source_feed_metadata(source) for source in rows]
+    return [source_feed_metadata(source) for source in rows if is_collectable_source(source)]
 
 
 def has_registry_sources(session: Session) -> bool:
@@ -82,3 +84,9 @@ def source_feed_metadata(source: Any) -> dict[str, Any]:
         "tier": source.quality_tier,
         "source_type": source.source_type,
     }
+
+
+def is_collectable_source(source: Any) -> bool:
+    coverage = str(getattr(source, "coverage", "") or "").strip()
+    access = str(getattr(source, "access", "") or "").strip()
+    return coverage not in UNCOLLECTABLE_COVERAGE and access not in UNCOLLECTABLE_ACCESS

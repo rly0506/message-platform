@@ -63,6 +63,45 @@ def test_curated_feeds_include_video_intelligence_sources():
     assert by_name["The Rundown AI"]["notes"]
 
 
+def test_curated_feeds_stage_0b_classifies_new_sources_honestly():
+    feeds = feed_registry.curated_feeds()
+    by_name = {feed["name"]: feed for feed in feeds}
+
+    fresh_public = [
+        "U.S. State Department Press Releases",
+        "European Commission Press Corner",
+        "France 24 Spanish",
+        "Folha Mundo",
+        "France 24 Arabic",
+        "Meduza",
+    ]
+    for name in fresh_public:
+        feed = by_name[name]
+        assert feed["coverage"] == "fresh_rss"
+        assert feed["access"] == "public"
+        assert feed.get("enabled", "true") != "false"
+        assert feed["last_tested"] == "2026-07-05"
+
+    for name in ["RT Russian", "TASS", "RIA Novosti"]:
+        feed = by_name[name]
+        assert feed["coverage"] == "fresh_rss"
+        assert feed["access"] == "public"
+        assert feed["state_media"] == "true"
+        assert "立场样本" in feed["coverage_reason"]
+        assert "非中立" in feed["coverage_reason"]
+
+    uncollectable = [
+        "OECD Newsroom RSS",
+        "World Bank News RSS",
+        "IMF News RSS",
+        "Reuters Public RSS",
+    ]
+    for name in uncollectable:
+        feed = by_name[name]
+        assert feed["enabled"] == "false"
+        assert feed.get("coverage") in {"zombie", "proxy_only"} or feed.get("access") in {"paywalled", "api_license"}
+
+
 def test_collect_topic_uses_enabled_registry_sources_and_skips_disabled(monkeypatch):
     init_db()
     SourceRegistry = source_model()
@@ -175,6 +214,74 @@ def test_collect_topic_does_not_fallback_to_curated_feeds_when_registry_sources_
     assert seen_urls == []
     assert stats["raw"] == 0
     assert stats["requests"] == []
+
+
+def test_collect_topic_skips_sources_marked_uncollectable_even_if_enabled(monkeypatch):
+    init_db()
+    SourceRegistry = source_model()
+
+    with Session(engine) as session:
+        clear_sources(session)
+        zombie = SourceRegistry(
+            name="Zombie Feed",
+            url="https://example.com/zombie.xml",
+            country="United States",
+            language="en",
+            source_type="rss",
+            quality_tier="mainstream",
+            enabled=True,
+            coverage="zombie",
+            access="public",
+            coverage_reason="Feed is retained for audit only.",
+        )
+        api_only = SourceRegistry(
+            name="Licensed API Feed",
+            url="https://example.com/api-only.xml",
+            country="United States",
+            language="en",
+            source_type="rss",
+            quality_tier="wire",
+            enabled=True,
+            coverage="summary_only",
+            access="api_license",
+            coverage_reason="Requires a licensed API before collection.",
+        )
+        good = SourceRegistry(
+            name="Fresh Public Feed",
+            url="https://example.com/fresh.xml",
+            country="United States",
+            language="en",
+            source_type="rss",
+            quality_tier="mainstream",
+            enabled=True,
+            coverage="fresh_rss",
+            access="public",
+        )
+        topic = Topic(name="Ukraine frontline", queries=["Ukraine frontline"])
+        session.add(zombie)
+        session.add(api_only)
+        session.add(good)
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+
+        seen_urls = []
+
+        def fake_collect_feed(url, metadata=None):
+            seen_urls.append(url)
+            return []
+
+        monkeypatch.setattr(topic_ops.rss, "collect_feed", fake_collect_feed)
+
+        topic_ops.collect_topic(
+            session,
+            topic,
+            gnews=False,
+            use_curated_feeds=True,
+            min_rel=0.2,
+        )
+
+    assert seen_urls == ["https://example.com/fresh.xml"]
 
 
 def test_collect_topic_updates_source_registry_status_and_failure(monkeypatch):
