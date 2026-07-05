@@ -114,10 +114,161 @@ def test_run_academic_analysis_fetches_persists_and_synthesizes(monkeypatch):
         assert result["edge_count"] == 1
         assert result["summary_md"].startswith("## 学界共识")
 
-        stored_papers = session.exec(select(Paper)).all()
+        stored_papers = session.exec(
+            select(Paper)
+            .join(TopicPaper, TopicPaper.paper_id == Paper.id)
+            .where(TopicPaper.topic_id == topic_id)
+        ).all()
         assert {paper.openalex_id for paper in stored_papers} == {"W1", "W2"}
         assert session.exec(select(PaperCitation)).one().citing_paper_id != session.exec(select(PaperCitation)).one().cited_paper_id
         assert len(session.exec(select(TopicPaper).where(TopicPaper.topic_id == topic_id)).all()) == 2
+
+
+def test_run_academic_analysis_uses_crossref_when_openalex_has_no_results(monkeypatch):
+    topic_id = _seed_topic(name="Academic Crossref Topic")
+    crossref_papers = [
+        {
+            "openalex_id": "crossref:10.1000/crossref-only",
+            "title": "Crossref-only sanctions paper",
+            "abstract": "",
+            "year": 2022,
+            "cited_by_count": 0,
+            "authors": ["C. Scholar"],
+            "venue": "Journal of Crossref Metadata",
+            "concepts": [],
+            "doi": "https://doi.org/10.1000/crossref-only",
+            "openalex_url": "",
+            "url": "https://doi.org/10.1000/crossref-only",
+            "referenced_works": [],
+            "sources": ["crossref"],
+            "source_count": 1,
+            "source_links": [
+                {"source": "crossref", "url": "https://api.crossref.org/works/10.1000/crossref-only"}
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(academic.openalex, "search_works", lambda query, top_n=30: [])
+    monkeypatch.setattr(academic.crossref, "search_works", lambda query, top_n=30: crossref_papers)
+    monkeypatch.setattr(academic, "synthesize_academic", lambda topic, papers, edges, schools_data: "summary")
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        result = academic.run_academic_analysis(session, topic, top_n=5)
+
+        assert result["paper_count"] == 1
+        assert result["papers"][0]["title"] == "Crossref-only sanctions paper"
+        assert result["papers"][0]["sources"] == ["crossref"]
+        assert result["papers"][0]["source_count"] == 1
+        assert result["papers"][0]["source_links"][0]["source"] == "crossref"
+        assert "OpenAlex + Crossref" in result["sort_strategy"]
+
+        stored = session.exec(select(Paper).where(Paper.openalex_id == "crossref:10.1000/crossref-only")).one()
+        payload = academic.academic_payload(session, topic)
+
+    assert stored.openalex_id == "crossref:10.1000/crossref-only"
+    assert payload["papers"][0]["sources"] == ["crossref"]
+    assert payload["papers"][0]["source_links"][0]["url"].endswith("/10.1000/crossref-only")
+
+
+def test_run_academic_analysis_merges_openalex_and_crossref_by_doi(monkeypatch):
+    topic_id = _seed_topic(name="Academic Merge Topic")
+    openalex_papers = [
+        {
+            "openalex_id": "https://openalex.org/W-merge",
+            "title": "OpenAlex sanctions paper",
+            "abstract": "OpenAlex abstract.",
+            "year": 2020,
+            "cited_by_count": 42,
+            "authors": ["A. Scholar"],
+            "venue": "",
+            "concepts": [{"name": "Sanctions"}],
+            "doi": "https://doi.org/10.1000/merge",
+            "openalex_url": "https://openalex.org/W-merge",
+            "url": "https://openalex.org/W-merge",
+            "referenced_works": [],
+            "sources": ["openalex"],
+            "source_count": 1,
+            "source_links": [{"source": "openalex", "url": "https://openalex.org/W-merge"}],
+        }
+    ]
+    crossref_papers = [
+        {
+            "openalex_id": "crossref:10.1000/merge",
+            "title": "Crossref title should not replace existing title",
+            "abstract": "",
+            "year": 2020,
+            "cited_by_count": 0,
+            "authors": ["A. Scholar"],
+            "venue": "Crossref Venue",
+            "concepts": [],
+            "doi": "https://doi.org/10.1000/merge",
+            "openalex_url": "",
+            "url": "https://doi.org/10.1000/merge",
+            "referenced_works": [],
+            "sources": ["crossref"],
+            "source_count": 1,
+            "source_links": [{"source": "crossref", "url": "https://api.crossref.org/works/10.1000/merge"}],
+        }
+    ]
+
+    monkeypatch.setattr(academic.openalex, "search_works", lambda query, top_n=30: openalex_papers)
+    monkeypatch.setattr(academic.crossref, "search_works", lambda query, top_n=30: crossref_papers)
+    monkeypatch.setattr(academic, "synthesize_academic", lambda topic, papers, edges, schools_data: "summary")
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        result = academic.run_academic_analysis(session, topic, top_n=5)
+        payload = academic.academic_payload(session, topic)
+
+    assert result["paper_count"] == 1
+    assert result["papers"][0]["openalex_id"] == "https://openalex.org/W-merge"
+    assert result["papers"][0]["venue"] == "Crossref Venue"
+    assert result["papers"][0]["sources"] == ["crossref", "openalex"]
+    assert payload["papers"][0]["source_count"] == 2
+    assert {link["source"] for link in payload["papers"][0]["source_links"]} == {"openalex", "crossref"}
+
+
+def test_run_academic_analysis_keeps_openalex_when_crossref_fails(monkeypatch):
+    topic_id = _seed_topic(name="Academic Crossref Failure Topic")
+    openalex_papers = [
+        {
+            "openalex_id": "https://openalex.org/W-openalex-only",
+            "title": "OpenAlex-only after Crossref failure",
+            "abstract": "OpenAlex abstract.",
+            "year": 2021,
+            "cited_by_count": 12,
+            "authors": ["O. Scholar"],
+            "venue": "OpenAlex Venue",
+            "concepts": [{"name": "Security studies"}],
+            "doi": "https://doi.org/10.1000/openalex-only",
+            "openalex_url": "https://openalex.org/W-openalex-only",
+            "url": "https://openalex.org/W-openalex-only",
+            "referenced_works": [],
+            "sources": ["openalex"],
+            "source_count": 1,
+            "source_links": [{"source": "openalex", "url": "https://openalex.org/W-openalex-only"}],
+        }
+    ]
+
+    monkeypatch.setattr(academic.openalex, "search_works", lambda query, top_n=30: openalex_papers)
+
+    def raise_crossref_error(query, top_n=30):
+        raise RuntimeError("Crossref temporarily unavailable")
+
+    monkeypatch.setattr(academic.crossref, "search_works", raise_crossref_error)
+    monkeypatch.setattr(academic, "synthesize_academic", lambda topic, papers, edges, schools_data: "summary")
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        result = academic.run_academic_analysis(session, topic, top_n=5)
+        payload = academic.academic_payload(session, topic)
+
+    assert result["paper_count"] == 1
+    assert result["papers"][0]["title"] == "OpenAlex-only after Crossref failure"
+    assert result["papers"][0]["sources"] == ["openalex"]
+    assert payload["papers"][0]["source_count"] == 1
+    assert payload["papers"][0]["source_links"][0]["source"] == "openalex"
 
 
 def test_run_academic_analysis_synthesize_timeout_degrades_and_still_persists(monkeypatch):
@@ -157,7 +308,11 @@ def test_run_academic_analysis_synthesize_timeout_degrades_and_still_persists(mo
         # 综述降级: 空摘要, 但流程没崩。
         assert result["summary_md"] == ""
         # persist 仍跑: 论文落库。
-        stored = session.exec(select(Paper)).all()
+        stored = session.exec(
+            select(Paper)
+            .join(TopicPaper, TopicPaper.paper_id == Paper.id)
+            .where(TopicPaper.topic_id == topic_id)
+        ).all()
         assert {p.openalex_id for p in stored} == {"W1", "W2"}
         # 步骤终态: synthesize=warning, persist=done, 没有卡在 running/pending。
         assert ("synthesize", "warning") in steps
@@ -298,6 +453,56 @@ def test_synthesize_academic_consensus_requires_cited_review_format(monkeypatch)
     assert "https://doi.org/10.123/example" in captured["prompt"]
     assert "引用每一条判断" in captured["prompt"]
     assert "不编造文献" in captured["system"]
+
+
+def test_synthesize_academic_consensus_describes_multi_source_sample(monkeypatch):
+    captured = {}
+    papers = [
+        {
+            "openalex_id": "https://openalex.org/W1",
+            "title": "OpenAlex paper",
+            "abstract": "Evidence from OpenAlex.",
+            "year": 2020,
+            "cited_by_count": 12,
+            "authors": ["A. Scholar"],
+            "venue": "Security Journal",
+            "doi": "https://doi.org/10.1000/openalex",
+            "openalex_url": "https://openalex.org/W1",
+            "sources": ["openalex"],
+            "source_links": [{"source": "openalex", "url": "https://openalex.org/W1"}],
+            "concepts": [{"name": "Sanctions"}],
+        },
+        {
+            "openalex_id": "crossref:10.1000/crossref",
+            "title": "Crossref paper",
+            "abstract": "Evidence from Crossref.",
+            "year": 2021,
+            "cited_by_count": 0,
+            "authors": ["C. Scholar"],
+            "venue": "Crossref Journal",
+            "doi": "https://doi.org/10.1000/crossref",
+            "openalex_url": "",
+            "sources": ["crossref"],
+            "source_links": [{"source": "crossref", "url": "https://api.crossref.org/works/10.1000%2Fcrossref"}],
+            "concepts": [],
+        },
+    ]
+    schools_data = academic.analyze_schools(papers, [])
+
+    def fake_chat(model, prompt, max_tokens, system):
+        captured["prompt"] = prompt
+        return "summary"
+
+    monkeypatch.setattr(academic.llm, "chat", fake_chat)
+
+    topic = Topic(name="Prompt Topic", description="", queries=["Prompt Topic"])
+    academic.synthesize_academic_consensus(topic, papers, [], schools_data)
+
+    assert "OpenAlex + Crossref" in captured["prompt"]
+    assert "样本来源" in captured["prompt"]
+    assert "只使用样本内部互引" in captured["prompt"]
+    assert "OpenAlex top-N" not in captured["prompt"]
+    assert "OpenAlex 学术论文样本" not in captured["prompt"]
 
 
 def test_academic_payload_exposes_citation_metadata_and_readable_literature_network():

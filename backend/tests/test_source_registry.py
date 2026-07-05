@@ -132,6 +132,51 @@ def test_collect_topic_uses_enabled_registry_sources_and_skips_disabled(monkeypa
     assert stats["requests"][0]["quality_tier"] == "wire"
 
 
+def test_collect_topic_does_not_fallback_to_curated_feeds_when_registry_sources_are_disabled(monkeypatch):
+    init_db()
+    SourceRegistry = source_model()
+
+    with Session(engine) as session:
+        clear_sources(session)
+        disabled = SourceRegistry(
+            name="Disabled Limited Feed",
+            url="https://example.com/disabled-limited.xml",
+            country="United States",
+            language="en",
+            source_type="rss",
+            quality_tier="mainstream",
+            enabled=False,
+            coverage="summary_only",
+            access="paywalled",
+            coverage_reason="Visible for source planning, not collected as a fresh feed.",
+        )
+        topic = Topic(name="Ukraine frontline", queries=["Ukraine frontline"])
+        session.add(disabled)
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+
+        seen_urls = []
+
+        def fake_collect_feed(url, metadata=None):
+            seen_urls.append(url)
+            return []
+
+        monkeypatch.setattr(topic_ops.rss, "collect_feed", fake_collect_feed)
+
+        stats = topic_ops.collect_topic(
+            session,
+            topic,
+            gnews=False,
+            use_curated_feeds=True,
+            min_rel=0.2,
+        )
+
+    assert seen_urls == []
+    assert stats["raw"] == 0
+    assert stats["requests"] == []
+
+
 def test_collect_topic_updates_source_registry_status_and_failure(monkeypatch):
     init_db()
     SourceRegistry = source_model()
@@ -255,6 +300,43 @@ def test_sources_api_creates_user_rss_source_and_rejects_duplicates():
 
     duplicate = client.post("/api/sources", json=payload)
     assert duplicate.status_code == 409
+
+
+def test_sources_api_preserves_classified_coverage_metadata():
+    init_db()
+    client = TestClient(api.app)
+    payload = {
+        "name": "WSJ World News",
+        "url": "https://example.com/wsj-world.xml",
+        "country": "United States",
+        "language": "en",
+        "source_type": "rss",
+        "quality_tier": "mainstream",
+        "enabled": False,
+        "coverage": "summary_only",
+        "access": "paywalled",
+        "last_tested": "2026-07-04",
+        "coverage_reason": "RSS only exposes summaries; full text requires subscription.",
+        "state_media": True,
+    }
+
+    response = client.post("/api/sources", json=payload)
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["coverage"] == "summary_only"
+    assert created["access"] == "paywalled"
+    assert created["last_tested"] == "2026-07-04"
+    assert created["coverage_reason"] == "RSS only exposes summaries; full text requires subscription."
+    assert created["state_media"] is True
+
+    listed = client.get("/api/sources").json()
+    row = next(item for item in listed if item["url"] == payload["url"])
+    assert row["coverage"] == "summary_only"
+    assert row["access"] == "paywalled"
+    assert row["last_tested"] == "2026-07-04"
+    assert row["coverage_reason"] == "RSS only exposes summaries; full text requires subscription."
+    assert row["state_media"] is True
 
 
 def test_sources_api_imports_bulk_feed_lines_with_duplicate_and_invalid_reports():

@@ -44,6 +44,11 @@ class SourceRegistry(SQLModel, table=True):
     last_fetched_at: Optional[datetime] = Field(default=None, index=True)
     article_count: int = 0
     notes: str = ""
+    coverage: str = ""
+    access: str = ""
+    coverage_reason: str = ""
+    last_tested: str = ""
+    state_media: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
@@ -107,6 +112,8 @@ class Paper(SQLModel, table=True):
     doi: str = ""
     openalex_url: str = ""
     url: str = ""
+    sources: list = Field(default_factory=list, sa_column=Column(JSON))
+    source_links: list = Field(default_factory=list, sa_column=Column(JSON))
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -253,6 +260,8 @@ def _migrate() -> None:
         "paper": [
             ("doi", "VARCHAR DEFAULT ''"),
             ("openalex_url", "VARCHAR DEFAULT ''"),
+            ("sources", "JSON DEFAULT '[]'"),
+            ("source_links", "JSON DEFAULT '[]'"),
         ],
         "topic": [
             ("project_id", "INTEGER"),
@@ -274,6 +283,11 @@ def _migrate() -> None:
             ("last_fetched_at", "DATETIME"),
             ("article_count", "INTEGER DEFAULT 0"),
             ("notes", "VARCHAR DEFAULT ''"),
+            ("coverage", "VARCHAR DEFAULT ''"),
+            ("access", "VARCHAR DEFAULT ''"),
+            ("coverage_reason", "VARCHAR DEFAULT ''"),
+            ("last_tested", "VARCHAR DEFAULT ''"),
+            ("state_media", "INTEGER DEFAULT 0"),
             ("created_at", "DATETIME"),
             ("updated_at", "DATETIME"),
         ],
@@ -335,11 +349,19 @@ def _seed_source_registry() -> None:
                     ("source_type", feed.get("source_type", "rss")),
                     ("quality_tier", feed["tier"]),
                     ("notes", feed.get("notes", "")),
+                    ("coverage", feed.get("coverage", "")),
+                    ("access", feed.get("access", "")),
+                    ("coverage_reason", feed.get("coverage_reason", "")),
+                    ("last_tested", feed.get("last_tested", "")),
                 ):
                     if not getattr(source, field, ""):
                         setattr(source, field, value)
                         source.updated_at = datetime.utcnow()
                         changed = True
+                if "state_media" in feed and not source.state_media:
+                    source.state_media = feed_bool(feed, "state_media")
+                    source.updated_at = datetime.utcnow()
+                    changed = True
                 session.add(source)
                 continue
             session.add(SourceRegistry(
@@ -353,6 +375,11 @@ def _seed_source_registry() -> None:
                 fulltext_support=feed_bool(feed, "fulltext_support"),
                 enabled=feed_bool(feed, "enabled", True),
                 notes=feed.get("notes", ""),
+                coverage=feed.get("coverage", ""),
+                access=feed.get("access", ""),
+                coverage_reason=feed.get("coverage_reason", ""),
+                last_tested=feed.get("last_tested", ""),
+                state_media=feed_bool(feed, "state_media"),
             ))
             changed = True
         if changed:

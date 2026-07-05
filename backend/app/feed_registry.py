@@ -11,7 +11,12 @@ from sqlmodel import Session, select
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "feeds.json"
 REQUIRED_FIELDS = {"name", "url", "country", "lang", "tier"}
-OPTIONAL_FIELDS = {"source_type", "enabled", "requires_login", "fulltext_support", "notes"}
+# coverage: 能不能抓/新鲜度 (fresh_rss/summary_only/zombie/proxy_only)
+# access: 访问方式 (public/paywalled/api_license/anti_bot)
+# coverage_reason: 一句人话解释当前状态 (前端直接显示)
+# last_tested: 实测新鲜度日期, 判 zombie
+OPTIONAL_FIELDS = {"source_type", "enabled", "requires_login", "fulltext_support", "notes",
+                   "coverage", "access", "coverage_reason", "last_tested", "state_media"}
 
 
 @lru_cache(maxsize=1)
@@ -59,6 +64,12 @@ def enabled_registry_feeds(session: Session) -> list[dict[str, Any]]:
         .order_by(SourceRegistry.id)
     ).all()
     return [source_feed_metadata(source) for source in rows]
+
+
+def has_registry_sources(session: Session) -> bool:
+    from app.db import SourceRegistry
+
+    return session.exec(select(SourceRegistry.id).limit(1)).first() is not None
 
 
 def source_feed_metadata(source: Any) -> dict[str, Any]:

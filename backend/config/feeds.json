@@ -132,6 +132,103 @@
       "tier": "research",
       "source_type": "rss",
       "notes": "Research source from the user's intelligence-source list."
+    },
+    {
+      "name": "UN News",
+      "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+      "country": "International",
+      "lang": "en",
+      "tier": "official",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "联合国官方一手源, 实测新鲜(30 条, 最新 2026-07-04)。"
+    },
+    {
+      "name": "NPR World",
+      "url": "https://feeds.npr.org/1004/rss.xml",
+      "country": "United States",
+      "lang": "en",
+      "tier": "mainstream",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "美国公共广播, 实测新鲜(最新 2026-07-04)。"
+    },
+    {
+      "name": "The Conversation",
+      "url": "https://theconversation.com/global/articles.atom",
+      "country": "International",
+      "lang": "en",
+      "tier": "professional",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "学者撰写的深度分析, 实测新鲜(50 条, 最新 2026-07-03)。"
+    },
+    {
+      "name": "CNBC World",
+      "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362",
+      "country": "United States",
+      "lang": "en",
+      "tier": "mainstream",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "财经媒体, 实测新鲜(最新 2026-07-04)。"
+    },
+    {
+      "name": "The White House",
+      "url": "https://www.whitehouse.gov/presidential-actions/feed/",
+      "country": "United States",
+      "lang": "en",
+      "tier": "official",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "state_media": "true",
+      "coverage_reason": "美国政府官方渠道, 呈现其自身口径(state-media, 非中立源)。实测新鲜(最新 2026-07-03)。"
+    },
+    {
+      "name": "Federal Reserve",
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "country": "United States",
+      "lang": "en",
+      "tier": "official",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "美联储官方公告, 实测新鲜(最新 2026-07-02)。"
+    },
+    {
+      "name": "European Central Bank",
+      "url": "https://www.ecb.europa.eu/rss/press.html",
+      "country": "European Union",
+      "lang": "en",
+      "tier": "official",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "欧洲央行官方公告, 实测新鲜(最新 2026-07-02)。"
+    },
+    {
+      "name": "WTO News",
+      "url": "https://www.wto.org/library/rss/latest_news_e.xml",
+      "country": "International",
+      "lang": "en",
+      "tier": "official",
+      "source_type": "rss",
+      "coverage": "fresh_rss",
+      "access": "public",
+      "last_tested": "2026-07-04",
+      "coverage_reason": "世贸组织官方新闻, 实测新鲜(最新 2026-07-02)。"
     }
   ]
 }

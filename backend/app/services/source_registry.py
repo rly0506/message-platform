@@ -35,6 +35,11 @@ def create_source(session: Session, data: dict[str, Any]) -> dict[str, Any]:
         fulltext_support=bool(data.get("fulltext_support", False)),
         enabled=bool(data.get("enabled", True)),
         notes=clean_text(data.get("notes")),
+        coverage=clean_text(data.get("coverage")),
+        access=clean_text(data.get("access")),
+        coverage_reason=clean_text(data.get("coverage_reason")),
+        last_tested=clean_text(data.get("last_tested")),
+        state_media=bool(data.get("state_media", False)),
     )
     session.add(source)
     session.commit()
@@ -51,6 +56,11 @@ def import_sources(session: Session, data: dict[str, Any]) -> dict[str, Any]:
         "requires_login": bool(data.get("requires_login", False)),
         "fulltext_support": bool(data.get("fulltext_support", False)),
         "enabled": bool(data.get("enabled", True)),
+        "coverage": clean_text(data.get("coverage")),
+        "access": clean_text(data.get("access")),
+        "coverage_reason": clean_text(data.get("coverage_reason")),
+        "last_tested": clean_text(data.get("last_tested")),
+        "state_media": bool(data.get("state_media", False)),
     }
     created = []
     duplicates = []
@@ -84,6 +94,11 @@ def import_sources(session: Session, data: dict[str, Any]) -> dict[str, Any]:
             requires_login=defaults["requires_login"],
             fulltext_support=defaults["fulltext_support"],
             enabled=defaults["enabled"],
+            coverage=defaults["coverage"],
+            access=defaults["access"],
+            coverage_reason=defaults["coverage_reason"],
+            last_tested=defaults["last_tested"],
+            state_media=defaults["state_media"],
             notes=clean_text(data.get("notes")) or "bulk-imported source",
         )
         session.add(source)
@@ -114,10 +129,14 @@ def update_source(session: Session, source_id: int, data: dict[str, Any]) -> dic
         "last_status",
         "last_error",
         "notes",
+        "coverage",
+        "access",
+        "coverage_reason",
+        "last_tested",
     ):
         if field in data:
             setattr(source, field, str(data.get(field) or "").strip())
-    for field in ("enabled", "requires_login", "fulltext_support"):
+    for field in ("enabled", "requires_login", "fulltext_support", "state_media"):
         if field in data:
             setattr(source, field, bool(data.get(field)))
     source.updated_at = datetime.utcnow()
@@ -178,6 +197,11 @@ def source_payload(source: SourceRegistry) -> dict[str, Any]:
         "last_fetched_at": payloads.iso(source.last_fetched_at),
         "article_count": source.article_count,
         "notes": source.notes,
+        "coverage": source.coverage,
+        "access": source.access,
+        "coverage_reason": source.coverage_reason,
+        "last_tested": source.last_tested,
+        "state_media": source.state_media,
         "created_at": payloads.iso(source.created_at),
         "updated_at": payloads.iso(source.updated_at),
     }

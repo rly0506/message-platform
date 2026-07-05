@@ -8,7 +8,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app import config, llm
-from app.collectors import openalex
+from app.collectors import crossref, openalex
 from app.db import Paper, PaperCitation, Topic, TopicPaper
 
 
@@ -22,7 +22,7 @@ def run_academic_analysis(
     if on_step:
         on_step("fetch", "running")
     search_query = academic_search_query(topic.name)
-    papers = openalex.search_works(search_query, top_n=top_n)
+    papers = fetch_academic_papers(search_query, top_n=top_n)
     if on_step:
         on_step("fetch", "done", {"paper_count": len(papers)})
 
@@ -65,11 +65,112 @@ def run_academic_analysis(
         "schools": schools_data["schools"],
         "foundational_papers": schools_data["foundational_papers"],
         "summary_md": summary_md,
-        "sort_strategy": "OpenAlex relevance_score default; cited_by_count is used only for local foundation ranking.",
+        "sort_strategy": "OpenAlex + Crossref search results are merged by DOI; OpenAlex relevance is preserved where available, and cited_by_count is used only for local foundation ranking.",
     }
 
 
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+def fetch_academic_papers(search_query: str, top_n: int = 30) -> list[dict[str, Any]]:
+    openalex_papers = safe_search(openalex.search_works, search_query, top_n)
+    crossref_papers = safe_search(crossref.search_works, search_query, top_n)
+    return merge_paper_sources(openalex_papers, crossref_papers)[:top_n]
+
+
+def safe_search(search_fn: Any, search_query: str, top_n: int) -> list[dict[str, Any]]:
+    try:
+        return list(search_fn(search_query, top_n=top_n))
+    except Exception:
+        return []
+
+
+def merge_paper_sources(*paper_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    by_key: dict[str, dict[str, Any]] = {}
+    for group in paper_groups:
+        for paper in group:
+            key = paper_merge_key(paper)
+            if not key:
+                merged.append(with_source_defaults(paper))
+                continue
+            existing = by_key.get(key)
+            if existing:
+                merge_paper(existing, paper)
+            else:
+                normalized = with_source_defaults(paper)
+                by_key[key] = normalized
+                merged.append(normalized)
+    return merged
+
+
+def paper_merge_key(paper: dict[str, Any]) -> str:
+    doi = normalize_doi(paper.get("doi", "")).lower()
+    if doi:
+        return f"doi:{doi}"
+    title = normalize_text(paper.get("title", ""))
+    year = str(paper.get("year") or "")
+    first_author = normalize_text((paper.get("authors") or [""])[0])
+    if title:
+        return f"title:{title}|{first_author}|{year}"
+    return ""
+
+
+def with_source_defaults(paper: dict[str, Any]) -> dict[str, Any]:
+    result = dict(paper)
+    sources = [str(source).lower() for source in result.get("sources") or [] if source]
+    if not sources and result.get("openalex_id", "").startswith("crossref:"):
+        sources = ["crossref"]
+    if not sources:
+        sources = ["openalex"]
+    result["sources"] = sorted(dict.fromkeys(sources))
+    links = list(result.get("source_links") or [])
+    if "openalex" in result["sources"] and (result.get("openalex_url") or result.get("openalex_id")):
+        url = result.get("openalex_url") or result.get("openalex_id")
+        if url and not any(str(link.get("source", "")).lower() == "openalex" for link in links):
+            links.append({"source": "openalex", "url": url})
+    if "crossref" in result["sources"] and result.get("doi"):
+        doi = normalize_doi(result.get("doi", "")).removeprefix("https://doi.org/")
+        crossref_url = f"https://api.crossref.org/works/{doi}" if doi else ""
+        if crossref_url and not any(str(link.get("source", "")).lower() == "crossref" for link in links):
+            links.append({"source": "crossref", "url": crossref_url})
+    result["source_links"] = links
+    result["source_count"] = len(result["sources"])
+    return result
+
+
+def merge_paper(target: dict[str, Any], incoming: dict[str, Any]) -> None:
+    incoming = with_source_defaults(incoming)
+    for field in ("title", "abstract", "venue", "doi", "url", "openalex_url"):
+        if not target.get(field) and incoming.get(field):
+            target[field] = incoming[field]
+    for field in ("year",):
+        if not target.get(field) and incoming.get(field):
+            target[field] = incoming[field]
+    target["cited_by_count"] = max(int(target.get("cited_by_count") or 0), int(incoming.get("cited_by_count") or 0))
+    if not target.get("authors") and incoming.get("authors"):
+        target["authors"] = incoming["authors"]
+    if not target.get("concepts") and incoming.get("concepts"):
+        target["concepts"] = incoming["concepts"]
+    if not target.get("referenced_works") and incoming.get("referenced_works"):
+        target["referenced_works"] = incoming["referenced_works"]
+    sources = list(target.get("sources") or []) + list(incoming.get("sources") or [])
+    target["sources"] = sorted(dict.fromkeys(str(source).lower() for source in sources if source))
+    links = list(target.get("source_links") or []) + list(incoming.get("source_links") or [])
+    deduped_links = []
+    seen_links = set()
+    for link in links:
+        key = (str(link.get("source", "")).lower(), str(link.get("url", "")))
+        if key in seen_links:
+            continue
+        seen_links.add(key)
+        deduped_links.append(link)
+    target["source_links"] = deduped_links
+    target["source_count"] = len(target["sources"])
+
+
+def normalize_text(value: Any) -> str:
+    return " ".join(str(value or "").casefold().split())
 
 
 def academic_search_query(topic_name: str) -> str:
@@ -177,7 +278,8 @@ def synthesize_academic_consensus(
         "foundational_papers": schools_data.get("foundational_papers", [])[:8],
         "schools": schools_data.get("schools", [])[:8],
     }
-    prompt = f"""请基于以下 OpenAlex 学术论文样本，为专题「{topic.name}」生成中文学界视角综述。
+    source_label = academic_source_label(papers)
+    prompt = f"""请基于以下 {source_label} 学术论文样本，为专题「{topic.name}」生成中文学界视角综述。
 
 要求:
 1. 标题使用“学界综述”。
@@ -185,7 +287,7 @@ def synthesize_academic_consensus(
 3. 总结主要学派/研究路径、学术共识、分歧、证据缺口与方法争议。
 4. 按时间说明共识如何演变。
 5. 末尾必须有“参考文献”小节，列出被引用论文的作者、年份、题名、期刊/会议、DOI 或 OpenAlex 链接。
-6. 明确说明样本来自 OpenAlex top-N 相关性搜索，引用图只使用样本内部互引。
+6. 明确说明样本来源为 {source_label}，引用图只使用样本内部互引。
 7. 如果给定样本不足以支持结论，直接写“不足以判断”，不要补写外部文献。
 
 论文样本:
@@ -205,6 +307,28 @@ def synthesize_academic_consensus(
     )
 
 
+def academic_source_label(papers: list[dict[str, Any]]) -> str:
+    sources: list[str] = []
+    for paper in papers:
+        for source in paper.get("sources") or []:
+            normalized = str(source).strip().lower()
+            if normalized:
+                sources.append(normalized)
+    if not sources:
+        sources = ["crossref" if str(paper.get("openalex_id", "")).startswith("crossref:") else "openalex" for paper in papers]
+    labels = {
+        "openalex": "OpenAlex",
+        "crossref": "Crossref",
+    }
+    unique_sources = list(dict.fromkeys(sources))
+    order = {"openalex": 0, "crossref": 1}
+    ordered = [
+        labels.get(source, source.title())
+        for source in sorted(unique_sources, key=lambda source: (order.get(source, 99), source))
+    ]
+    return " + ".join(ordered) if ordered else "OpenAlex + Crossref"
+
+
 def compact_paper_for_prompt(paper: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": paper.get("openalex_id", ""),
@@ -217,6 +341,8 @@ def compact_paper_for_prompt(paper: dict[str, Any]) -> dict[str, Any]:
         "authors": (paper.get("authors") or [])[:3],
         "doi": paper.get("doi", ""),
         "openalex_url": paper.get("openalex_url") or paper.get("openalex_id", ""),
+        "sources": paper.get("sources") or ["crossref" if str(paper.get("openalex_id", "")).startswith("crossref:") else "openalex"],
+        "source_links": paper.get("source_links") or default_source_links(paper),
         "citation": citation_string(paper),
         "concepts": common_concepts([paper], limit=5),
         "abstract_excerpt": (paper.get("abstract") or "")[:280],
@@ -247,6 +373,8 @@ def persist_academic_layer(
         paper.doi = normalize_doi(paper_data.get("doi", ""))
         paper.openalex_url = paper_data.get("openalex_url") or openalex_id
         paper.url = paper_data.get("url", "")
+        paper.sources = paper_data.get("sources") or ["crossref" if str(openalex_id).startswith("crossref:") else "openalex"]
+        paper.source_links = paper_data.get("source_links") or default_source_links(paper_data)
         session.add(paper)
         session.commit()
         session.refresh(paper)
@@ -307,6 +435,13 @@ def academic_payload(session: Session, topic: Topic, summary_md: str = "") -> di
 
 
 def paper_to_dict(paper: Paper) -> dict[str, Any]:
+    source_labels = paper.sources or ["crossref" if str(paper.openalex_id).startswith("crossref:") else "openalex"]
+    source_links = paper.source_links or default_source_links({
+        "openalex_id": paper.openalex_id,
+        "openalex_url": paper.openalex_url,
+        "doi": paper.doi,
+        "sources": source_labels,
+    })
     return {
         "id": paper.id,
         "openalex_id": paper.openalex_id,
@@ -329,6 +464,9 @@ def paper_to_dict(paper: Paper) -> dict[str, Any]:
             "openalex_url": paper.openalex_url or paper.openalex_id,
         }),
         "url": paper.url,
+        "sources": source_labels,
+        "source_count": len(source_labels),
+        "source_links": source_links,
     }
 
 
@@ -390,6 +528,20 @@ def normalize_doi(value: str | None) -> str:
     if raw.startswith("10."):
         return f"https://doi.org/{raw}"
     return raw
+
+
+def default_source_links(paper: dict[str, Any]) -> list[dict[str, str]]:
+    links = []
+    sources = [str(source).lower() for source in paper.get("sources") or []]
+    if "openalex" in sources:
+        url = paper.get("openalex_url") or paper.get("openalex_id") or ""
+        if url and not str(url).startswith("crossref:"):
+            links.append({"source": "openalex", "url": str(url)})
+    if "crossref" in sources:
+        doi = normalize_doi(paper.get("doi", "")).removeprefix("https://doi.org/")
+        if doi:
+            links.append({"source": "crossref", "url": f"https://api.crossref.org/works/{doi}"})
+    return links
 
 
 def citation_string(paper: dict[str, Any]) -> str:

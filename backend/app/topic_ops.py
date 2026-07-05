@@ -105,7 +105,7 @@ def collect_topic(
             {"url": feed["url"], "metadata": feed, "source_id": feed.get("source_id")}
             for feed in registry_feeds
         )
-        if not registry_feeds:
+        if not registry_feeds and not feed_registry.has_registry_sources(session):
             feed_requests.extend(
                 {"url": feed["url"], "metadata": feed, "source_id": None}
                 for feed in feed_registry.curated_feeds()
