@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from app.discovery.store import ScoredItem
 from app.discovery.annotate import Annotation
+from app.pipeline import value_lens
 
 # --- 启发式阈值 (可调) ---
 # HN points 高于此 = 已出圈 (主流已大量关注, 你看到就迟了)
@@ -212,6 +213,7 @@ def collect_seeds(scored: list[ScoredItem], has_history: bool,
             "what": ann.what if ann else "",
             "why": ann.why if ann else "",
             "still_niche": ann.still_niche if ann else True,
+            "info_value_labels": value_lens.seed_info_value_labels(s),
         })
     return out
 

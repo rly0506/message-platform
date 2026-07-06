@@ -1,5 +1,29 @@
 # Spec Changelog
 
+## 2026-07-06 GPT Backend Roadmap P1 + Value Lens
+
+- Continued `spec/gpt-roadmap-4h-2026-07-06.md` on `feature/academic-reading-signals`.
+- Verified the existing P1 backend fixes in the current worktree:
+  - OpenAlex now supports anonymous search and academic payloads expose source errors/status instead of silently pretending all sources contributed.
+  - Local term matching uses a shared word-boundary helper for ASCII terms while preserving substring matching for CJK and hyphenated terms.
+  - Framing evidence IDs are scoped per stance while public stance-evolution article IDs remain period-wide.
+  - Sentiment persistence keeps stable `external_id` values so comments survive DB reloads and duplicate empty-URL posts are deduped by `(platform, external_id)`.
+- Added backend `value_lens` production:
+  - new pure local module `backend/app/pipeline/value_lens.py`;
+  - article payloads now include `info_value_labels`;
+  - discovery seeds now include `info_value_labels` for the daily report/front page path;
+  - narrative convergence signals now include `suspected_herding` hints for the local-events/evidence-package path;
+  - supported codes are `suspected_hype`, `availability_high`, `suspected_herding`, and `small_sample`, with `severity="hint"`.
+
+### Verification
+
+- Red test first: targeted value-lens run failed with `ImportError: cannot import name 'value_lens' from 'app.pipeline'`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_value_lens.py tests/test_api_helpers.py::test_article_payload_includes_info_value_labels tests/test_discovery.py::test_collect_seeds_structured -q` -> `6 passed, 4 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_openalex_collector.py tests/test_academic_layer.py tests/test_term_matching.py tests/test_local_analyze.py tests/test_local_analyze_golden.py tests/test_prefilter.py tests/test_sentiment_layer.py tests/test_narrative_signals.py tests/test_value_lens.py tests/test_api_helpers.py::test_article_payload_includes_info_value_labels tests/test_discovery.py::test_collect_seeds_structured -q` -> `64 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `246 passed, 5 warnings`.
+- `git diff --check` -> pass, existing LF/CRLF warnings only.
+- `node .gitnexus/run.cjs detect-changes -r message-platform --scope all` -> risk `critical`, `23 files`, `57 symbols`, `32` affected processes. This is expected to require review because the current dirty tree includes central DB migration, academic, sentiment, local-analysis, and discovery payload changes plus pre-existing AGENTS/CLAUDE/frontend dirty files.
+
 ## 2026-07-04
 
 ### 2026-07-05 Fable 5 Bug Audit Record

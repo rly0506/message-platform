@@ -181,9 +181,17 @@ def test_collect_seeds_structured(store):
     seed = seeds[0]
     assert seed["title"] == "Rising seed"
     assert seed["delta"] == 65
+    assert seed["info_value_labels"] == [
+        {
+            "code": "availability_high",
+            "label": "可得性偏高",
+            "note": "信号正在快速上升，提示先把它当早期线索，而不是已经被充分验证的结论。",
+            "severity": "hint",
+        },
+    ]
     # 必备字段齐全 (前端依赖)
     for key in ("title", "url", "domain", "domain_label", "signal", "delta", "is_new",
-                "what", "why", "still_niche"):
+                "what", "why", "still_niche", "info_value_labels"):
         assert key in seed
     # 无历史 = 只建基线 = 无种子
     assert report.collect_seeds(scored, has_history=False) == []

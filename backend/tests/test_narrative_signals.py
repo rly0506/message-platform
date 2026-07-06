@@ -44,6 +44,14 @@ def test_narrative_signals_group_repeated_topic_phrases():
     assert signals[0]["article_ids"] == [1, 2, 3]
     assert signals[0]["first_seen"] == "2026-06-01T00:00:00"
     assert signals[0]["last_seen"] == "2026-06-03T00:00:00"
+    assert signals[0]["info_value_labels"] == [
+        {
+            "code": "suspected_herding",
+            "label": "疑似羊群",
+            "note": "多家来源集中复述同一说法，提示可能是信息瀑布，不等于证据增强。",
+            "severity": "hint",
+        }
+    ]
 
 
 def test_narrative_signals_stay_empty_for_low_sample():

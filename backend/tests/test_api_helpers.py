@@ -43,6 +43,41 @@ def test_article_payload_includes_report_category():
     assert "命中阶段词" in payload["category_reason"]
 
 
+def test_article_payload_includes_info_value_labels():
+    topic_article = api.TopicArticle(
+        topic_id=1,
+        article_id=1,
+        relevance=0.8,
+        relevant=True,
+        substance_score=22,
+        emotion_score=88,
+    )
+    article = api.Article(
+        id=1,
+        url="https://example.com/a",
+        title="Markets panic over alleged breakthrough",
+        source="Example",
+        snippet="Lots of rhetoric with little verifiable detail.",
+    )
+
+    payload = payloads.article_payload(topic_article, article)
+
+    assert payload["info_value_labels"] == [
+        {
+            "code": "suspected_hype",
+            "label": "疑似造势",
+            "note": "情绪强度高且干货密度低，提示先核查事实支撑，不把语气当证据。",
+            "severity": "hint",
+        },
+        {
+            "code": "availability_high",
+            "label": "可得性偏高",
+            "note": "这条材料很醒目，但当前可核查细节偏少，避免因容易想起而高估重要性。",
+            "severity": "hint",
+        },
+    ]
+
+
 def test_article_evidence_lookup_includes_report_category():
     topic_article = api.TopicArticle(topic_id=1, article_id=1, relevance=0.8, relevant=True)
     article = api.Article(

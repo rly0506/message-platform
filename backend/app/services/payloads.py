@@ -17,7 +17,7 @@ from app.db import (
     Topic,
     TopicArticle,
 )
-from app.pipeline import local_analyze
+from app.pipeline import local_analyze, value_lens
 
 
 def project_summary(session: Session, project: Project) -> dict[str, Any]:
@@ -102,6 +102,13 @@ def article_payload(topic_article: TopicArticle, article: Article) -> dict[str, 
         "emotion_note": topic_article.emotion_note,
         "category": category,
         "category_reason": local_analyze.report_category_reason(category, title, snippet),
+        "info_value_labels": value_lens.article_info_value_labels(
+            substance_score=topic_article.substance_score,
+            emotion_score=topic_article.emotion_score,
+            source=article.source,
+            title=title,
+            snippet=snippet,
+        ),
     }
 
 

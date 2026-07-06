@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.pipeline.local_analyze import ArticleRow
+from app.pipeline import value_lens
 
 _STOP = {
     "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "by",
@@ -36,7 +37,7 @@ def detect_narrative_signals(rows: list[ArticleRow], limit: int = 5) -> list[dic
                 item.id,
             ),
         )
-        signals.append({
+        signal = {
             "claim": phrase,
             "source_count": len(sources),
             "article_count": len(items),
@@ -45,7 +46,9 @@ def detect_narrative_signals(rows: list[ArticleRow], limit: int = 5) -> list[dic
             "sources": sorted(sources)[:8],
             "article_ids": [item.id for item in ordered[:12]],
             "representative_titles": [item.title for item in ordered[:3]],
-        })
+        }
+        signal["info_value_labels"] = value_lens.narrative_info_value_labels(signal)
+        signals.append(signal)
     return sorted(signals, key=lambda item: (-item["source_count"], -item["article_count"], item["claim"]))[:limit]
 
 
