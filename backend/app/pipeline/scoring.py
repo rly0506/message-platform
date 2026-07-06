@@ -12,6 +12,7 @@ from app.pipeline.categorization import infer_report_category, infer_stance
 from app.pipeline.categorization import _event_category_reason
 from app.pipeline.clustering import _clean_title
 from app.pipeline.entities import _entities_for_text, _keywords_for_rows
+from app.pipeline.term_match import term_hit
 
 MEDIA_SOURCE_TIERS = rule_config.string_tuple_dict("media_source_tiers")
 MEDIA_TIER_LABELS = rule_config.string_dict("media_tier_labels")
@@ -200,6 +201,7 @@ def _event_summary(
 def _stance_evolution(rows: list[ArticleRow]) -> list[dict[str, Any]]:
     buckets: dict[str, Counter[str]] = defaultdict(Counter)
     article_ids: dict[str, list[int]] = defaultdict(list)
+    article_ids_by_stance: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     for row in rows:
         if not row.published_at:
             continue
@@ -207,6 +209,7 @@ def _stance_evolution(rows: list[ArticleRow]) -> list[dict[str, Any]]:
         stance = row.stance or infer_stance(row.title, row.snippet)
         buckets[bucket][stance] += 1
         article_ids[bucket].append(row.id)
+        article_ids_by_stance[bucket][stance].append(row.id)
 
     out = []
     for bucket in sorted(buckets):
@@ -217,6 +220,10 @@ def _stance_evolution(rows: list[ArticleRow]) -> list[dict[str, Any]]:
             "dominant_stance": dominant,
             "counts": counts,
             "article_ids": article_ids[bucket],
+            "_article_ids_by_stance": {
+                stance: ids
+                for stance, ids in article_ids_by_stance[bucket].items()
+            },
         })
     return out
 def _framing_from_evolution(
@@ -234,7 +241,7 @@ def _framing_from_evolution(
                 continue
             first_seen.setdefault(stance, item["period"])
             last_seen[stance] = item["period"]
-            article_ids[stance].extend(item["article_ids"])
+            article_ids[stance].extend(item.get("_article_ids_by_stance", {}).get(stance, []))
 
     framing = []
     for stance, count in all_counts.most_common():
@@ -406,11 +413,9 @@ def _source_tier(source: str) -> str:
             return tier
     return "other"
 def _impact_hits(text: str) -> float:
-    lower = text.lower()
-    return sum(weight for term, weight in IMPACT_TERMS.items() if term.lower() in lower)
+    return sum(weight for term, weight in IMPACT_TERMS.items() if term_hit(term, text))
 def _matched_impact_terms(text: str) -> list[str]:
-    lower = text.lower()
-    return [term for term in IMPACT_TERMS if term.lower() in lower]
+    return [term for term in IMPACT_TERMS if term_hit(term, text)]
 def _authority_sources(cluster: list[ArticleRow]) -> list[str]:
     found = []
     for row in cluster:

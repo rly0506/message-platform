@@ -5,7 +5,7 @@ import json
 from app.pipeline import local_analyze
 
 
-EXPECTED_GOLDEN_SHA256 = "f39ce4dd1e41deb35684f7a5167c26e5ccfa84336e53f147e4b86d38d418a0d9"
+EXPECTED_GOLDEN_SHA256 = "422a7b3bf7bd9d522936588abcaa230b9896df97a548f2b385d410fcf25349a1"
 
 
 def _row(
@@ -106,24 +106,28 @@ def test_analyze_topic_golden_snapshot(monkeypatch):
     ]
     assert len(result["events"]) == 3
     lead_event = result["events"][0]
-    assert lead_event["title_zh"] == "Iran warns retaliation after US strike threat"
-    assert lead_event["score"] == 0.71
+    assert lead_event["title_zh"] == "Trump says US strike on Iran is possible"
+    assert lead_event["score"] == 0.622
     assert lead_event["article_ids"] == [101, 102, 103]
     assert lead_event["source_tiers"] == [
         {"key": "wire", "label": "通讯社", "count": 2},
         {"key": "mainstream", "label": "主流媒体", "count": 1},
     ]
     assert {entry["source"] for entry in lead_event["source_matrix"]} == {"Reuters", "BBC", "AP News"}
-    assert lead_event["score_breakdown"]["impact"]["reason"] == "war、strike"
+    assert lead_event["score_breakdown"]["impact"]["reason"] == "strike"
 
     assert result["stance_evolution"] == [
         {
             "period": "2026-06",
-            "dominant_stance": "风险/审慎",
-            "counts": {"竞争/商业": 1, "风险/审慎": 2, "冲突/安全": 2},
+            "dominant_stance": "冲突/安全",
+            "counts": {"冲突/安全": 3, "竞争/商业": 1, "风险/审慎": 1},
             "article_ids": [101, 102, 103, 104, 105],
         }
     ]
+    framing_by_party = {item["party"]: item["article_ids"] for item in result["framing"]}
+    assert framing_by_party["冲突/安全"] == [101, 103, 105]
+    assert framing_by_party["竞争/商业"] == [102]
+    assert framing_by_party["风险/审慎"] == [104]
     assert [item["term"] for item in result["keywords"][:5]] == ["iran", "strike", "us", "on", "oil"]
     grouped = {group["kind"]: group["items"] for group in result["entity_groups"]}
     assert grouped["person"][0]["term"] == "特朗普"

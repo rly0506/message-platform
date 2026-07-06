@@ -1,6 +1,8 @@
 """Report stance and category inference for local no-LLM analysis."""
 from __future__ import annotations
 
+from app.pipeline.term_match import term_hit
+
 STANCE_RULES = [
     ("政策/监管", ("监管", "法案", "规则", "审查", "调查", "禁令", "合规", "regulation", "law", "ban", "probe")),
     ("支持/乐观", ("增长", "突破", "领先", "利好", "机会", "加速", "投资", "看好", "surge", "boost", "growth", "optimistic")),
@@ -21,10 +23,10 @@ CATEGORY_RULES = [
 ]
 
 def infer_stance(title: str, snippet: str = "") -> str:
-    text = f"{title} {snippet}".lower()
+    text = f"{title} {snippet}"
     scores: dict[str, int] = {}
     for label, terms in STANCE_RULES:
-        score = sum(1 for term in terms if term.lower() in text)
+        score = sum(1 for term in terms if term_hit(term, text))
         if score:
             scores[label] = score
     if not scores:
@@ -35,19 +37,17 @@ def infer_report_category(title: str, snippet: str = "") -> str:
 def report_category_reason(category: str, title: str, snippet: str = "") -> str:
     return _event_category_reason(f"{title} {snippet}".strip(), category)
 def _event_category(text: str) -> str:
-    lower = text.lower()
     scores = {}
     for label, terms in CATEGORY_RULES:
-        score = sum(1 for term in terms if term.lower() in lower)
+        score = sum(1 for term in terms if term_hit(term, text))
         if score:
             scores[label] = score
     if not scores:
         return "行动进展"
     return max(scores.items(), key=lambda item: item[1])[0]
 def _event_category_reason(text: str, category: str) -> str:
-    lower = text.lower()
     terms = next((terms for label, terms in CATEGORY_RULES if label == category), ())
-    matched = [term for term in terms if term.lower() in lower]
+    matched = [term for term in terms if term_hit(term, text)]
     if matched:
         return "命中阶段词：" + "、".join(matched[:6])
     return "未命中明确阶段词，归为一般进展报道"

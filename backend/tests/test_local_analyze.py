@@ -10,6 +10,7 @@ def row(
     day_offset: int = 0,
     snippet: str = "",
     relevance: float = 1.0,
+    stance: str = "",
 ):
     return local_analyze.ArticleRow(
         id=idx,
@@ -18,6 +19,7 @@ def row(
         published_at=datetime(2026, 6, 1) + timedelta(days=day_offset),
         snippet=snippet,
         relevance=relevance,
+        stance=stance,
     )
 
 
@@ -101,6 +103,21 @@ def test_stance_trend_compares_first_and_last_period_conservatively():
     ]
 
     assert local_analyze._trend_for_stance("conflict", evolution) == "基本稳定"
+
+
+def test_framing_article_ids_are_limited_to_matching_stance():
+    rows = [
+        row(1, "Bank earnings lift market", "Reuters", stance="竞争/商业"),
+        row(2, "Iran warns retaliation after strike", "AP News", stance="风险/审慎"),
+        row(3, "Ceasefire talks resume", "BBC", day_offset=35, stance="外交降温"),
+    ]
+
+    evolution = local_analyze._stance_evolution(rows)
+    framing = {item["party"]: item for item in local_analyze._framing_from_evolution(evolution, rows)}
+
+    assert framing["竞争/商业"]["article_ids"] == [1]
+    assert framing["风险/审慎"]["article_ids"] == [2]
+    assert framing["外交降温"]["article_ids"] == [3]
 
 
 def test_report_category_inference_uses_stable_product_labels():

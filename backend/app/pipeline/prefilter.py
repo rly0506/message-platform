@@ -9,6 +9,8 @@ import urllib.parse
 
 from rapidfuzz import fuzz
 
+from app.pipeline.term_match import term_hit
+
 TITLE_DUP_THRESHOLD = 88   # 标题模糊相似度 >= 此值视为重复
 
 
@@ -39,11 +41,10 @@ def relevance(text: str, queries: list[str]) -> float:
     """命中检索词的比例，作为 [0,1] 相关性。"""
     if not text:
         return 0.0
-    t = text.lower()
     terms = _terms(queries)
     if not terms:
         return 0.0
-    hits = sum(1 for term in terms if term in t)
+    hits = sum(1 for term in terms if term_hit(term, text))
     return min(1.0, hits / max(1, len(set(queries))))
 
 

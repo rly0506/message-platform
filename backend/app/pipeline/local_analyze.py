@@ -78,7 +78,7 @@ def analyze_topic(name: str, rows: list[ArticleRow], max_events: int = MAX_EVENT
         "events": major_events,
         "framing": framing,
         "analysis_md": analysis,
-        "stance_evolution": evolution,
+        "stance_evolution": _public_stance_evolution(evolution),
         "keywords": _keyword_cloud(dated, major_events),
         "entities": entities,
         "entity_groups": grouped_entities(entities),
@@ -97,6 +97,13 @@ def infer_report_category(title: str, snippet: str = "") -> str:
 
 def report_category_reason(category: str, title: str, snippet: str = "") -> str:
     return _categorization.report_category_reason(category, title, snippet)
+
+
+def _public_stance_evolution(evolution: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {key: value for key, value in item.items() if not key.startswith("_")}
+        for item in evolution
+    ]
 
 
 def _cluster_articles(rows: list[ArticleRow]) -> list[list[ArticleRow]]:
