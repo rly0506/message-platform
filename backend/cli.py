@@ -70,6 +70,59 @@ def discover(
     typer.echo(f"\n[报告已保存] {result['path']}  (种子 {len(result['seeds'])} 条)")
 
 
+@app.command("daily-email")
+def daily_email_cmd(
+    preview: bool = typer.Option(False, "--preview", help="只打印邮件正文，不调用 Agent Mail"),
+    send: bool = typer.Option(False, "--send", help="调用 Agent Mail 发起两阶段发送"),
+    send_smtp: bool = typer.Option(False, "--send-smtp", help="使用 SMTP 直接发送，适合 Windows 任务计划"),
+    to: str = typer.Option("", "--to", help="收件人；也可用 DAILY_DIGEST_TO 环境变量"),
+    confirmation_token: str = typer.Option("", "--confirmation-token", help="Agent Mail 二阶段确认 token"),
+):
+    """把最新认知前沿日报整理成手机早报邮件。"""
+    from app.discovery import daily_email as daily_email_mod
+    from app.discovery import run as discovery_run
+
+    report = discovery_run.latest_report()
+    if report is None:
+        typer.echo("还没有认知前沿日报；请先运行 `python backend/cli.py discover --no-print`。")
+        raise typer.Exit(1)
+
+    if preview or not (send or send_smtp):
+        typer.echo(daily_email_mod.build_daily_digest_body(report))
+        if not (send or send_smtp):
+            typer.echo("\n[preview only] 加 --send 调用 Agent Mail，或加 --send-smtp 用于任务计划自动发送。")
+        return
+
+    recipient = to.strip() or daily_email_mod.recipient_from_env()
+    if send_smtp:
+        try:
+            result = daily_email_mod.send_daily_digest_smtp(report, to=recipient)
+        except daily_email_mod.DailyEmailError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1)
+        typer.echo(result.stdout.rstrip())
+        return
+
+    try:
+        result = daily_email_mod.send_daily_digest(
+            report,
+            to=recipient,
+            confirmation_token=confirmation_token,
+        )
+    except daily_email_mod.DailyEmailError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1)
+
+    if result.stdout:
+        typer.echo(result.stdout.rstrip())
+    if result.stderr:
+        typer.echo(result.stderr.rstrip(), err=True)
+    if result.returncode != 0:
+        raise typer.Exit(result.returncode)
+    if not confirmation_token:
+        typer.echo("\n[Agent Mail] 如果上方返回 confirmation token，请确认无误后再次运行本命令并附加 --confirmation-token。")
+
+
 @app.command()
 def add(
     name: str,

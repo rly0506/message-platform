@@ -31,21 +31,23 @@ venv\Scripts\python.exe backend\cli.py discover --no-print
 ## 每日定时（Windows 任务计划程序）
 
 发现系统要"攒基线"才有价值 —— 连续每天跑，加速信号才会浮现。
-用 Windows 自带的任务计划程序，每早跑一次：
+如果只需要落盘报告，可以继续调用 `run_discovery.bat`；如果要每天把日报发到手机邮箱，优先使用 `scripts\send_daily_digest.ps1`，它会先跑 discovery，再通过 SMTP 发送最新日报。
 
 ```powershell
-# 注册：每天 08:30 跑一次 run_discovery.bat（按需改时间/路径）
-schtasks /Create /SC DAILY /TN "事件发现日报" /TR "d:\意向项目\run_discovery.bat" /ST 08:30
+# 注册：每天 08:30 生成并发送日报邮件（按需改时间/路径）
+schtasks /Create /SC DAILY /TN "事件发现日报邮件" /TR 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "d:\意向项目\scripts\send_daily_digest.ps1"' /ST 08:30
 
 # 查看
-schtasks /Query /TN "事件发现日报"
+schtasks /Query /TN "事件发现日报邮件"
 
 # 立即手动触发一次（测试）
-schtasks /Run /TN "事件发现日报"
+schtasks /Run /TN "事件发现日报邮件"
 
 # 删除
-schtasks /Delete /TN "事件发现日报" /F
+schtasks /Delete /TN "事件发现日报邮件" /F
 ```
+
+无人值守发送需要 SMTP 环境变量，详见 `docs\operations.md` 的 Daily Digest Email 一节。Agent Mail 发送仍是两阶段确认，不适合任务计划自动发送。
 
 跑几天后，打开最新的 `discovery_reports\frontier-*.md`，重点看 **A. 种子** 一档 ——
 那是"在加速 / 全新冒头、还没出圈"的东西，按领域（科技/金融/地缘）分组。
