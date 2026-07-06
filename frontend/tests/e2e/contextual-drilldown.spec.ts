@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const topic = {
   id: 501,
@@ -181,7 +182,7 @@ async function mockApi(page: Page) {
 
 test('keeps parent topic context when drilling into a suggested subtopic', async ({ page }) => {
   const searchPayloads = await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.locator('.event-input').fill('俄乌战争')
   await page.getByRole('button', { name: '搜集并生成时间轴' }).click()
@@ -197,7 +198,7 @@ test('keeps parent topic context when drilling into a suggested subtopic', async
 
 test('shows contextual drilldown inside the selected event detail', async ({ page }) => {
   const searchPayloads = await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.locator('.event-input').fill('俄乌战争')
   await page.getByRole('button', { name: '搜集并生成时间轴' }).click()
@@ -246,7 +247,7 @@ test('offers an event-title drilldown when no suggested subtopics exist', async 
       },
     })
   })
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.locator('.event-input').fill('俄乌战争')
   await page.getByRole('button', { name: '搜集并生成时间轴' }).click()
@@ -285,7 +286,7 @@ test('ignores duplicate event-search triggers while a search is starting', async
       },
     })
   })
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.locator('.event-input').fill('俄乌战争')
   await page.locator('.event-input').press('Enter')

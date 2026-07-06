@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const topic = {
   id: 101,
@@ -196,7 +197,7 @@ async function mockApi(page: Page) {
 
 test('lists source registry entries and can pause a source', async ({ page }) => {
   const api = await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 
@@ -214,7 +215,7 @@ test('lists source registry entries and can pause a source', async ({ page }) =>
 
 test('summarizes source coverage, freshness, and failed sources', async ({ page }) => {
   await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 
@@ -229,7 +230,7 @@ test('summarizes source coverage, freshness, and failed sources', async ({ page 
 
 test('shows source type and quality-tier coverage mix', async ({ page }) => {
   await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 
@@ -241,7 +242,7 @@ test('shows source type and quality-tier coverage mix', async ({ page }) => {
 
 test('shows classified source coverage limits without counting them as fresh feeds', async ({ page }) => {
   await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 
@@ -257,7 +258,7 @@ test('shows classified source coverage limits without counting them as fresh fee
 
 test('explains the source-ingestion path for feeds, newsletters, alerts and video leads', async ({ page }) => {
   await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 
@@ -271,7 +272,7 @@ test('explains the source-ingestion path for feeds, newsletters, alerts and vide
 
 test('adds a user RSS source from a Google Alerts feed', async ({ page }) => {
   const api = await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 
@@ -291,7 +292,7 @@ test('adds a user RSS source from a Google Alerts feed', async ({ page }) => {
 
 test('imports newsletter and Google Alerts sources in bulk', async ({ page }) => {
   const api = await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
 

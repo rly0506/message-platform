@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench, switchToWorkbench } from './helpers'
 
 let startedJobs: string[] = []
 let searchPayloads: Array<{ query: string }> = []
@@ -476,7 +477,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('explains stale latest-report dates as last collected time', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   const staleNotice = page.locator('.freshness-warning')
   await expect(staleNotice).toContainText('最后采集时间')
@@ -486,7 +487,7 @@ test('explains stale latest-report dates as last collected time', async ({ page 
 })
 
 test('refreshes stale topics with the current topic context', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.locator('.event-input').fill('unrelated residual query')
   await page.locator('.freshness-warning').getByRole('button', { name: '刷新采集' }).click()
@@ -495,7 +496,7 @@ test('refreshes stale topics with the current topic context', async ({ page }) =
 })
 
 test('shows backend auto-refresh status and can trigger it without losing topic context', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   const status = page.locator('.auto-refresh-status')
   await expect(status.getByText('自动刷新：已开启')).toBeVisible()
@@ -515,7 +516,7 @@ test('shows backend auto-refresh status and can trigger it without losing topic 
 })
 
 test('filters and sorts the event source matrix', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.locator('.source-matrix').getByText('来源矩阵')).toBeVisible()
   await expect(page.getByText('显示 3 / 3 个来源')).toBeVisible()
@@ -536,7 +537,7 @@ test('filters and sorts the event source matrix', async ({ page }) => {
 })
 
 test('groups original articles by report category', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.locator('details.article-feed-collapse > summary').click()
   await expect(page.locator('details.article-feed-collapse > summary')).toContainText('2/3')
@@ -550,6 +551,7 @@ test('groups original articles by report category', async ({ page }) => {
   await expect(page.locator('.article-perspective')).toContainText('market panic is everywhere')
   await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).getByRole('button', { name: '意外' })).toHaveCount(0)
   await page.reload()
+  await switchToWorkbench(page)
   await page.locator('details.article-feed-collapse > summary').click()
   await expect(page.locator('.article-row').filter({ hasText: 'Reuters reports US-Iran strike risk' }).locator('.cognition-chip')).toHaveCount(0)
 
@@ -560,7 +562,7 @@ test('groups original articles by report category', async ({ page }) => {
 })
 
 test('renders source matrix controls on mobile without horizontal overflow', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.locator('.source-matrix').getByText('来源矩阵')).toBeVisible()
   await expect(page.locator('.source-matrix-tools')).toBeVisible()
@@ -570,7 +572,7 @@ test('renders source matrix controls on mobile without horizontal overflow', asy
 })
 
 test('keeps secondary media panels collapsed with count summaries by default', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.getByRole('heading', { name: '事件发展轴' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '美国与伊朗冲突进入关键节点' })).toBeVisible()
@@ -616,7 +618,7 @@ test('keeps secondary media panels collapsed with count summaries by default', a
 })
 
 test('shows narrative convergence signals as evidence cards', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   const toggle = page.locator('details.media-collapse > summary').filter({
     hasText: /叙事趋同信号.*1 条/,
@@ -661,7 +663,7 @@ test('summarizes media stance timeline as trend changes with evidence', async ({
     })
   })
 
-  await page.goto('/')
+  await openWorkbench(page)
   await page.locator('details.media-collapse > summary').filter({
     hasText: /媒体立场时间线.*2 期/,
   }).click()
@@ -701,7 +703,7 @@ test('degrades media stance timeline when the sample is too small', async ({ pag
     })
   })
 
-  await page.goto('/')
+  await openWorkbench(page)
   await page.locator('details.media-collapse > summary').filter({
     hasText: /媒体立场时间线.*2 期/,
   }).click()
@@ -736,7 +738,7 @@ test('keeps media stance timeline distribution-only when the shift is weak', asy
     })
   })
 
-  await page.goto('/')
+  await openWorkbench(page)
   await page.locator('details.media-collapse > summary').filter({
     hasText: /媒体立场时间线.*2 期/,
   }).click()
@@ -748,7 +750,7 @@ test('keeps media stance timeline distribution-only when the shift is weak', asy
 })
 
 test('shows an event structure tree from existing media signals', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   const toggle = page.locator('details.media-collapse > summary').filter({
     hasText: /事件发展网络.*1 节点/,
@@ -799,7 +801,7 @@ test('renders local evidence edges between events in the event network', async (
     })
   })
 
-  await page.goto('/')
+  await openWorkbench(page)
   await page.locator('details.media-collapse > summary').filter({
     hasText: /事件发展网络.*2 节点/,
   }).click()
@@ -817,7 +819,7 @@ test('renders local evidence edges between events in the event network', async (
 })
 
 test('shows selected event detail inline below the clicked timeline node', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.getByText('Selected Node')).toHaveCount(0)
   await expect(page.locator('.event-detail')).toHaveCount(0)
@@ -831,7 +833,7 @@ test('shows selected event detail inline below the clicked timeline node', async
 })
 
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: /深度分析（LLM/ }).click()
 
@@ -853,7 +855,7 @@ test('keeps existing LLM analysis visible when refreshing only the academic laye
     })
   })
 
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByLabel('专题视图导航').getByRole('button', { name: 'LLM 深度分析' }).click()
   await expect(page.getByText('当前展示 LLM 生成结果')).toBeVisible()

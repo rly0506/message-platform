@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const topics = [
   {
@@ -240,7 +241,7 @@ async function mockRaceApi(page: Page) {
 
 test('does not load a finished academic job into a newly selected topic', async ({ page }) => {
   const api = await mockRaceApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.getByRole('heading', { name: 'Topic Alpha' })).toBeVisible()
   await page.getByRole('button', { name: '学界视角' }).click()
@@ -259,7 +260,7 @@ test('does not load a finished academic job into a newly selected topic', async 
 
 test('does not load a finished sentiment job into a newly selected topic', async ({ page }) => {
   const api = await mockRaceApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.getByRole('heading', { name: 'Topic Alpha' })).toBeVisible()
   await page.locator('.deep-actions').getByRole('button', { name: '民间情绪' }).click()
@@ -278,7 +279,7 @@ test('does not load a finished sentiment job into a newly selected topic', async
 
 test('does not load a finished cross-synthesis job into a newly selected topic', async ({ page }) => {
   const api = await mockRaceApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.getByRole('heading', { name: 'Topic Alpha' })).toBeVisible()
   await page.locator('.deep-actions').getByRole('button', { name: /^三方对照$/ }).click()

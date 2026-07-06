@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const topic = {
   id: 404,
@@ -51,7 +52,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('explains local capability boundaries before LLM analysis exists', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: 'LLM 深度分析' }).click()
 
   const note = page.locator('.local-capability-note')

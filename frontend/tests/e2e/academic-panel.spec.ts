@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const currentYear = new Date().getFullYear()
 
@@ -173,7 +174,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('shows academic priority-reading summary and neutral paper labels', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
 
   const scope = page.locator('.academic-source-scope')
@@ -204,7 +205,7 @@ test('shows academic priority-reading summary and neutral paper labels', async (
 })
 
 test('shows citation metadata and readable literature network', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
 
   const foundational = page.locator('.academic-paper-list article').filter({ hasText: 'Foundational compute scaling paper' })
@@ -223,7 +224,7 @@ test('shows citation metadata and readable literature network', async ({ page })
 })
 
 test('shows academic source provenance for multi-source papers', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: '学界' }).click()
 
   const scope = page.locator('.academic-source-scope')

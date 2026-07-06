@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const topic = {
   id: 202,
@@ -165,7 +166,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('renders sentiment as scannable sample cards', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: '民间情绪' }).click()
 
   await expect(page.locator('.sentiment-overview')).toContainText('2')
@@ -189,7 +190,7 @@ test('renders sentiment as scannable sample cards', async ({ page }) => {
 })
 
 test('renders sentiment change timeline as platform-frame samples', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: '民间情绪' }).click()
 
   const timeline = page.locator('.sentiment-timeline')
@@ -206,7 +207,7 @@ test('renders sentiment change timeline as platform-frame samples', async ({ pag
 })
 
 test('shows actionable OpenCLI diagnostics in the sentiment panel', async ({ page }) => {
-  await page.goto('/')
+  await openWorkbench(page)
   await page.getByLabel('专题视图导航').getByRole('button', { name: '民间情绪' }).click()
 
   const diagnostics = page.locator('.opencli-diagnostics')

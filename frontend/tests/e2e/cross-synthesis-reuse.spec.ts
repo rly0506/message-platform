@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const topic = {
   id: 601,
@@ -94,7 +95,7 @@ async function mockApi(page: Page) {
 
 test('runs standalone cross-synthesis in reuse-voices mode by default', async ({ page }) => {
   const api = await mockApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByLabel('专题视图导航').getByRole('button', { name: '三方对照' }).click()
   await page.getByRole('button', { name: '生成三方对照' }).click()

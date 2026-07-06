@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { openWorkbench } from './helpers'
 
 const project = {
   id: 201,
@@ -187,7 +188,7 @@ async function mockProjectApi(page: Page) {
 
 test('manages projects and creates a topic inside a project', async ({ page }) => {
   const api = await mockProjectApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await expect(page.getByRole('button', { name: '管理项目' })).toBeVisible()
   await page.getByRole('button', { name: '管理项目' }).click()
@@ -214,7 +215,7 @@ test('manages projects and creates a topic inside a project', async ({ page }) =
 
 test('edits archives and deletes existing projects and topics', async ({ page }) => {
   const api = await mockProjectApi(page)
-  await page.goto('/')
+  await openWorkbench(page)
 
   await page.getByRole('button', { name: '管理项目' }).click()
   const panel = page.locator('.project-manager')
