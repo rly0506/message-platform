@@ -213,6 +213,27 @@ test('opens on the daily front page with headline cards loaded', async ({ page }
   await expect(page.locator('h1')).toHaveText('事件搜索与发展时间轴')
 })
 
+test('surfaces only freshly-updated tracked topics on the front page updates strip', async ({ page }) => {
+  const freshIso = new Date(Date.now() - 2 * 86_400_000).toISOString()
+  const staleIso = new Date(Date.now() - 40 * 86_400_000).toISOString()
+  await page.route('**/api/topics', async (route) => {
+    await route.fulfill({
+      json: [
+        { id: 11, name: '新能源电池产业链', article_count: 24, source_count: 7, latest_published_at: freshIso, updated_at: freshIso, relevant_count: 20 },
+        { id: 12, name: '一个很久没动的旧话题', article_count: 5, source_count: 2, latest_published_at: staleIso, updated_at: staleIso, relevant_count: 3 },
+      ],
+    })
+  })
+  await page.goto('/')
+
+  await expect(page.locator('h1')).toHaveText('今日情报台')
+  const strip = page.locator('.frontpage-updates')
+  await expect(strip).toBeVisible()
+  await expect(strip.locator('.frontpage-update-card')).toHaveCount(1)
+  await expect(strip).toContainText('新能源电池产业链')
+  await expect(strip).not.toContainText('一个很久没动的旧话题')
+})
+
 test('renders behavioral-finance value-lens chips on seeds that carry labels', async ({ page }) => {
   await page.goto('/')
 

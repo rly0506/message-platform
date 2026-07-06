@@ -897,6 +897,12 @@ function styleLabel(style: string | undefined) {
   color: #7a5a12;
 }
 
+.value-lens-chip.vlc-availability_rising_seed {
+  border-color: #b9cfdd;
+  background: #eef4f9;
+  color: #2f5f7e;
+}
+
 .value-lens-chip.vlc-suspected_herding {
   border-color: #cdd9c6;
   background: #f2f7ef;
