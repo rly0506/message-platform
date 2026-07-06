@@ -69,7 +69,7 @@ def test_converged_citation_edges_use_only_top_n_internal_references():
     ]
 
 
-def test_search_works_uses_relevance_default_sort_and_api_key(monkeypatch):
+def test_search_works_uses_relevance_default_sort_and_optional_api_key(monkeypatch):
     calls = []
 
     class DummyResponse:
@@ -109,7 +109,7 @@ def test_search_works_uses_relevance_default_sort_and_api_key(monkeypatch):
             calls.append((url, params))
             return DummyResponse()
 
-    monkeypatch.setattr(openalex.config, "OPENALEX_API_KEY", "test-key", raising=False)
+    monkeypatch.setattr(openalex.config, "OPENALEX_API_KEY", "", raising=False)
     monkeypatch.setattr(openalex.httpx, "Client", DummyClient)
 
     papers = openalex.search_works("Iran nuclear deal", top_n=1)
@@ -118,5 +118,39 @@ def test_search_works_uses_relevance_default_sort_and_api_key(monkeypatch):
     assert calls[0][0] == "https://api.openalex.org/works"
     assert calls[0][1]["search"] == "Iran nuclear deal"
     assert calls[0][1]["per-page"] == 1
-    assert calls[0][1]["api_key"] == "test-key"
+    assert "api_key" not in calls[0][1]
     assert "sort" not in calls[0][1]
+
+
+def test_search_works_includes_api_key_when_configured(monkeypatch):
+    calls = []
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"results": []}
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url, params):
+            calls.append((url, params))
+            return DummyResponse()
+
+    monkeypatch.setattr(openalex.config, "OPENALEX_API_KEY", "test-key", raising=False)
+    monkeypatch.setattr(openalex.httpx, "Client", DummyClient)
+
+    openalex.search_works("Iran nuclear deal", top_n=1)
+
+    assert calls[0][1]["api_key"] == "test-key"

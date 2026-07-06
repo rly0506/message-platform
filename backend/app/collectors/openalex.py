@@ -85,13 +85,12 @@ def search_works(query: str, top_n: int = 30) -> list[dict[str, Any]]:
     to avoid high-citation off-topic papers, then citations are used only in local
     academic analysis scoring.
     """
-    if not config.OPENALEX_API_KEY:
-        raise RuntimeError("OPENALEX_API_KEY is not configured")
     params = {
         "search": query,
         "per-page": max(1, min(200, top_n)),
-        "api_key": config.OPENALEX_API_KEY,
     }
+    if config.OPENALEX_API_KEY:
+        params["api_key"] = config.OPENALEX_API_KEY
     last_error: Exception | None = None
     for attempt in range(3):
         try:

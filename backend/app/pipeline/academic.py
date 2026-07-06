@@ -22,9 +22,12 @@ def run_academic_analysis(
     if on_step:
         on_step("fetch", "running")
     search_query = academic_search_query(topic.name)
-    papers = fetch_academic_papers(search_query, top_n=top_n)
+    fetch_result = fetch_academic_papers(search_query, top_n=top_n)
+    papers = fetch_result["papers"]
+    source_errors = fetch_result["source_errors"]
+    source_status = fetch_result["source_status"]
     if on_step:
-        on_step("fetch", "done", {"paper_count": len(papers)})
+        on_step("fetch", "done", {"paper_count": len(papers), "source_errors": source_errors})
 
     if on_step:
         on_step("graph", "running")
@@ -65,24 +68,65 @@ def run_academic_analysis(
         "schools": schools_data["schools"],
         "foundational_papers": schools_data["foundational_papers"],
         "summary_md": summary_md,
-        "sort_strategy": "OpenAlex + Crossref search results are merged by DOI; OpenAlex relevance is preserved where available, and cited_by_count is used only for local foundation ranking.",
+        "source_errors": source_errors,
+        "source_status": source_status,
+        "sort_strategy": academic_sort_strategy(papers, source_status),
     }
 
 
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 
-def fetch_academic_papers(search_query: str, top_n: int = 30) -> list[dict[str, Any]]:
-    openalex_papers = safe_search(openalex.search_works, search_query, top_n)
-    crossref_papers = safe_search(crossref.search_works, search_query, top_n)
-    return merge_paper_sources(openalex_papers, crossref_papers)[:top_n]
+def fetch_academic_papers(search_query: str, top_n: int = 30) -> dict[str, Any]:
+    openalex_result = safe_search("openalex", openalex.search_works, search_query, top_n)
+    crossref_result = safe_search("crossref", crossref.search_works, search_query, top_n)
+    source_results = [openalex_result, crossref_result]
+    source_errors = [
+        {"source": result["source"], "error": result["error"]}
+        for result in source_results
+        if result["error"]
+    ]
+    source_status = {
+        result["source"]: {
+            "status": "degraded" if result["error"] else "ok",
+            "error": result["error"],
+            "paper_count": len(result["papers"]),
+        }
+        for result in source_results
+    }
+    return {
+        "papers": merge_paper_sources(openalex_result["papers"], crossref_result["papers"])[:top_n],
+        "source_errors": source_errors,
+        "source_status": source_status,
+    }
 
 
-def safe_search(search_fn: Any, search_query: str, top_n: int) -> list[dict[str, Any]]:
+def safe_search(source: str, search_fn: Any, search_query: str, top_n: int) -> dict[str, Any]:
     try:
-        return list(search_fn(search_query, top_n=top_n))
-    except Exception:
-        return []
+        return {"source": source, "papers": list(search_fn(search_query, top_n=top_n)), "error": ""}
+    except Exception as exc:
+        return {"source": source, "papers": [], "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
+def academic_sort_strategy(papers: list[dict[str, Any]], source_status: dict[str, Any]) -> str:
+    active_sources = academic_source_label(papers)
+    if not papers:
+        active_sources = "no academic source"
+    degraded = [
+        source
+        for source, status in source_status.items()
+        if status.get("status") == "degraded"
+    ]
+    if degraded:
+        return (
+            f"{active_sources} search results are shown; "
+            f"{', '.join(source.title() for source in degraded)} degraded and is recorded in source_errors. "
+            "Available sources are merged by DOI; citation counts are used only for local foundation ranking."
+        )
+    return (
+        f"{active_sources} search results are merged by DOI; "
+        "OpenAlex relevance is preserved where available, and cited_by_count is used only for local foundation ranking."
+    )
 
 
 def merge_paper_sources(*paper_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:

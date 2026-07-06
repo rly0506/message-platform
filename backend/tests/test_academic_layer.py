@@ -161,7 +161,10 @@ def test_run_academic_analysis_uses_crossref_when_openalex_has_no_results(monkey
         assert result["papers"][0]["sources"] == ["crossref"]
         assert result["papers"][0]["source_count"] == 1
         assert result["papers"][0]["source_links"][0]["source"] == "crossref"
-        assert "OpenAlex + Crossref" in result["sort_strategy"]
+        assert result["source_errors"] == []
+        assert result["source_status"]["openalex"]["status"] == "ok"
+        assert result["source_status"]["openalex"]["paper_count"] == 0
+        assert "Crossref search results" in result["sort_strategy"]
 
         stored = session.exec(select(Paper).where(Paper.openalex_id == "crossref:10.1000/crossref-only")).one()
         payload = academic.academic_payload(session, topic)
@@ -269,6 +272,54 @@ def test_run_academic_analysis_keeps_openalex_when_crossref_fails(monkeypatch):
     assert result["papers"][0]["sources"] == ["openalex"]
     assert payload["papers"][0]["source_count"] == 1
     assert payload["papers"][0]["source_links"][0]["source"] == "openalex"
+
+
+def test_run_academic_analysis_surfaces_source_degradation(monkeypatch):
+    topic_id = _seed_topic(name="Academic Source Error Topic")
+    crossref_papers = [
+        {
+            "openalex_id": "crossref:10.1000/source-error",
+            "title": "Crossref fallback paper",
+            "abstract": "",
+            "year": 2024,
+            "cited_by_count": 0,
+            "authors": ["C. Scholar"],
+            "venue": "Fallback Journal",
+            "concepts": [],
+            "doi": "https://doi.org/10.1000/source-error",
+            "openalex_url": "",
+            "url": "https://doi.org/10.1000/source-error",
+            "referenced_works": [],
+            "sources": ["crossref"],
+            "source_count": 1,
+            "source_links": [
+                {"source": "crossref", "url": "https://api.crossref.org/works/10.1000/source-error"}
+            ],
+        }
+    ]
+
+    def raise_openalex_error(query, top_n=30):
+        raise RuntimeError("OpenAlex timeout")
+
+    monkeypatch.setattr(academic.openalex, "search_works", raise_openalex_error)
+    monkeypatch.setattr(academic.crossref, "search_works", lambda query, top_n=30: crossref_papers)
+    monkeypatch.setattr(academic, "synthesize_academic", lambda topic, papers, edges, schools_data: "summary")
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        result = academic.run_academic_analysis(session, topic, top_n=5)
+
+    assert result["paper_count"] == 1
+    assert result["source_errors"] == [
+        {
+            "source": "openalex",
+            "error": "RuntimeError: OpenAlex timeout",
+        }
+    ]
+    assert result["source_status"]["openalex"]["status"] == "degraded"
+    assert result["source_status"]["crossref"]["status"] == "ok"
+    assert "Crossref search results" in result["sort_strategy"]
+    assert "OpenAlex + Crossref" not in result["sort_strategy"]
 
 
 def test_run_academic_analysis_synthesize_timeout_degrades_and_still_persists(monkeypatch):
