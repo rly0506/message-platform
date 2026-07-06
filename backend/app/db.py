@@ -137,6 +137,7 @@ class SentimentPost(SQLModel, table=True):
     topic_id: int = Field(foreign_key="topic.id", index=True)
     platform: str = "reddit"
     kind: str = "post"
+    external_id: str = Field(default="", index=True)
     parent_post_id: str = ""
     subreddit: str = ""
     title: str = ""
@@ -244,6 +245,7 @@ def _migrate() -> None:
         ],
         "sentimentpost": [
             ("kind", "VARCHAR DEFAULT 'post'"),
+            ("external_id", "VARCHAR DEFAULT ''"),
             ("parent_post_id", "VARCHAR DEFAULT ''"),
         ],
         "cognitionmark": [

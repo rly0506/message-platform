@@ -105,10 +105,12 @@ def summarize_sentiment(topic: Topic, posts: list[dict[str, Any]]) -> str:
 
 
 def compact_post_for_prompt(post: dict[str, Any]) -> dict[str, Any]:
+    post_id = post_external_id(post)
     return {
         "platform": post.get("platform", "reddit"),
         "kind": post.get("kind", "post"),
-        "id": post.get("id", ""),
+        "id": post_id,
+        "external_id": post_id,
         "parent_post_id": post.get("parent_post_id", ""),
         "subreddit": post.get("subreddit", ""),
         "title": post.get("title", ""),
@@ -135,7 +137,7 @@ def compact_posts_by_platform(posts: list[dict[str, Any]]) -> dict[str, list[dic
     for post in top_posts[:25]:
         platform = str(post.get("platform") or "unknown")
         compact = compact_post_for_prompt(post)
-        parent_id = str(post.get("id") or "")
+        parent_id = post_external_id(post)
         compact["高赞评论"] = [
             compact_post_for_prompt(comment)
             for comment in rank_posts(comments_by_parent.get(parent_id, []))[:10]
@@ -150,14 +152,29 @@ def persist_sentiment_layer(session: Session, topic_id: int, posts: list[dict[st
         for row in session.exec(select(SentimentPost).where(SentimentPost.topic_id == topic_id)).all()
         if row.url
     }
+    existing_external = {
+        (row.platform, row.external_id)
+        for row in session.exec(select(SentimentPost).where(SentimentPost.topic_id == topic_id)).all()
+        if row.external_id
+    }
     for post in posts:
         url = str(post.get("url") or "")
+        platform = str(post.get("platform") or "reddit")
+        external_id = post_external_id(post)
         if url and url in existing_urls:
+            continue
+        if external_id and (platform, external_id) in existing_external:
             continue
         session.add(sentiment_post_from_dict(topic_id, post))
         if url:
             existing_urls.add(url)
+        if external_id:
+            existing_external.add((platform, external_id))
     session.commit()
+
+
+def post_external_id(post: dict[str, Any]) -> str:
+    return str(post.get("external_id") or post.get("id") or "")
 
 
 def sentiment_post_from_dict(topic_id: int, post: dict[str, Any]) -> SentimentPost:
@@ -165,6 +182,7 @@ def sentiment_post_from_dict(topic_id: int, post: dict[str, Any]) -> SentimentPo
         topic_id=topic_id,
         platform=str(post.get("platform") or "reddit"),
         kind=str(post.get("kind") or "post"),
+        external_id=post_external_id(post),
         parent_post_id=str(post.get("parent_post_id") or ""),
         subreddit=str(post.get("subreddit") or ""),
         title=str(post.get("title") or ""),
@@ -296,8 +314,10 @@ def post_text(post: dict[str, Any]) -> str:
 
 
 def compact_timeline_post(post: dict[str, Any]) -> dict[str, Any]:
+    post_id = post_external_id(post)
     return {
-        "id": post.get("id", ""),
+        "id": post_id,
+        "external_id": post_id,
         "kind": post.get("kind", "post"),
         "title": post.get("title", ""),
         "score": int(post.get("score") or 0),
@@ -306,8 +326,11 @@ def compact_timeline_post(post: dict[str, Any]) -> dict[str, Any]:
 
 
 def sentiment_post_to_dict(post: SentimentPost) -> dict[str, Any]:
+    stable_id = post.external_id or str(post.id or "")
     return {
-        "id": post.id,
+        "id": stable_id,
+        "db_id": post.id,
+        "external_id": stable_id,
         "platform": post.platform,
         "kind": post.kind,
         "parent_post_id": post.parent_post_id,

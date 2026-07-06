@@ -249,6 +249,53 @@ def test_run_sentiment_analysis_job_fetches_summarizes_and_persists(monkeypatch)
     assert posts[1].platform == "bilibili"
 
 
+def test_sentiment_payload_from_db_keeps_comments_attached_by_external_id():
+    from app.pipeline import sentiment
+
+    topic_id = _seed_topic(name="Sentiment Comment Reload Topic")
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        sentiment.persist_sentiment_layer(
+            session,
+            topic_id,
+            [
+                {
+                    "platform": "reddit",
+                    "kind": "post",
+                    "id": "abc123",
+                    "subreddit": "worldnews",
+                    "title": "Parent thread",
+                    "score": 100,
+                    "num_comments": 20,
+                    "url": "https://reddit.com/r/worldnews/comments/abc123/test",
+                    "created_utc": "2026-06-20T03:00:00",
+                },
+                {
+                    "platform": "reddit",
+                    "kind": "comment",
+                    "id": "c1",
+                    "parent_post_id": "abc123",
+                    "subreddit": "worldnews",
+                    "title": "Useful comment",
+                    "score": 42,
+                    "num_comments": 0,
+                    "url": "",
+                    "created_utc": "2026-06-20T04:00:00",
+                },
+            ],
+        )
+        payload = sentiment.sentiment_payload_from_db(session, topic)
+
+    post = next(item for item in payload["posts"] if item["kind"] == "post")
+    comment = next(item for item in payload["posts"] if item["kind"] == "comment")
+    assert post["id"] == "abc123"
+    assert post["external_id"] == "abc123"
+    assert comment["id"] == "c1"
+    assert comment["external_id"] == "c1"
+    assert comment["parent_post_id"] == post["id"]
+    assert payload["timeline"][0]["sample_count"] == 2
+
+
 def test_sentiment_api_endpoints_use_background_job_and_return_payload(monkeypatch):
     topic_id = _seed_topic(name="Sentiment API Topic")
     started = []
