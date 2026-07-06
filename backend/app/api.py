@@ -194,9 +194,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    # 本地开发: 放行任意 localhost / 127.0.0.1 端口 (Vite 端口被占时会自动跳 5174/5175...),
-    # 避免端口漂移导致前端跨域报"无法连接后端"。仅匹配本地回环, 不放行外部来源。
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    # Dev only: allow localhost, private LAN, and Tailscale origins so Vite
+    # port drift and phone debugging can still reach the API.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|100\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],

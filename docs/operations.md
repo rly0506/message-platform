@@ -5,6 +5,20 @@
 Run from project root:
 
 ```powershell
+.\run_dev.ps1
+```
+
+For phone access on trusted Wi-Fi or Tailscale:
+
+```powershell
+.\run_dev.ps1 -Lan
+```
+
+LAN mode binds the backend to `0.0.0.0`, starts Vite with `--host 0.0.0.0`, and prints the phone URL. Use it only on trusted networks.
+
+Manual backend start:
+
+```powershell
 uvicorn app.api:app --app-dir backend --reload
 ```
 

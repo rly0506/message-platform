@@ -1,6 +1,8 @@
 # Dev launcher: starts backend (:8000) and frontend (:5173) in two
 # independent, auto-restarting windows. Run once from project root:
 #     .\run_dev.ps1
+# LAN/mobile mode for trusted Wi-Fi or Tailscale:
+#     .\run_dev.ps1 -Lan
 # Stop by closing those two windows. This window can be closed anytime.
 #
 # Port-conflict policy (NON-destructive):
@@ -13,6 +15,10 @@
 # NOTE: ASCII-only on purpose. Windows PowerShell 5.1 reads .ps1 files as
 # system ANSI (GBK on zh-CN) unless they have a BOM, so non-ASCII text here
 # would be mangled. Keep this file ASCII.
+
+param(
+    [switch]$Lan
+)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -49,10 +55,34 @@ function Resolve-Port([int]$preferred, [string]$ourName, [string]$label) {
     throw ("[{0}] no free port in {1}-{2}" -f $label, $preferred, ($preferred + 20))
 }
 
+function Get-LanIPv4() {
+    $candidates = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.IPAddress -notlike "127.*" -and
+            $_.IPAddress -notlike "169.254.*" -and
+            $_.PrefixOrigin -ne "WellKnown"
+        } |
+        Sort-Object @{ Expression = { if ($_.IPAddress -like "100.*") { 1 } else { 0 } } }, InterfaceMetric
+    $first = $candidates | Select-Object -First 1
+    if ($first) { return $first.IPAddress }
+    return "127.0.0.1"
+}
+
 Write-Host "Resolving ports..." -ForegroundColor Cyan
 $bport = Resolve-Port 8000 "python" "backend"
 $fport = Resolve-Port 5173 "node"   "frontend"
-$apiBase = "http://127.0.0.1:$bport"
+$bindHost = "127.0.0.1"
+$viteHostArgs = ""
+$phoneUrl = ""
+if ($Lan) {
+    $bindHost = "0.0.0.0"
+    $lanIp = Get-LanIPv4
+    $apiBase = "http://${lanIp}:$bport"
+    $viteHostArgs = "--host 0.0.0.0"
+    $phoneUrl = "http://${lanIp}:$fport"
+} else {
+    $apiBase = "http://127.0.0.1:$bport"
+}
 
 function Resolve-OpenCliCommand() {
     if ($env:OPENCLI_COMMAND -and (Test-Path -LiteralPath $env:OPENCLI_COMMAND)) {
@@ -85,7 +115,7 @@ Set-Location '$root'
 while (`$true) {
     Write-Host '[backend] starting uvicorn :$bport ...' -ForegroundColor Cyan
     if (`$env:OPENCLI_COMMAND) { Write-Host ("[backend] OPENCLI_COMMAND={0}" -f `$env:OPENCLI_COMMAND) -ForegroundColor DarkGray }
-    & '$root\venv\Scripts\python.exe' -m uvicorn app.api:app --app-dir backend --host 127.0.0.1 --port $bport --reload
+    & '$root\venv\Scripts\python.exe' -m uvicorn app.api:app --app-dir backend --host $bindHost --port $bport --reload
     Write-Host '[backend] exited; restarting in 2s (Ctrl+C to stop this window)...' -ForegroundColor Yellow
     Start-Sleep -Seconds 2
 }
@@ -98,7 +128,7 @@ $frontend = @"
 Set-Location '$root\frontend'
 while (`$true) {
     Write-Host '[frontend] starting vite :$fport  (API -> $apiBase) ...' -ForegroundColor Cyan
-    npm run dev -- --port $fport --strictPort
+    npm run dev -- $viteHostArgs --port $fport --strictPort
     Write-Host '[frontend] exited; restarting in 2s (Ctrl+C to stop this window)...' -ForegroundColor Yellow
     Start-Sleep -Seconds 2
 }
@@ -118,4 +148,8 @@ Write-Host "Launched in two new windows:" -ForegroundColor Green
 Write-Host ("  backend   {0}   (health: /api/health)" -f $apiBase)
 Write-Host ("  frontend  http://localhost:{0}    <- open this in browser" -f $fport)
 Write-Host ""
+if ($Lan) {
+    Write-Host ("LAN/mobile frontend: {0}" -f $phoneUrl) -ForegroundColor Green
+    Write-Host "Only use -Lan on trusted Wi-Fi or Tailscale." -ForegroundColor Yellow
+}
 Write-Host "To stop: close those two windows. This window is safe to close." -ForegroundColor DarkGray

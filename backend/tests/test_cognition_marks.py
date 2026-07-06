@@ -170,6 +170,16 @@ def test_cognition_mark_put_cors_preflight_is_allowed():
     assert "PUT" in response.headers["access-control-allow-methods"]
 
 
+def test_lan_cors_preflight_is_allowed_for_mobile_dev():
+    response = TestClient(api.app).options("/api/discovery/latest", headers={
+        "Origin": "http://192.168.1.20:5173",
+        "Access-Control-Request-Method": "GET",
+    })
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://192.168.1.20:5173"
+
+
 def _seed_mark_case() -> tuple[int, int]:
     init_db()
     with Session(engine) as session:
