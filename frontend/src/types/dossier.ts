@@ -307,6 +307,16 @@ export type Article = {
   emotion_note?: string
   category?: string
   category_reason?: string
+  info_value_labels?: InfoValueLabel[]
+}
+
+// 行为金融学信息价值透镜标签（后端 value_lens.py 产出，本地无 LLM）。
+// severity=hint 表示阅读提示，非警告；code 供样式，label/note 供展示。
+export type InfoValueLabel = {
+  code: string
+  label: string
+  note: string
+  severity: 'hint'
 }
 
 export type ArticlePerspectiveItem = {
@@ -578,6 +588,7 @@ export type DiscoverySeed = {
   what: string
   why: string
   still_niche: boolean
+  info_value_labels?: InfoValueLabel[]
 }
 
 export type DiscoveryResult = {

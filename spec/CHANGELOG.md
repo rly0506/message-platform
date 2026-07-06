@@ -1237,3 +1237,14 @@ Give future agents a stable project map and reproducible acceptance standard bef
 - `git status --short -- backend/.env backend/dossier.db` -> no output
 - `git check-ignore -v backend/.env backend/dossier.db` -> both ignored by `.gitignore`
 - `node .gitnexus/run.cjs detect-changes --scope all` -> risk low, affected processes 0
+
+## 2026-07-05 过夜 · Claude 前端线（分工：Claude frontend / GPT backend）
+
+按 spec/overnight-plan-2026-07-05.md，Claude 独占 frontend/。四项完成，均门禁通过：
+
+- **阶段 4.1 设计 token**：style.css 引入 :root token（色阶/间距/字号/圆角），配色沿用项目 teal+灰、比例借 Open Props。核心选择器切 var()，视觉零差。
+- **阶段 4.2 可读性重排**：边界卡 .boundary-card-notes 从 7 字段等权 3 列 → 主信息(摘要/为什么现在重要)全宽可读 + 次要元信息紧凑两列；.stream-row 去掉标题 nowrap 一行截断，默认可读、note 两行 clamp。
+- **阶段 4.3 今日头版补追踪动态**：新增 trackedUpdates computed（追踪话题 14 天内有新报道的置顶，纯前端派生自 latest_published_at，无后端新端点）+ 头版 .frontpage-updates 卡带。
+- **阶段 3.3 价值透镜 chip**：类型加 InfoValueLabel + info_value_labels?（文章+种子，可选）；DiscoveryPanel 头版/边界卡 + MediaPanel 文章行渲染 chip（提示样式非警告，用 span 不污染 li 计数）；加 e2e 断言。交接契约：消费 GPT 在 article_payload/collect_seeds 加的 info_value_labels:[{code,label,note,severity}]。
+
+门禁：`npm run build` 过；`npm run test:e2e --workers=1` → **100 passed (2.8m)**（含新增 chip 测试）。只碰 frontend/ + spec/CHANGELOG，未碰 backend/AGENTS/CLAUDE/.env/真实库。GPT 后端线已交接至 .agent-bridge/TO_CODEX.md，待其从阶段 1 起手。

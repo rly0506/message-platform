@@ -55,7 +55,7 @@ const cognitionProfile = ref<CognitionProfileItem[]>([])
 const cognitionMarkError = ref('')
 
 type AppMode = 'workbench' | 'discovery'
-const appMode = ref<AppMode>('workbench')
+const appMode = ref<AppMode>('discovery')
 const appModes = [
   { key: 'workbench', label: '事件分析台' },
   { key: 'discovery', label: '今日情报台' },
@@ -594,7 +594,12 @@ const {
 })
 
 onMounted(async () => {
-  await Promise.all([loadTopics(), loadAutoRefreshStatus()])
+  await Promise.all([
+    loadTopics(),
+    loadAutoRefreshStatus(),
+    loadLatestDiscovery(),
+    loadSeedCognitionState(),
+  ])
 })
 
 watch(appMode, (mode) => {

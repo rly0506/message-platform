@@ -821,6 +821,15 @@ function emotionClass(score: number) {
                 >
                   情绪 {{ article.emotion_score }}
                 </span>
+                <span
+                  v-for="label in article.info_value_labels || []"
+                  :key="`vl-${article.id}-${label.code}`"
+                  class="value-lens-badge"
+                  :class="`vlc-${label.code}`"
+                  :title="label.note"
+                >
+                  {{ label.label }}
+                </span>
               </div>
               <h3>
                 <a :href="article.url" target="_blank" rel="noreferrer">{{ titleFor(article) }}</a>

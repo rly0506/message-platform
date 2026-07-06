@@ -2,12 +2,71 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Microsoft YaHei", sans-serif;
-  color: #1c2329;
-  background: #eef2f4;
+  color: var(--text);
+  background: var(--bg-app);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* ============================================================
+     设计 token（2026-07-05 引入，混合方案）
+     - 间距/字号/圆角：借 Open Props 打磨好的几何比例
+     - 配色：沿用项目现有 teal 冷静基调，从 830+ 硬编码值收敛
+     值即当前实际用色/尺寸，本次引入视觉零差；后续逐步替换字面量。
+     ============================================================ */
+
+  /* — 文字色阶（从深到浅） — */
+  --text-strong: #18252d;   /* 主标题最深 */
+  --text: #1c2329;          /* 正文基色 */
+  --text-heading: #25343c;  /* 次级标题 */
+  --text-muted: #53636e;    /* 弱化正文 */
+  --text-muted-2: #60727c;  /* 更弱 */
+  --text-faint: #71808a;    /* 最弱/元信息 */
+  --text-eyebrow: #5c7180;  /* eyebrow/status */
+
+  /* — 品牌 teal（从深到浅） — */
+  --brand-deep: #16566a;    /* 深强调 */
+  --brand: #155a6e;         /* 主品牌 */
+  --brand-mid: #1f6f85;     /* 按钮/中调 */
+  --brand-accent: #2f7f95;  /* 亮强调 */
+
+  /* — 表面与背景 — */
+  --bg-app: #eef2f4;        /* 应用底 */
+  --surface: #fff;          /* 卡片/面板 */
+  --surface-tint: #f8fbfc;  /* 微染面板 */
+  --surface-tint-2: #f9fbfc;
+
+  /* — 边框（近重复灰收敛为三档） — */
+  --border: #d5e1e5;        /* 常规边框 */
+  --border-soft: #dbe5e9;   /* 更淡 */
+  --border-strong: #c9d4d9; /* 更实 */
+
+  /* — 语义状态色 — */
+  --ok: #1e7e44;
+  --warn: #8a5a00;
+  --danger: #c0392b;
+
+  /* — 间距阶（Open Props 式几何比例，px 对齐现有） — */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* — 字号阶（对齐现有 eyebrow/body/h3/h2/h1） — */
+  --font-size-0: 12px;   /* eyebrow/元信息 */
+  --font-size-1: 13px;   /* 密集正文 */
+  --font-size-2: 16px;   /* h3/正文大 */
+  --font-size-3: 19px;   /* h2 */
+  --font-size-4: 28px;   /* h1 */
+
+  /* — 圆角阶 — */
+  --radius-1: 4px;   /* code/小元素 */
+  --radius-2: 6px;   /* 输入/按钮 */
+  --radius-3: 8px;   /* 卡片/面板 */
+  --radius-round: 999px;
 }
 
 * {
@@ -30,11 +89,11 @@ a {
 
 code {
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-1);
   background: #dfe7eb;
   color: #0f394a;
   font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 13px;
+  font-size: var(--font-size-1);
 }
 
 .shell {
@@ -486,9 +545,9 @@ code {
 
 .eyebrow,
 .status {
-  margin: 0 0 4px;
-  color: #5c7180;
-  font-size: 12px;
+  margin: 0 0 var(--space-1);
+  color: var(--text-eyebrow);
+  font-size: var(--font-size-0);
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -502,17 +561,17 @@ p {
 }
 
 h1 {
-  font-size: 28px;
+  font-size: var(--font-size-4);
   line-height: 1.1;
 }
 
 h2 {
-  font-size: 19px;
+  font-size: var(--font-size-3);
   line-height: 1.25;
 }
 
 h3 {
-  font-size: 16px;
+  font-size: var(--font-size-2);
   line-height: 1.45;
 }
 
@@ -1100,6 +1159,30 @@ button:disabled {
 .emotion-badge.emotion-low {
   background: #eef2f4;
   color: #5a6b75;
+}
+
+/* 行为金融学信息价值透镜徽标: 阅读提示, 非警告。克制中性色, 不抢干货/情绪徽标。 */
+.value-lens-badge {
+  border-radius: var(--radius-1);
+  padding: 1px 6px !important;
+  border: 1px solid var(--border);
+  background: var(--surface-tint);
+  color: var(--text-muted);
+  font-weight: 700;
+  cursor: default;
+}
+
+.value-lens-badge.vlc-suspected_hype,
+.value-lens-badge.vlc-availability_high {
+  border-color: #e6d3a8;
+  background: #fbf5e6;
+  color: #7a5a12;
+}
+
+.value-lens-badge.vlc-suspected_herding {
+  border-color: #cdd9c6;
+  background: #f2f7ef;
+  color: #4a6540;
 }
 
 .substance-summary {

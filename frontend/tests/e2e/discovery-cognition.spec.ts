@@ -15,6 +15,9 @@ const seeds = [
     what: 'Small nuclear storage enters pilot',
     why: 'Energy is outside the current cognition boundary',
     still_niche: true,
+    info_value_labels: [
+      { code: 'suspected_hype', label: '疑似造势', note: '多家同期高调报道但缺可证伪细节', severity: 'hint' },
+    ],
   },
   {
     title: 'GPU cluster financing shifts to private credit',
@@ -192,23 +195,49 @@ test.beforeEach(async ({ page }) => {
 
 async function openDiscovery(page: Page) {
   await page.goto('/')
-  await page.locator('.mode-switch button').nth(1).click()
+  await expect(page.locator('h1')).toHaveText('今日情报台')
 }
+
+test('opens on the daily front page with headline cards loaded', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.locator('h1')).toHaveText('今日情报台')
+  await expect(page.locator('.headline-deck')).toBeVisible()
+  await expect(page.locator('.headline-card')).toHaveCount(2)
+  await expect(page.locator('.headline-card').first()).toContainText('New nuclear battery')
+  await expect(page.locator('.headline-card').first()).toContainText('Small nuclear storage enters pilot')
+  await expect(page.locator('.headline-card').first()).toContainText('Energy is outside the current cognition boundary')
+  await expect(page.locator('.boundary-queue')).toBeVisible()
+
+  await page.locator('.mode-switch button').first().click()
+  await expect(page.locator('h1')).toHaveText('事件搜索与发展时间轴')
+})
+
+test('renders behavioral-finance value-lens chips on seeds that carry labels', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.locator('h1')).toHaveText('今日情报台')
+  const nuclearCard = page.locator('.headline-card').first()
+  await expect(nuclearCard).toContainText('New nuclear battery')
+  const chip = nuclearCard.locator('.value-lens-chip.vlc-suspected_hype')
+  await expect(chip).toHaveText('疑似造势')
+  await expect(chip).toHaveAttribute('title', /缺可证伪细节/)
+})
 
 test('marks a frontier seed as known from the cognition boundary queue and closes it', async ({ page }) => {
   await openDiscovery(page)
 
   const queue = page.locator('.boundary-queue')
   await expect(queue).toBeVisible()
-  await expect(queue.locator('.boundary-list li')).toHaveCount(2)
+  await expect(queue.locator('.boundary-list > li')).toHaveCount(2)
 
-  const queueItem = page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })
+  const queueItem = page.locator('.boundary-list > li').filter({ hasText: 'New nuclear battery' })
   await expect(queueItem).toContainText('New nuclear battery')
   await expect(queueItem.getByRole('button').first()).toBeVisible()
 
   await queueItem.locator('.boundary-got-it').click()
 
-  await expect(page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })).toHaveCount(0)
+  await expect(page.locator('.boundary-list > li').filter({ hasText: 'New nuclear battery' })).toHaveCount(0)
   await expect.poll(() => savedMark).toMatchObject({
     target_type: 'seed',
     target_id: 0,
@@ -227,7 +256,7 @@ test('keeps discovery report visible when cognition marking fails', async ({ pag
   })
   await openDiscovery(page)
 
-  await page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' }).locator('.boundary-got-it').click()
+  await page.locator('.boundary-list > li').filter({ hasText: 'New nuclear battery' }).locator('.boundary-got-it').click()
 
   await expect(page.locator('.country-compare-error')).toContainText('mark service unavailable')
   await expect(page.locator('.boundary-queue')).toBeVisible()
@@ -256,13 +285,13 @@ test('collapses rest seeds and does not duplicate boundary-queue seeds', async (
 
   await openDiscovery(page)
 
-  await expect(page.locator('.boundary-list li')).toHaveCount(10)
+  await expect(page.locator('.boundary-list > li')).toHaveCount(10)
   await expect(page.locator('.rest-seeds .stream-row')).toHaveCount(2)
   await expect(page.locator('.rest-seeds .stream-row').first()).not.toBeVisible()
 
   await page.locator('.rest-seeds-summary').click()
   await expect(page.locator('.rest-seeds .stream-row').first()).toBeVisible()
-  const queueTitles = await page.locator('.boundary-list li strong').allInnerTexts()
+  const queueTitles = await page.locator('.boundary-list > li .boundary-title-row strong').allInnerTexts()
   const restTitles = await page.locator('.rest-seeds .stream-title').allInnerTexts()
   for (const title of restTitles) {
     expect(queueTitles).not.toContain(title)
@@ -272,7 +301,7 @@ test('collapses rest seeds and does not duplicate boundary-queue seeds', async (
 test('shows profile evidence and local workflow prompts in boundary cards', async ({ page }) => {
   await openDiscovery(page)
 
-  const firstItem = page.locator('.boundary-list li').first()
+  const firstItem = page.locator('.boundary-list > li').first()
   await expect(firstItem).toContainText('New nuclear battery')
   await expect(firstItem).toContainText('画像依据')
   await expect(firstItem).toContainText('confidence 58%')
@@ -280,14 +309,14 @@ test('shows profile evidence and local workflow prompts in boundary cards', asyn
   await expect(firstItem).toContainText('先拆清能源类型、电力供给、成本曲线和替代能源')
   await expect(firstItem).toContainText('适合机制补课')
 
-  const financeItem = page.locator('.boundary-list li').filter({ hasText: 'GPU cluster financing' })
+  const financeItem = page.locator('.boundary-list > li').filter({ hasText: 'GPU cluster financing' })
   await expect(financeItem).toContainText('用财报、现金流、成本和需求曲线追问')
 })
 
 test('shows seed summary, report connection and suggested path in boundary cards', async ({ page }) => {
   await openDiscovery(page)
 
-  const item = page.locator('.boundary-list li').filter({ hasText: 'New nuclear battery' })
+  const item = page.locator('.boundary-list > li').filter({ hasText: 'New nuclear battery' })
   await expect(item).toContainText('摘要')
   await expect(item).toContainText('Small nuclear storage enters pilot')
   await expect(item).toContainText('相关日报线索')
@@ -330,4 +359,15 @@ test('shows a local cognition timeline tree from archived reports', async ({ pag
   await expect(tree).toContainText('New nuclear battery moves from lab to pilot')
   await expect(tree.locator('.timeline-go').first()).toBeVisible()
   await expect(page.getByText('cause')).toHaveCount(0)
+})
+
+test('keeps headline cards readable on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  const deck = page.locator('.headline-deck')
+  await expect(deck).toBeVisible()
+  await expect(page.locator('.headline-card')).toHaveCount(2)
+  const box = await deck.boundingBox()
+  expect(box?.width).toBeLessThanOrEqual(390)
 })

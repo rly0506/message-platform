@@ -150,6 +150,21 @@ const restSeeds = computed(() => {
   )
 })
 
+const headlineItems = computed(() => boundaryQueue.value.slice(0, 5))
+
+// 今日头版「追踪动态」: 追踪话题里"最近有新报道"的挑出来置顶, 打开就见"我关注的事今天有什么动静"。
+// 纯前端派生自 latest_published_at, 无后端新端点。非 stale(14天内有更新)才算"在动", 按最新时间排序取前 4。
+const trackedUpdates = computed(() => {
+  return props.trackedTopics
+    .filter((topic) => !isStale(topic.latest_published_at))
+    .slice()
+    .sort((a, b) => {
+      const ta = a.latest_published_at ? new Date(a.latest_published_at).getTime() : 0
+      const tb = b.latest_published_at ? new Date(b.latest_published_at).getTime() : 0
+      return tb - ta
+    })
+    .slice(0, 4)
+})
 const latestRunId = computed(() => props.discoveryReports[0]?.run_id || props.report?.run_id || '')
 const isHistoricalReport = computed(() => Boolean(props.report?.run_id && latestRunId.value && props.report.run_id !== latestRunId.value))
 const timelineBranches = computed(() => props.discoveryTimelineTree?.branches || [])
@@ -347,34 +362,6 @@ function styleLabel(style: string | undefined) {
         </button>
       </div>
 
-      <div class="cross-synthesis-note">
-        <strong>鸟瞰：下面是你正在追踪的专题，以及今日注意力前沿里还没出圈、但在加速的"种子"</strong>
-        <span>「正在追踪」点任一专题即跳进事件分析台看它的最新档案；「今日前沿」每天中午自动跑基线，点上面按钮即时跑带 LLM 标注的深读。</span>
-        <span>看到值得追的种子，点「深入分析」——系统提炼成话题词，送进事件分析台跨媒体追踪。</span>
-      </div>
-
-      <div v-if="trackedTopics.length" class="tracking-block">
-        <div class="tracking-head">
-          <strong>正在追踪（{{ trackedTopics.length }}）</strong>
-          <span>点一个跳进分析台看最新进展</span>
-        </div>
-        <ol class="tracking-list">
-          <li
-            v-for="topic in trackedTopics"
-            :key="topic.id"
-            class="tracking-row"
-            :class="{ stale: isStale(topic.latest_published_at) }"
-          >
-            <button type="button" class="tracking-main" @click="$emit('trackTopic', topic.id)">
-              <span class="tracking-name">{{ topic.name }}</span>
-              <span class="tracking-meta">
-                {{ topic.article_count }} 篇 · {{ topic.source_count }} 源 · {{ freshness(topic.latest_published_at) }}
-              </span>
-            </button>
-          </li>
-        </ol>
-      </div>
-
       <p v-if="activeJobId" class="search-message">发现任务：{{ activeJobId.slice(0, 8) }}</p>
       <p v-if="message" class="search-message">{{ message }}</p>
       <div v-if="steps.length" class="step-list deep-step-list">
@@ -405,6 +392,104 @@ function styleLabel(style: string | undefined) {
               </option>
             </select>
           </label>
+        </div>
+
+        <section v-if="headlineItems.length" class="headline-frontpage" aria-label="今日头版">
+          <div class="headline-head">
+            <div>
+              <p class="eyebrow">Front Page</p>
+              <h3>今日头版</h3>
+            </div>
+            <span>{{ headlineItems.length }} 条</span>
+          </div>
+          <ol class="headline-deck">
+            <li v-for="item in headlineItems" :key="`headline-${item.seed.url}`" class="headline-card">
+              <div class="headline-card-main">
+                <div class="headline-meta">
+                  <span>{{ item.reason }}</span>
+                  <em>{{ item.seed.domain_label || item.seed.domain }}</em>
+                </div>
+                <h4>{{ item.seed.title }}</h4>
+                <div v-if="item.seed.info_value_labels?.length" class="value-lens-chips">
+                  <span
+                    v-for="label in item.seed.info_value_labels"
+                    :key="`hl-${item.seed.url}-${label.code}`"
+                    class="value-lens-chip"
+                    :class="`vlc-${label.code}`"
+                    :title="label.note"
+                  >
+                    {{ label.label }}
+                  </span>
+                </div>
+                <p>{{ seedSummary(item.seed) }}</p>
+                <small>{{ seedDeepReason(item) }}</small>
+              </div>
+              <div class="headline-actions">
+                <a :href="item.seed.url" target="_blank" rel="noopener">原文</a>
+                <button
+                  type="button"
+                  class="headline-primary"
+                  :disabled="seedBusy"
+                  @click="$emit('analyzeSeed', item.seed)"
+                >
+                  {{ seedBusy && activeSeedUrl === item.seed.url ? '…' : '深入' }}
+                </button>
+                <button
+                  type="button"
+                  class="headline-secondary"
+                  @click="$emit('markSeedCognition', item.seed, 'known')"
+                >
+                  我懂了
+                </button>
+                <button
+                  type="button"
+                  class="headline-secondary"
+                  @click="$emit('markSeedCognition', item.seed, 'doubtful')"
+                >
+                  存疑
+                </button>
+              </div>
+            </li>
+          </ol>
+
+          <div v-if="trackedUpdates.length" class="frontpage-updates" aria-label="追踪动态">
+            <p class="frontpage-updates-head">追踪动态 · 你关注的事最近有新报道</p>
+            <ol class="frontpage-updates-deck">
+              <li
+                v-for="topic in trackedUpdates"
+                :key="`update-${topic.id}`"
+                class="frontpage-update-card"
+              >
+                <button type="button" class="frontpage-update-main" @click="$emit('trackTopic', topic.id)">
+                  <span class="frontpage-update-flag">{{ freshness(topic.latest_published_at) }}</span>
+                  <span class="frontpage-update-name">{{ topic.name }}</span>
+                  <span class="frontpage-update-meta">{{ topic.article_count }} 篇 · {{ topic.source_count }} 源</span>
+                </button>
+              </li>
+            </ol>
+          </div>
+        </section>
+
+        <div v-if="trackedTopics.length" class="tracking-block">
+          <div class="tracking-head">
+            <strong>正在追踪（{{ trackedTopics.length }}）</strong>
+            <span>点一个跳进分析台看最新进展</span>
+          </div>
+          <ol class="tracking-list">
+            <li
+              v-for="topic in trackedTopics"
+              :key="topic.id"
+              class="tracking-row"
+              :class="{ stale: isStale(topic.latest_published_at) }"
+            >
+              <button type="button" class="tracking-main" @click="$emit('trackTopic', topic.id)">
+                <span class="tracking-name">{{ topic.name }}</span>
+                <span class="tracking-meta">
+                  {{ topic.article_count }} 篇 · {{ topic.source_count }} 源 · {{ freshness(topic.latest_published_at) }}
+                </span>
+              </button>
+            </li>
+          </ol>
         </div>
 
         <details class="cognition-timeline-tree">
@@ -453,32 +538,43 @@ function styleLabel(style: string | undefined) {
                     <strong>{{ item.seed.title }}</strong>
                     <em v-if="item.profile">{{ item.profile.domain_label }}</em>
                   </div>
+                  <div v-if="item.seed.info_value_labels?.length" class="value-lens-chips">
+                    <span
+                      v-for="label in item.seed.info_value_labels"
+                      :key="`bq-${item.seed.url}-${label.code}`"
+                      class="value-lens-chip"
+                      :class="`vlc-${label.code}`"
+                      :title="label.note"
+                    >
+                      {{ label.label }}
+                    </span>
+                  </div>
                   <dl class="boundary-card-notes">
-                    <div>
+                    <div class="note-primary">
                       <dt>摘要</dt>
                       <dd>{{ seedSummary(item.seed) }}</dd>
                     </div>
-                    <div>
-                      <dt>相关日报线索</dt>
-                      <dd>{{ seedReportConnection(item.seed) }}</dd>
-                    </div>
-                    <div>
-                      <dt>深入理由</dt>
-                      <dd>{{ seedDeepReason(item) }}</dd>
-                    </div>
-                    <div>
+                    <div class="note-primary">
                       <dt>为什么现在重要</dt>
                       <dd>{{ recommendationText(item) }}</dd>
                     </div>
-                    <div>
+                    <div class="note-secondary">
+                      <dt>相关日报线索</dt>
+                      <dd>{{ seedReportConnection(item.seed) }}</dd>
+                    </div>
+                    <div class="note-secondary">
+                      <dt>深入理由</dt>
+                      <dd>{{ seedDeepReason(item) }}</dd>
+                    </div>
+                    <div class="note-secondary">
                       <dt>建议路径</dt>
                       <dd>{{ nextActionText(item) }}</dd>
                     </div>
-                    <div>
+                    <div class="note-secondary">
                       <dt>画像依据</dt>
                       <dd>{{ profileEvidenceText(item) }}</dd>
                     </div>
-                    <div>
+                    <div class="note-secondary">
                       <dt>分析工作流</dt>
                       <dd>{{ workflowText(item) }}</dd>
                     </div>
@@ -630,6 +726,253 @@ function styleLabel(style: string | undefined) {
   background: #fff;
   color: #2c3a44;
   font: inherit;
+}
+
+.headline-frontpage {
+  margin: 0 0 14px;
+}
+
+.headline-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.headline-head .eyebrow,
+.headline-head h3 {
+  margin: 0;
+}
+
+.headline-head h3 {
+  color: #1c2329;
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.headline-head span {
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.headline-deck {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.headline-card {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 10px;
+  min-width: 0;
+  min-height: 220px;
+  padding: 12px;
+  border: 1px solid #cfdbe0;
+  border-left: 4px solid #155a6e;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.headline-card-main {
+  min-width: 0;
+}
+
+.headline-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.headline-meta span,
+.headline-meta em {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.headline-meta span {
+  background: #fff4e0;
+  color: #8a5a00;
+}
+
+.headline-meta em {
+  background: #eef7f9;
+  color: #155a6e;
+}
+
+.headline-card h4 {
+  margin: 0 0 8px;
+  color: #1c2329;
+  font-size: 0.98rem;
+  line-height: 1.28;
+}
+
+.headline-card p,
+.headline-card small {
+  display: block;
+  margin: 0;
+  color: #53636e;
+  line-height: 1.42;
+}
+
+.headline-card p {
+  font-size: 0.84rem;
+}
+
+.headline-card small {
+  margin-top: 6px;
+  font-size: 0.76rem;
+}
+
+.headline-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.headline-actions a,
+.headline-actions button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid #c5d2d8;
+  border-radius: 6px;
+  background: #fff;
+  color: #2c3a44;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.headline-primary {
+  border-color: #8fb8c8 !important;
+  background: #eef7f9 !important;
+  color: #155a6e !important;
+}
+
+.headline-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 行为金融学信息价值透镜 chip: 阅读提示, 非警告。克制的中性色, 不用红色告警。 */
+.value-lens-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.value-lens-chip {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-round);
+  background: var(--surface-tint);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: default;
+}
+
+/* 分类微差异色(仍克制): 造势/羊群偏暖提示, 小样本偏中性 */
+.value-lens-chip.vlc-suspected_hype,
+.value-lens-chip.vlc-availability_high {
+  border-color: #e6d3a8;
+  background: #fbf5e6;
+  color: #7a5a12;
+}
+
+.value-lens-chip.vlc-suspected_herding {
+  border-color: #cdd9c6;
+  background: #f2f7ef;
+  color: #4a6540;
+}
+
+/* 今日头版「追踪动态」: 关注的事最近有新报道, 打开即见动静 */
+.frontpage-updates {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border);
+}
+
+.frontpage-updates-head {
+  margin: 0 0 var(--space-3);
+  color: var(--text-faint);
+  font-size: var(--font-size-0);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.frontpage-updates-deck {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.frontpage-update-card {
+  min-width: 0;
+}
+
+.frontpage-update-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border-soft);
+  border-left: 4px solid var(--brand-accent);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.frontpage-update-main:hover {
+  background: var(--surface-tint);
+  border-color: var(--brand-accent);
+}
+
+.frontpage-update-flag {
+  align-self: flex-start;
+  padding: 1px 8px;
+  border-radius: var(--radius-round);
+  background: #eef7f9;
+  color: var(--brand);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.frontpage-update-name {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.frontpage-update-meta {
+  color: var(--text-faint);
+  font-size: 0.74rem;
 }
 
 /* 正在追踪: 已建专题的鸟瞰, 点一个跳进分析台 */
@@ -941,8 +1284,8 @@ function styleLabel(style: string | undefined) {
 
 .boundary-card-notes {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
   margin: 0;
 }
 
@@ -950,18 +1293,39 @@ function styleLabel(style: string | undefined) {
   min-width: 0;
 }
 
-.boundary-card-notes dt {
-  margin: 0 0 2px;
-  color: #6f7f89;
-  font-size: 0.68rem;
-  font-weight: 800;
+/* 主信息：摘要 + 为什么现在重要 —— 全宽、可读、有呼吸 */
+.boundary-card-notes .note-primary {
+  grid-column: 1 / -1;
 }
 
-.boundary-card-notes dd {
+.boundary-card-notes .note-primary dt {
+  margin: 0 0 var(--space-1);
+  color: var(--brand);
+  font-size: var(--font-size-0);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.boundary-card-notes .note-primary dd {
   margin: 0;
-  color: #2c3a44;
+  color: var(--text-heading);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* 次要元信息：紧凑、弱化，两列铺开 */
+.boundary-card-notes .note-secondary dt {
+  margin: 0 0 2px;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.boundary-card-notes .note-secondary dd {
+  margin: 0;
+  color: var(--text-muted);
   font-size: 0.75rem;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .seed-stream-head {
@@ -1002,13 +1366,13 @@ function styleLabel(style: string | undefined) {
 
 .stream-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 7px 12px;
+  padding: 10px 14px;
   border-top: 1px solid #eef2f4;
   border-left: 4px solid #cbd5db;
-  background: #fff;
+  background: var(--surface);
   transition: background 0.12s;
 }
 
@@ -1033,17 +1397,11 @@ function styleLabel(style: string | undefined) {
 
 .stream-title {
   display: block;
-  color: #1c2329;
+  color: var(--text);
   font-weight: 600;
   font-size: 0.9rem;
+  line-height: 1.4;
   text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.stream-row:hover .stream-title {
-  white-space: normal;
 }
 
 .stream-title:hover {
@@ -1051,16 +1409,18 @@ function styleLabel(style: string | undefined) {
 }
 
 .stream-note {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   font-size: 0.78rem;
-  color: #7a8590;
-  white-space: nowrap;
+  line-height: 1.45;
+  color: var(--text-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .stream-row:hover .stream-note {
-  white-space: normal;
+  -webkit-line-clamp: unset;
 }
 
 .stream-signals {
@@ -1140,6 +1500,20 @@ function styleLabel(style: string | undefined) {
 }
 
 @media (max-width: 720px) {
+  .headline-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .headline-card {
+    min-height: auto;
+  }
+
+  .headline-actions a,
+  .headline-actions button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
   .boundary-card-notes {
     grid-template-columns: 1fr;
   }
