@@ -145,6 +145,7 @@ export async function saveCognitionMark(payload: {
   label: CognitionLabel
   topic_id?: number | null
   note?: string
+  domain?: string
 }) {
   const res = await axios.put<CognitionMark>(`${API_BASE}/api/cognition/marks`, payload)
   return res.data

@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 
 let savedMark: Record<string, unknown> | null = null
 let startedDiscoveryJobs = 0
+let profileFetchCount = 0
 
 const seeds = [
   {
@@ -51,6 +52,7 @@ const historicalSeeds = [
 async function mockDiscoveryApi(page: Page) {
   savedMark = null
   startedDiscoveryJobs = 0
+  profileFetchCount = 0
   await page.route('**/api/topics', async (route) => {
     await route.fulfill({ json: [] })
   })
@@ -122,6 +124,7 @@ async function mockDiscoveryApi(page: Page) {
     await route.fulfill({ status: 500, json: { detail: 'archive selection must not start discovery job' } })
   })
   await page.route('**/api/cognition/profile', async (route) => {
+    profileFetchCount += 1
     await route.fulfill({
       json: [
         {
@@ -183,6 +186,7 @@ async function mockDiscoveryApi(page: Page) {
         topic_id: null,
         label: savedMark?.label,
         note: savedMark?.note,
+        domain: savedMark?.domain,
         updated_at: '2026-06-29T05:00:00',
       },
     })
@@ -264,7 +268,21 @@ test('marks a frontier seed as known from the cognition boundary queue and close
     target_id: 0,
     target_key: 'https://example.com/energy-seed',
     label: 'known',
+    domain: 'energy',
   })
+})
+
+test('refetches the cognition profile after marking a seed to close the calibration loop', async ({ page }) => {
+  await openDiscovery(page)
+
+  // 初次加载已拉一次 profile。
+  await expect.poll(() => profileFetchCount).toBeGreaterThanOrEqual(1)
+  const beforeMark = profileFetchCount
+
+  await page.locator('.boundary-list > li').filter({ hasText: 'New nuclear battery' }).locator('.boundary-got-it').click()
+
+  // 标记成功后应再拉一次 profile, 让回写后的 confidence 即时可见(不整页重载)。
+  await expect.poll(() => profileFetchCount).toBe(beforeMark + 1)
 })
 
 test('keeps discovery report visible when cognition marking fails', async ({ page }) => {

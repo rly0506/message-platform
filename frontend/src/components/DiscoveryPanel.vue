@@ -296,10 +296,11 @@ function boundaryScore(seed: DiscoverySeed, profile: CognitionProfileItem | null
     新信号: 42,
     加速信号: 35,
   }
+  // interest(想不想看)是干净的"想要更多"信号, 保留。
   const interestBoost = profile?.interest === 'high' ? 16 : profile?.interest === 'medium' ? 8 : 0
-  const confidence = typeof profile?.confidence === 'number' ? profile.confidence : 50
-  const confidenceBoost = confidence >= 70 ? 8 : confidence >= 55 ? 4 : 0
-  return (reasonBoost[reason] || 30) + interestBoost + confidenceBoost + Math.min(seed.signal / 10, 10)
+  // confidence(懂多少)不再参与排序: 标"已懂"抬 confidence 若前排会造回音壁, 与"戳盲区"相反。
+  // confidence 仍在画像证据(profileEvidenceText)透明显示, 只是不暗中重排 feed。方向待认知测试验证后再定。
+  return (reasonBoost[reason] || 30) + interestBoost + Math.min(seed.signal / 10, 10)
 }
 
 function profileEvidenceText(item: BoundarySeed) {

@@ -807,9 +807,16 @@ async function markSeedCognition(seed: DiscoverySeed, label: CognitionLabel, not
       target_key: seed.url,
       label,
       note,
+      domain: seed.domain,
     })
     seedCognitionMarks.value = { ...seedCognitionMarks.value, [seed.url]: mark }
     cognitionMarkError.value = ''
+    // 闭环: 标记后后端会按 domain 回写 profile confidence, refetch 让画像证据即时反映, 不整页重载。
+    try {
+      cognitionProfile.value = await fetchCognitionProfile()
+    } catch {
+      // 回写刷新失败不影响标记本身, 画像下次加载时会补上。
+    }
   } catch (err) {
     cognitionMarkError.value = readableError(err)
   }

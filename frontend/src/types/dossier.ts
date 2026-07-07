@@ -343,6 +343,7 @@ export type CognitionMark = {
   topic_id: number | null
   label: CognitionLabel
   note: string
+  domain?: string
   updated_at: string | null
 }
 
