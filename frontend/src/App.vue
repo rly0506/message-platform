@@ -960,6 +960,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           管理项目
         </button>
         <select v-if="appMode === 'workbench'" v-model="selectedTopicId" class="topic-select" aria-label="选择专题">
+          <option :value="null" disabled>选择已有专题…</option>
           <option v-for="topic in topics" :key="topic.id" :value="topic.id">
             #{{ topic.id }} {{ topic.name }}
           </option>

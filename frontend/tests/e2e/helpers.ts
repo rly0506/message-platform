@@ -8,4 +8,18 @@ export async function openWorkbench(page: Page) {
 export async function switchToWorkbench(page: Page) {
   await page.getByRole('button', { name: '事件分析台' }).click()
   await expect(page.locator('h1')).toHaveText('事件搜索与发展时间轴')
+  // 工作台默认不预选专题(空状态)，测试需显式从下拉选第一个已有专题，
+  // 模拟真实用户流程，也让各面板拿到专题数据。无专题时跳过。
+  await selectFirstTopic(page)
+}
+
+export async function selectFirstTopic(page: Page) {
+  const select = page.locator('select.topic-select')
+  // 专题列表是 onMounted 异步加载的，先等第一个非禁用选项出现（占位项 disabled，真专题在其后）。
+  const firstTopic = select.locator('option:not([disabled])').first()
+  await firstTopic.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {})
+  if ((await select.locator('option:not([disabled])').count()) > 0) {
+    // index 0 = 禁用占位「选择已有专题…」，index 1 = 第一个专题；按 index 选，Vue 回读数字 value。
+    await select.selectOption({ index: 1 })
+  }
 }

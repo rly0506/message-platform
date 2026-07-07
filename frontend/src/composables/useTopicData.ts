@@ -47,7 +47,9 @@ export function useTopicData() {
       }
       topics.value = data
       const preferred = preferTopicId || selectedTopicId.value
-      selectedTopicId.value = data.some((topic) => topic.id === preferred) ? preferred || null : data[0]?.id || null
+      // 初次加载(无 preferred)不自动选最新创建的专题，进空状态由用户挑/搜；
+      // 有 preferred 且仍存在则保持(新建/刷新后不跳走)。
+      selectedTopicId.value = data.some((topic) => topic.id === preferred) ? preferred || null : null
     } catch (err) {
       error.value = readableError(err)
     } finally {
