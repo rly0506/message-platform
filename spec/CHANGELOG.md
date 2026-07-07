@@ -1,5 +1,18 @@
 # Spec Changelog
 
+## 2026-07-07 Stage 0.1 API Integer Guard
+
+- Hardened API integer parsing at user-controlled boundaries:
+  - invalid topic `project_id` values now return HTTP 422 instead of bubbling `ValueError`;
+  - `project_id: null` on topic update now unlinks the topic from its project;
+  - invalid `article_ids` in country comparison now return HTTP 422 instead of a server error.
+
+### Verification
+
+- Red tests first: the new regression tests failed on `project_id: null`, invalid `project_id`, and invalid `article_ids`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_project_topic_management.py tests/test_country_compare.py -q` -> `13 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `254 passed, 5 warnings`.
+
 ## 2026-07-07 Cognition Calibration Backend V1
 
 - Started Claude's approved track B for the cognition calibration loop.

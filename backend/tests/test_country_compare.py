@@ -110,6 +110,16 @@ def test_country_compare_api_is_read_only_and_accepts_article_ids():
     assert any(country["code"] == "CN" and country["is_g20"] for country in body["countries"])
 
 
+def test_country_compare_rejects_invalid_article_ids_without_server_error():
+    topic_id, _included_id, _excluded_id = _seed_country_compare_case()
+    client = TestClient(api.app)
+
+    response = client.get(f"/api/topics/{topic_id}/country-compare", params={"article_ids": "abc"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "article_ids must be integers"
+
+
 def _seed_country_compare_case() -> tuple[int, int, int]:
     init_db()
     with Session(engine) as session:

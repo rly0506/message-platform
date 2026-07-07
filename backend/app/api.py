@@ -384,10 +384,13 @@ def update_topic(topic_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         if not topic:
             raise HTTPException(status_code=404, detail="Topic not found")
         if "project_id" in payload:
-            project_id = int(payload.get("project_id") or 0)
-            if not session.get(Project, project_id):
-                raise HTTPException(status_code=404, detail="Project not found")
-            topic.project_id = project_id
+            project_id = parse_optional_int(payload.get("project_id"), "Project id must be an integer")
+            if project_id is None:
+                topic.project_id = None
+            else:
+                if not session.get(Project, project_id):
+                    raise HTTPException(status_code=404, detail="Project not found")
+                topic.project_id = project_id
         if "name" in payload:
             topic.name = clean_required_text(payload.get("name"), "Topic name is required")
         if "description" in payload:
@@ -794,8 +797,8 @@ def ensure_topic_projects(session: Session) -> None:
 
 
 def project_for_topic_payload(session: Session, payload: dict[str, Any], topic_name: str) -> Project:
-    project_id = payload.get("project_id")
-    if project_id:
+    project_id = parse_optional_int(payload.get("project_id"), "Project id must be an integer")
+    if project_id is not None:
         project = session.get(Project, int(project_id))
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -964,6 +967,15 @@ def clamp_int(value: Any, low: int, high: int, fallback: int) -> int:
     return max(low, min(high, parsed))
 
 
+def parse_optional_int(value: Any, message: str) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=message) from None
+
+
 def cognition_unfamiliar_topics(session: Session, marks: list[CognitionMark]) -> list[dict[str, Any]]:
     counts: dict[int, int] = {}
     for mark in marks:
@@ -991,7 +1003,9 @@ def parse_article_ids(values: list[str] | None) -> list[int] | None:
         for part in str(value).split(","):
             part = part.strip()
             if part:
-                ids.append(int(part))
+                parsed = parse_optional_int(part, "article_ids must be integers")
+                if parsed is not None:
+                    ids.append(parsed)
     return ids or None
 
 

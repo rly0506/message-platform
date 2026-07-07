@@ -98,3 +98,47 @@ def test_update_project_archives_project_without_deleting_topics():
     topic_response = client.get(f"/api/topics/{topic['id']}")
     assert topic_response.status_code == 200
     assert topic_response.json()["project_id"] == project["id"]
+
+
+def test_update_topic_allows_project_unlink_with_null():
+    init_db()
+    client = TestClient(api.app)
+    project = client.post("/api/projects", json={"name": "项目解绑测试"}).json()
+    topic = client.post("/api/topics", json={
+        "project_id": project["id"],
+        "name": "项目解绑专题",
+        "queries": ["项目解绑专题"],
+    }).json()
+
+    response = client.patch(f"/api/topics/{topic['id']}", json={"project_id": None})
+
+    assert response.status_code == 200
+    assert response.json()["project_id"] is None
+
+
+def test_update_topic_rejects_invalid_project_id_without_server_error():
+    init_db()
+    client = TestClient(api.app)
+    topic = client.post("/api/topics", json={
+        "name": "非法项目ID更新",
+        "queries": ["非法项目ID更新"],
+    }).json()
+
+    response = client.patch(f"/api/topics/{topic['id']}", json={"project_id": "not-an-int"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Project id must be an integer"
+
+
+def test_create_topic_rejects_invalid_project_id_without_server_error():
+    init_db()
+    client = TestClient(api.app)
+
+    response = client.post("/api/topics", json={
+        "project_id": "not-an-int",
+        "name": "非法项目ID创建",
+        "queries": ["非法项目ID创建"],
+    })
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Project id must be an integer"
