@@ -166,6 +166,7 @@ class CognitionMark(SQLModel, table=True):
     target_id: int = Field(default=0, index=True)
     target_key: str = Field(default="", index=True)
     topic_id: Optional[int] = Field(default=None, foreign_key="topic.id", index=True)
+    domain: str = Field(default="", index=True)
     label: str = Field(index=True)
     note: str = ""
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
@@ -250,6 +251,7 @@ def _migrate() -> None:
         ],
         "cognitionmark": [
             ("target_key", "VARCHAR DEFAULT ''"),
+            ("domain", "VARCHAR DEFAULT ''"),
             ("note", "VARCHAR DEFAULT ''"),
         ],
         "cognitionprofile": [

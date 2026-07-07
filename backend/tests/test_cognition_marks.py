@@ -66,6 +66,7 @@ def test_seed_cognition_mark_uses_target_key_and_note():
     payload = {
         "target_type": "seed",
         "target_key": "https://example.com/frontier-seed",
+        "domain": "energy",
         "label": "unfamiliar",
         "note": "能源领域只听过新闻，没有主动了解",
     }
@@ -76,6 +77,7 @@ def test_seed_cognition_mark_uses_target_key_and_note():
     assert body["target_type"] == "seed"
     assert body["target_key"] == payload["target_key"]
     assert body["target_id"] == 0
+    assert body["domain"] == "energy"
     assert body["label"] == "unfamiliar"
     assert body["note"] == payload["note"]
 
@@ -87,6 +89,86 @@ def test_seed_cognition_mark_uses_target_key_and_note():
 
     marks = client.get("/api/cognition/marks?target_type=seed").json()
     assert len([mark for mark in marks if mark["target_key"] == payload["target_key"]]) == 1
+
+
+def test_seed_mark_known_calibrates_matching_profile_with_evidence():
+    init_db()
+    client = TestClient(api.app)
+    before = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+
+    response = client.put("/api/cognition/marks", json={
+        "target_type": "seed",
+        "target_key": "https://example.com/science-frontier",
+        "domain": "science",
+        "label": "known",
+        "note": "这条生命科学突破已经读懂。",
+    })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["domain"] == "science"
+    after = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+    assert after["biotech"]["confidence"] == min(100, before["biotech"]["confidence"] + 5)
+    assert "标 science 种子已懂" in after["biotech"]["evidence"]
+    assert f'{before["biotech"]["confidence"]}→{after["biotech"]["confidence"]}' in after["biotech"]["evidence"]
+
+
+def test_seed_mark_unmapped_domain_is_stored_without_profile_calibration():
+    init_db()
+    client = TestClient(api.app)
+    before = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+
+    response = client.put("/api/cognition/marks", json={
+        "target_type": "seed",
+        "target_key": "https://example.com/other-frontier",
+        "domain": "other",
+        "label": "known",
+    })
+
+    assert response.status_code == 200
+    assert response.json()["domain"] == "other"
+    after = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+    assert after == before
+
+
+def test_seed_mark_doubtful_records_evidence_without_confidence_gain():
+    init_db()
+    client = TestClient(api.app)
+    before = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+
+    response = client.put("/api/cognition/marks", json={
+        "target_type": "seed",
+        "target_key": "https://example.com/finance-frontier",
+        "domain": "finance",
+        "label": "doubtful",
+    })
+
+    assert response.status_code == 200
+    after = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+    assert after["finance"]["confidence"] == before["finance"]["confidence"]
+    assert "标 finance 种子存疑" in after["finance"]["evidence"]
+    assert f'{before["finance"]["confidence"]}→{before["finance"]["confidence"]}' in after["finance"]["evidence"]
+
+
+def test_repeating_same_seed_mark_does_not_recalibrate_profile_again():
+    init_db()
+    client = TestClient(api.app)
+    payload = {
+        "target_type": "seed",
+        "target_key": "https://example.com/repeated-science-frontier",
+        "domain": "science",
+        "label": "known",
+    }
+    first = client.put("/api/cognition/marks", json=payload)
+    assert first.status_code == 200
+    after_first = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+
+    second = client.put("/api/cognition/marks", json=payload)
+
+    assert second.status_code == 200
+    after_second = {item["domain_key"]: item for item in client.get("/api/cognition/profile").json()}
+    assert after_second["biotech"]["confidence"] == after_first["biotech"]["confidence"]
+    assert after_second["biotech"]["evidence"] == after_first["biotech"]["evidence"]
 
 
 def test_cognition_profile_initializes_default_boundaries():

@@ -1,5 +1,31 @@
 # Spec Changelog
 
+## 2026-07-07 Cognition Calibration Backend V1
+
+- Started Claude's approved track B for the cognition calibration loop.
+- Added backend support for storing a discovery seed `domain` on `CognitionMark`.
+- Added conservative seed-domain to profile-domain mapping for mark-driven calibration:
+  - `tech -> ai_infra`;
+  - `finance -> finance`;
+  - `geopolitics -> geopolitics`;
+  - `science -> biotech`;
+  - `society -> social_structure`;
+  - unmapped values such as `other` are stored on the mark but do not update profile confidence.
+- Added mark-driven profile lessons:
+  - `known` increases confidence by 5;
+  - `doubtful` records a lesson without confidence gain;
+  - `unfamiliar` decreases confidence by 5;
+  - repeated identical seed marks do not recalibrate again.
+- Kept the backend boundary explicit: calibration records user behavior only and does not add any "high confidence means recommend less" logic.
+
+### Verification
+
+- Red tests first: seed marks initially failed with missing `domain` in response payload; repeated-mark recalibration test failed before the upsert guard.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `12 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `250 passed, 5 warnings`.
+- `git diff --check` -> pass, LF/CRLF warnings only.
+- `node .gitnexus/run.cjs detect-changes -r message-platform --scope all` -> risk `critical`, `7 files`, `24 symbols`, `25` affected processes. The critical risk is expected because `backend/app/db.py` migration plumbing is central and the working tree still contains pre-existing `AGENTS.md`/`CLAUDE.md` local guide changes.
+
 ## 2026-07-06 GPT Backend Roadmap P1 + Value Lens
 
 - Continued `spec/gpt-roadmap-4h-2026-07-06.md` on `feature/academic-reading-signals`.

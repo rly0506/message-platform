@@ -186,6 +186,20 @@ DEFAULT_COGNITION_PROFILE = [
     },
 ]
 
+SEED_DOMAIN_PROFILE_MAP = {
+    "tech": "ai_infra",
+    "finance": "finance",
+    "geopolitics": "geopolitics",
+    "science": "biotech",
+    "society": "social_structure",
+}
+
+COGNITION_MARK_DELTAS = {
+    "known": 5,
+    "doubtful": 0,
+    "unfamiliar": -5,
+}
+
 app = FastAPI(
     title="Dossier API",
     version="0.1.0",
@@ -669,6 +683,9 @@ def upsert_cognition_mark(payload: CognitionMarkRequest) -> dict[str, Any]:
                 .where(CognitionMark.topic_id == payload.topic_id)
             )
         mark = session.exec(statement).first()
+        previous_label = mark.label if mark else ""
+        previous_domain = mark.domain if mark else ""
+        is_new_mark = mark is None
         if not mark:
             mark = CognitionMark(
                 target_type=payload.target_type,
@@ -676,10 +693,13 @@ def upsert_cognition_mark(payload: CognitionMarkRequest) -> dict[str, Any]:
                 target_key=payload.target_key,
                 topic_id=payload.topic_id,
             )
+        mark.domain = payload.domain.strip().lower()
         mark.label = payload.label
         mark.note = payload.note.strip()
         mark.updated_at = datetime.utcnow()
         session.add(mark)
+        if is_new_mark or mark.label != previous_label or mark.domain != previous_domain:
+            apply_cognition_mark_calibration(session, mark)
         session.commit()
         session.refresh(mark)
         return cognition_mark_payload(mark)
@@ -831,6 +851,7 @@ def cognition_mark_payload(mark: CognitionMark) -> dict[str, Any]:
         "target_id": mark.target_id,
         "target_key": mark.target_key,
         "topic_id": mark.topic_id,
+        "domain": mark.domain,
         "label": mark.label,
         "note": mark.note,
         "updated_at": payloads.iso(mark.updated_at),
@@ -893,6 +914,46 @@ def apply_cognition_profile_defaults(item: CognitionProfile, default: dict[str, 
         item.confidence = int(default.get("confidence", 50))
         changed = True
     return changed
+
+
+def apply_cognition_mark_calibration(session: Session, mark: CognitionMark) -> None:
+    if mark.target_type != "seed":
+        return
+    domain = (mark.domain or "").strip()
+    domain_key = SEED_DOMAIN_PROFILE_MAP.get(domain)
+    if not domain_key:
+        return
+    delta = COGNITION_MARK_DELTAS.get(mark.label)
+    if delta is None:
+        return
+    profile = session.exec(select(CognitionProfile).where(CognitionProfile.domain_key == domain_key)).first()
+    if not profile:
+        ensure_cognition_profile(session)
+        profile = session.exec(select(CognitionProfile).where(CognitionProfile.domain_key == domain_key)).first()
+    if not profile:
+        return
+    before = clamp_int(profile.confidence, 0, 100, 50)
+    after = max(0, min(100, before + delta))
+    if after != before:
+        profile.confidence = after
+    label_text = {
+        "known": "已懂",
+        "doubtful": "存疑",
+        "unfamiliar": "陌生",
+    }.get(mark.label, mark.label)
+    lesson = f"{datetime.utcnow().date().isoformat()} 标 {domain} 种子{label_text} confidence {before}→{after}"
+    profile.evidence = append_profile_evidence(profile.evidence, lesson)
+    profile.updated_at = datetime.utcnow()
+    session.add(profile)
+
+
+def append_profile_evidence(existing: str, lesson: str) -> str:
+    existing = (existing or "").strip()
+    if not existing:
+        return lesson
+    if lesson in existing:
+        return existing
+    return f"{existing}\n{lesson}"
 
 
 def clamp_int(value: Any, low: int, high: int, fallback: int) -> int:
