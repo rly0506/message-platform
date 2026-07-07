@@ -165,12 +165,21 @@ def write_body_file(body: str) -> str:
 
 
 def run_agently_cli(args: list[str]) -> SendResult:
-    completed = subprocess.run(args, capture_output=True, text=True, encoding="utf-8")
+    completed = subprocess.run(_agently_cli_args(args), capture_output=True, text=True, encoding="utf-8")
     return SendResult(
         returncode=completed.returncode,
         stdout=completed.stdout,
         stderr=completed.stderr,
     )
+
+
+def _agently_cli_args(args: list[str]) -> list[str]:
+    if not args:
+        return args
+    command = args[0]
+    if os.name == "nt" and not command.lower().endswith((".cmd", ".bat")):
+        return ["cmd", "/c", *args]
+    return args
 
 
 def _smtp_port(raw: str) -> int:

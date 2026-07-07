@@ -117,6 +117,30 @@ def test_send_daily_digest_invokes_agently_cli_with_body_file():
     assert "New nuclear battery" in captured["body"]
 
 
+def test_run_agently_cli_uses_cmd_shim_on_windows(monkeypatch):
+    captured = {}
+
+    class Completed:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return Completed()
+
+    monkeypatch.setattr(daily_email.os, "name", "nt")
+    monkeypatch.setattr(daily_email.subprocess, "run", fake_run)
+
+    result = daily_email.run_agently_cli(["agently-cli", "message", "+send"])
+
+    assert result.returncode == 0
+    assert captured["args"] == ["cmd", "/c", "agently-cli", "message", "+send"]
+    assert captured["kwargs"]["capture_output"] is True
+    assert captured["kwargs"]["text"] is True
+
+
 def test_send_daily_digest_smtp_requires_recipient_and_host_before_connection():
     called = False
 

@@ -1,5 +1,15 @@
 # Spec Changelog
 
+## 2026-07-07 Stage 0.4 Agent Mail Windows CLI Shim
+
+- Routed Agent Mail CLI invocation through `cmd /c` on Windows so npm-style `agently-cli.cmd` shims can start from Python subprocess.
+- Kept SMTP sending unchanged and covered the Agent Mail path with a monkeypatched subprocess test, so tests never send real email.
+
+### Verification
+
+- Red test first: Windows-mode `run_agently_cli(["agently-cli", ...])` initially passed the command directly instead of using `cmd /c`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_daily_email.py -q` -> `8 passed`.
+
 ## 2026-07-07 Stage 0.3 Topic-Rename Summary Lookup
 
 - Made academic, sentiment, and cross-synthesis summary lookup use stable `payload.topic_id` instead of mutable `SearchJob.query` topic names.
