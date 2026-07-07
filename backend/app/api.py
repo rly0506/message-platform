@@ -976,6 +976,13 @@ def parse_optional_int(value: Any, message: str) -> int | None:
         raise HTTPException(status_code=422, detail=message) from None
 
 
+def safe_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def cognition_unfamiliar_topics(session: Session, marks: list[CognitionMark]) -> list[dict[str, Any]]:
     counts: dict[int, int] = {}
     for mark in marks:
@@ -1013,14 +1020,13 @@ def latest_academic_summary(session: Session, topic: Topic) -> str:
     jobs = session.exec(
         select(SearchJob)
         .where(SearchJob.status == "done")
-        .where(SearchJob.query == f"academic:{topic.name}")
         .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
     ).all()
     for job in jobs:
         payload = job.payload or {}
         if payload.get("kind") != "academic_analysis":
             continue
-        if int(payload.get("topic_id") or 0) != topic.id:
+        if safe_int(payload.get("topic_id")) != topic.id:
             continue
         result = job.result or {}
         summary = result.get("summary_md")
@@ -1033,14 +1039,13 @@ def latest_sentiment_summary(session: Session, topic: Topic) -> str:
     jobs = session.exec(
         select(SearchJob)
         .where(SearchJob.status == "done")
-        .where(SearchJob.query == f"sentiment:{topic.name}")
         .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
     ).all()
     for job in jobs:
         payload = job.payload or {}
         if payload.get("kind") != "sentiment_analysis":
             continue
-        if int(payload.get("topic_id") or 0) != topic.id:
+        if safe_int(payload.get("topic_id")) != topic.id:
             continue
         result = job.result or {}
         summary = result.get("summary_md")
@@ -1055,14 +1060,13 @@ def latest_sentiment_errors(session: Session, topic: Topic) -> list[dict[str, st
     jobs = session.exec(
         select(SearchJob)
         .where(SearchJob.status == "done")
-        .where(SearchJob.query == f"sentiment:{topic.name}")
         .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
     ).all()
     for job in jobs:
         payload = job.payload or {}
         if payload.get("kind") != "sentiment_analysis":
             continue
-        if int(payload.get("topic_id") or 0) != topic.id:
+        if safe_int(payload.get("topic_id")) != topic.id:
             continue
         result = job.result or {}
         errors = result.get("errors")

@@ -80,6 +80,44 @@ def test_gather_voices_collects_existing_media_academic_and_sentiment_outputs():
     assert voices["sentiment"]["top_posts"][0]["score"] == 88
 
 
+def test_gather_voices_keeps_academic_and_sentiment_after_topic_rename():
+    from app.pipeline import cross_synthesis
+
+    topic_id = _seed_topic("Original Cross Topic")
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        session.add(
+            SearchJob(
+                id="academic-cross-before-rename",
+                query="academic:Original Cross Topic",
+                status="done",
+                steps=[],
+                payload={"topic_id": topic_id, "kind": "academic_analysis"},
+                result={"summary_md": "academic survives rename"},
+            )
+        )
+        session.add(
+            SearchJob(
+                id="sentiment-cross-before-rename",
+                query="sentiment:Original Cross Topic",
+                status="done",
+                steps=[],
+                payload={"topic_id": topic_id, "kind": "sentiment_analysis"},
+                result={"summary_md": "sentiment survives rename"},
+            )
+        )
+        topic.name = "Renamed Cross Topic"
+        session.add(topic)
+        session.commit()
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        voices = cross_synthesis.gather_voices(session, topic)
+
+    assert voices["academic"]["summary_md"] == "academic survives rename"
+    assert voices["sentiment"]["summary_md"] == "sentiment survives rename"
+
+
 def test_gather_voices_marks_missing_voices_without_crashing():
     from app.pipeline import cross_synthesis
 

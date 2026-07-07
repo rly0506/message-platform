@@ -1,5 +1,16 @@
 # Spec Changelog
 
+## 2026-07-07 Stage 0.3 Topic-Rename Summary Lookup
+
+- Made academic, sentiment, and cross-synthesis summary lookup use stable `payload.topic_id` instead of mutable `SearchJob.query` topic names.
+- Kept stale or malformed job payloads non-fatal by skipping jobs whose `topic_id` cannot be parsed.
+
+### Verification
+
+- Red tests first: academic, sentiment, and cross-synthesis summaries disappeared after topic rename.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_academic_view_keeps_summary_after_topic_rename tests/test_sentiment_layer.py::test_sentiment_view_keeps_summary_and_errors_after_topic_rename tests/test_cross_synthesis.py::test_gather_voices_keeps_academic_and_sentiment_after_topic_rename -q` -> `3 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py tests/test_sentiment_layer.py tests/test_cross_synthesis.py -q` -> `40 passed, 5 warnings`.
+
 ## 2026-07-07 Stage 0.2 Blank Search Query Guard
 
 - Rejected whitespace-only search queries at the `SearchRequest` schema boundary.

@@ -719,6 +719,32 @@ def test_academic_view_returns_latest_academic_job_summary():
     assert payload["summary_md"] == "new summary"
 
 
+def test_academic_view_keeps_summary_after_topic_rename():
+    topic_id = _seed_topic(name="Original Academic Topic")
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        session.add(
+            search_service.SearchJob(
+                id="academic-before-rename",
+                query="academic:Original Academic Topic",
+                status="done",
+                steps=[],
+                payload={"topic_id": topic_id, "kind": "academic_analysis"},
+                result={"summary_md": "summary survives rename"},
+                created_at=datetime(2026, 1, 1, 10, 0, 0),
+                updated_at=datetime(2026, 1, 1, 10, 0, 0),
+            )
+        )
+        topic.name = "Renamed Academic Topic"
+        session.add(topic)
+        session.commit()
+
+    payload = TestClient(api.app).get(f"/api/topics/{topic_id}/academic").json()
+
+    assert payload["summary_md"] == "summary survives rename"
+
+
 def _seed_topic(name: str = "Academic Topic") -> int:
     init_db()
     with Session(engine) as session:

@@ -424,6 +424,34 @@ def test_sentiment_view_surfaces_platform_errors_after_reload():
     assert platforms_with_errors == {"xiaohongshu", "xueqiu"}
 
 
+def test_sentiment_view_keeps_summary_and_errors_after_topic_rename():
+    topic_id = _seed_topic(name="Original Sentiment Topic")
+    errs = [{"platform": "reddit", "error": "OpenCLI failed"}]
+
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        session.add(
+            SearchJob(
+                id="sentiment-before-rename",
+                query="sentiment:Original Sentiment Topic",
+                status="done",
+                steps=[],
+                payload={"topic_id": topic_id, "kind": "sentiment_analysis"},
+                result={"summary_md": "sentiment survives rename", "errors": errs},
+                created_at=datetime(2026, 1, 1, 10, 0, 0),
+                updated_at=datetime(2026, 1, 1, 10, 0, 0),
+            )
+        )
+        topic.name = "Renamed Sentiment Topic"
+        session.add(topic)
+        session.commit()
+
+    payload = TestClient(api.app).get(f"/api/topics/{topic_id}/sentiment").json()
+
+    assert payload["summary_md"] == "sentiment survives rename"
+    assert payload["errors"] == errs
+
+
 def _seed_topic(name: str = "Sentiment Topic") -> int:
     init_db()
     with Session(engine) as session:

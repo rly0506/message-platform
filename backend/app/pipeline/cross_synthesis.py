@@ -210,17 +210,23 @@ def gather_job_summary(session: Session, topic: Topic, *, kind: str, query_prefi
     jobs = session.exec(
         select(SearchJob)
         .where(SearchJob.status == "done")
-        .where(SearchJob.query == f"{query_prefix}:{topic.name}")
         .order_by(SearchJob.updated_at.desc(), SearchJob.created_at.desc())
     ).all()
     for job in jobs:
         payload = job.payload or {}
         if payload.get("kind") != kind:
             continue
-        if int(payload.get("topic_id") or 0) != topic.id:
+        if _safe_int(payload.get("topic_id")) != topic.id:
             continue
         result = job.result or {}
         summary = result.get("summary_md")
         if isinstance(summary, str) and summary.strip():
             return {"available": True, "note": "", "summary_md": summary}
     return {"available": False, "note": MISSING_NOTE, "summary_md": ""}
+
+
+def _safe_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
