@@ -1,5 +1,15 @@
 # Spec Changelog
 
+## 2026-07-07 Stage 0.2 Blank Search Query Guard
+
+- Rejected whitespace-only search queries at the `SearchRequest` schema boundary.
+- Trimmed accepted search queries before they enter search/topic creation flows.
+
+### Verification
+
+- Red test first: `SearchRequest(query="   ")` initially did not raise a validation error.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_discovery.py::test_search_request_rejects_blank_query tests/test_discovery.py::test_run_search_caps_expansion_and_never_expands_analogues tests/test_discovery.py::test_run_search_decompose_off_no_extra_queries -q` -> `3 passed`.
+
 ## 2026-07-07 Stage 0.1 API Integer Guard
 
 - Hardened API integer parsing at user-controlled boundaries:

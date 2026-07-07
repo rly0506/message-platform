@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SearchRequest(BaseModel):
@@ -12,6 +12,14 @@ class SearchRequest(BaseModel):
     years: int = Field(default=1, ge=1, le=10)
     min_relevance: float = Field(default=0.0, ge=0.0, le=1.0)
     decompose: bool = True  # LLM 把宏观主题拆成子线索 (下钻) + 历史先例; 无 LLM 自动退回原行为
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("query must not be blank")
+        return text
 
 
 class DeepAnalysisRequest(BaseModel):

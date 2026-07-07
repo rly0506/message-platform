@@ -408,6 +408,15 @@ def test_decompose_clean_list_dedups_and_caps():
     assert _clean_list(None) == []
 
 
+def test_search_request_rejects_blank_query():
+    from pydantic import ValidationError
+
+    from app.schemas.search import SearchRequest
+
+    with pytest.raises(ValidationError):
+        SearchRequest(query="   ")
+
+
 def test_run_search_caps_expansion_and_never_expands_analogues(monkeypatch):
     """run_search: 只把前 3 条 subtopics 作为本次 extra_queries; analogues 绝不进采集 (避免旧闻污染)。"""
     from app.services import search_service
