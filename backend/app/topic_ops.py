@@ -9,7 +9,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app import config, feed_registry
-from app.collectors import gdelt, rss
+from app.collectors import gdelt, rss, searxng
 from app.db import Analysis, Article, SourceFraming, SourceRegistry, TimelineEvent, Topic, TopicArticle
 from app.pipeline import enrich as enrichp
 from app.pipeline import fulltext
@@ -97,6 +97,16 @@ def collect_topic(
                 error = f"gdelt {q!r}: {type(exc).__name__}: {exc}"
                 errors.append(error)
                 requests.append(_request_stats(request_id, "gdelt", q, 0, error=error))
+        if config.USE_SEARXNG:
+            request_id = _request_id("searxng", len(requests))
+            try:
+                items = searxng.collect(q)
+                raw += _tag_items(items, request_id)
+                requests.append(_request_stats(request_id, "searxng", q, len(items)))
+            except Exception as exc:
+                error = f"searxng {q!r}: {type(exc).__name__}: {exc}"
+                errors.append(error)
+                requests.append(_request_stats(request_id, "searxng", q, 0, error=error))
 
     feed_requests = [{"url": url, "metadata": None, "source_id": None} for url in feeds]
     if use_curated_feeds:
@@ -149,6 +159,7 @@ def collect_topic(
         else []
     )
     kept = prefilter.dedup_and_score(raw, topic.queries, known_urls, known_titles, min_rel)
+    decode_stats = _decode_stats(kept)
     kept_by_request = Counter(item.get("_request_id", "") for item in kept)
     for request in requests:
         request["kept_count"] = kept_by_request.get(request["id"], 0)
@@ -162,6 +173,8 @@ def collect_topic(
         if not art:
             art = Article(
                 url=item["norm_url"],
+                original_url=item.get("original_url", ""),
+                url_decoded=bool(item.get("url_decoded", False)),
                 title=item.get("title", ""),
                 source=item.get("source", ""),
                 source_lang=item.get("source_lang", ""),
@@ -174,6 +187,12 @@ def collect_topic(
             session.commit()
             session.refresh(art)
             new_articles += 1
+        else:
+            if item.get("original_url") and not art.original_url:
+                art.original_url = item.get("original_url", "")
+            if item.get("url_decoded"):
+                art.url_decoded = True
+            session.add(art)
         link = session.get(TopicArticle, (topic.id, art.id))
         if not link:
             session.add(TopicArticle(topic_id=topic.id, article_id=art.id, relevance=item["relevance"]))
@@ -187,6 +206,7 @@ def collect_topic(
         "new_links": new_links,
         "source_count": len({item.get("source", "") for item in kept if item.get("source")}),
         "collector_counts": dict(Counter(item.get("collector", "unknown") for item in kept)),
+        "decode_stats": decode_stats,
         "time_span": _time_span(kept),
         "requests": requests,
         "errors": errors,
@@ -281,7 +301,8 @@ def _fetch_bodies(urls: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
 
     def _one(url: str) -> tuple[str, str]:
-        res = fulltext.extract_url_proxied(url)
+        extractor = fulltext.extract_url_scrapling if config.FULLTEXT_USE_SCRAPLING else fulltext.extract_url_proxied
+        res = extractor(url)
         return url, (res.full_text if res.ok else "")
 
     # 并发度收敛: 不超过批大小, 也别开太多连接。
@@ -594,6 +615,28 @@ def _request_stats(
         "source_type": metadata.get("source_type", collector),
         "quality_tier": metadata.get("tier", ""),
     }
+
+
+def _decode_stats(items: list[dict]) -> dict[str, dict[str, int]]:
+    stats: dict[str, dict[str, int]] = {}
+    for item in items:
+        collector = item.get("collector", "unknown")
+        if collector != "gnews":
+            continue
+        bucket = stats.setdefault(
+            "gnews",
+            {"decoded": 0, "failed": 0, "disabled": 0, "not_gnews": 0},
+        )
+        method = item.get("url_decode_method", "")
+        if item.get("url_decoded"):
+            bucket["decoded"] += 1
+        elif method == "disabled":
+            bucket["disabled"] += 1
+        elif method == "not_gnews":
+            bucket["not_gnews"] += 1
+        else:
+            bucket["failed"] += 1
+    return stats
 
 
 def _update_source_status(session: Session, source_id: int, request: dict[str, Any]) -> None:

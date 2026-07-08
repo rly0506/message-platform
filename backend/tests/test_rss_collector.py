@@ -108,6 +108,108 @@ def test_collect_gnews_degrades_per_locale(monkeypatch):
     assert items[0]["url"] == "https://example.com/a"
 
 
+def test_collect_gnews_decodes_google_news_links_and_keeps_original(monkeypatch):
+    """Google News RSS links should become publisher URLs when the resolver succeeds."""
+    parsed = SimpleNamespace(
+        bozo=False,
+        feed={"title": "Google News", "language": "en"},
+        entries=[
+            {
+                "link": "https://news.google.com/rss/articles/CBMiSample?oc=5",
+                "title": "OpenAI gets approval",
+                "summary": "Reuters report",
+            }
+        ],
+    )
+    monkeypatch.setattr(config, "GNEWS_LOCALES", [("en-US", "US", "US:en")])
+    monkeypatch.setattr(rss, "_fetch_feed_bytes", lambda url: b"<rss/>")
+    monkeypatch.setattr(rss.feedparser, "parse", lambda content: parsed)
+    monkeypatch.setattr(
+        rss,
+        "resolve_gnews_url",
+        lambda url: rss.GNewsResolvedUrl(
+            url="https://www.reuters.com/world/story",
+            original_url=url,
+            url_decoded=True,
+            decode_method="batchexecute",
+        ),
+    )
+
+    items = rss.collect_gnews("OpenAI")
+
+    assert items[0]["url"] == "https://www.reuters.com/world/story"
+    assert items[0]["original_url"] == "https://news.google.com/rss/articles/CBMiSample?oc=5"
+    assert items[0]["url_decoded"] is True
+    assert items[0]["url_decode_method"] == "batchexecute"
+
+
+def test_collect_gnews_decode_is_disabled_by_default(monkeypatch):
+    """The expensive Google News resolver is opt-in and must not run by default."""
+    parsed = SimpleNamespace(
+        bozo=False,
+        feed={"title": "Google News", "language": "en"},
+        entries=[
+            {
+                "link": "https://news.google.com/rss/articles/CBMiSample?oc=5",
+                "title": "OpenAI gets approval",
+                "summary": "Reuters report",
+            }
+        ],
+    )
+    monkeypatch.setattr(config, "GNEWS_LOCALES", [("en-US", "US", "US:en")])
+    monkeypatch.setattr(config, "GNEWS_DECODE_URLS", False)
+    monkeypatch.setattr(rss, "_fetch_feed_bytes", lambda url: b"<rss/>")
+    monkeypatch.setattr(rss.feedparser, "parse", lambda content: parsed)
+    monkeypatch.setattr(
+        rss,
+        "_decode_gnews_url_batchexecute",
+        lambda url: (_ for _ in ()).throw(AssertionError("decoder should not run")),
+    )
+
+    items = rss.collect_gnews("OpenAI")
+
+    assert items[0]["url"] == "https://news.google.com/rss/articles/CBMiSample?oc=5"
+    assert items[0]["url_decoded"] is False
+    assert items[0]["url_decode_method"] == "disabled"
+
+
+def test_collect_gnews_keeps_google_link_when_decode_fails(monkeypatch):
+    """Decode failures must be visible instead of silently dropping the original URL."""
+    parsed = SimpleNamespace(
+        bozo=False,
+        feed={"title": "Google News", "language": "en"},
+        entries=[
+            {
+                "link": "https://news.google.com/rss/articles/CBMiSample?oc=5",
+                "title": "OpenAI gets approval",
+                "summary": "Reuters report",
+            }
+        ],
+    )
+    monkeypatch.setattr(config, "GNEWS_LOCALES", [("en-US", "US", "US:en")])
+    monkeypatch.setattr(rss, "_fetch_feed_bytes", lambda url: b"<rss/>")
+    monkeypatch.setattr(rss.feedparser, "parse", lambda content: parsed)
+    monkeypatch.setattr(
+        rss,
+        "resolve_gnews_url",
+        lambda url: rss.GNewsResolvedUrl(
+            url=url,
+            original_url=url,
+            url_decoded=False,
+            decode_method="failed",
+            decode_error="network down",
+        ),
+    )
+
+    items = rss.collect_gnews("OpenAI")
+
+    assert items[0]["url"] == "https://news.google.com/rss/articles/CBMiSample?oc=5"
+    assert items[0]["original_url"] == "https://news.google.com/rss/articles/CBMiSample?oc=5"
+    assert items[0]["url_decoded"] is False
+    assert items[0]["url_decode_method"] == "failed"
+    assert items[0]["url_decode_error"] == "network down"
+
+
 def test_collect_gnews_raises_only_when_all_locales_fail(monkeypatch):
     """所有 locale 都连不上 -> 抛错 (让上层标 collect 失败, 而非静默返回空)。"""
     monkeypatch.setattr(rss, "_fetch_feed_bytes",

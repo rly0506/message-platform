@@ -87,6 +87,7 @@ class CollectionStats(BaseModel):
     new_links: int = 0
     source_count: int = 0
     collector_counts: dict[str, int] = {}
+    decode_stats: dict[str, dict[str, int]] = {}
     time_span: CollectionTimeSpan = CollectionTimeSpan()
     requests: list[CollectionRequestStats] = []
     errors: list[str] = []

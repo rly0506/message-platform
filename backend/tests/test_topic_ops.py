@@ -90,6 +90,139 @@ def test_collect_topic_returns_request_diagnostics(monkeypatch):
             session.commit()
 
 
+def test_collect_topic_persists_gnews_decode_trace(monkeypatch):
+    init_db()
+
+    def fake_collect_gnews(query):
+        return [
+            {
+                "url": "https://www.reuters.com/world/story",
+                "original_url": "https://news.google.com/rss/articles/CBMiSample?oc=5",
+                "url_decoded": True,
+                "url_decode_method": "batchexecute",
+                "url_decode_error": "",
+                "title": "Decode trace collection test",
+                "source": "Reuters",
+                "source_lang": "en",
+                "source_country": "",
+                "published_at": None,
+                "snippet": "Decode trace collection test",
+                "collector": "gnews",
+            }
+        ]
+
+    monkeypatch.setattr(topic_ops.rss, "collect_gnews", fake_collect_gnews)
+
+    with Session(engine) as session:
+        topic = Topic(name="Decode trace collection test", queries=["Decode trace collection test"])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        try:
+            stats = topic_ops.collect_topic(session, topic, gnews=True)
+
+            assert stats["decode_stats"]["gnews"]["decoded"] == 1
+            links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic.id)).all()
+            article = session.get(Article, links[0].article_id)
+            assert article.url == "https://www.reuters.com/world/story"
+            assert article.original_url == "https://news.google.com/rss/articles/CBMiSample?oc=5"
+            assert article.url_decoded is True
+        finally:
+            links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic.id)).all()
+            article_ids = [link.article_id for link in links]
+            for link in links:
+                session.delete(link)
+            for article_id in article_ids:
+                article = session.get(Article, article_id)
+                if article:
+                    session.delete(article)
+            session.delete(topic)
+            session.commit()
+
+
+def test_decode_stats_tracks_default_disabled_gnews_without_failed():
+    stats = topic_ops._decode_stats(
+        [
+            {
+                "collector": "gnews",
+                "url_decoded": False,
+                "url_decode_method": "disabled",
+            }
+        ]
+    )
+
+    assert stats["gnews"]["disabled"] == 1
+    assert stats["gnews"]["failed"] == 0
+
+
+def test_collect_topic_does_not_call_searxng_by_default(monkeypatch):
+    init_db()
+    called = []
+
+    monkeypatch.setattr(topic_ops.config, "USE_SEARXNG", False)
+    monkeypatch.setattr(topic_ops.searxng, "collect", lambda query: called.append(query))
+
+    with Session(engine) as session:
+        topic = Topic(name="SearXNG default off", queries=["SearXNG default off"])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        try:
+            stats = topic_ops.collect_topic(session, topic, gnews=False)
+
+            assert called == []
+            assert stats["requests"] == []
+        finally:
+            session.delete(topic)
+            session.commit()
+
+
+def test_collect_topic_uses_searxng_when_enabled(monkeypatch):
+    init_db()
+
+    monkeypatch.setattr(topic_ops.config, "USE_SEARXNG", True)
+    monkeypatch.setattr(
+        topic_ops.searxng,
+        "collect",
+        lambda query: [
+            {
+                "url": f"https://example.com/{query}",
+                "title": f"{query} SearXNG result",
+                "source": "example.com",
+                "source_lang": "",
+                "source_country": "",
+                "published_at": None,
+                "snippet": f"{query} SearXNG result",
+                "collector": "searxng",
+            }
+        ],
+    )
+
+    with Session(engine) as session:
+        topic = Topic(name="SearXNG enabled", queries=["SearXNG enabled"])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        try:
+            stats = topic_ops.collect_topic(session, topic, gnews=False)
+
+            assert stats["collector_counts"] == {"searxng": 1}
+            assert stats["requests"][0]["collector"] == "searxng"
+            assert stats["requests"][0]["raw_count"] == 1
+            assert stats["requests"][0]["kept_count"] == 1
+        finally:
+            links = session.exec(select(TopicArticle).where(TopicArticle.topic_id == topic.id)).all()
+            article_ids = [link.article_id for link in links]
+            for link in links:
+                session.delete(link)
+            for article_id in article_ids:
+                article = session.get(Article, article_id)
+                if article:
+                    session.delete(article)
+            session.delete(topic)
+            session.commit()
+
+
 def test_collect_topic_curated_feed_adds_metadata_and_filters_by_relevance(monkeypatch):
     init_db()
 

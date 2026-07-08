@@ -1,5 +1,27 @@
 # Spec Changelog
 
+## 2026-07-08 Data-Line Direct URL / Fulltext Patch
+
+- Added an opt-in Google News RSS URL resolver (`GNEWS_DECODE_URLS=1`):
+  - real spike found 0/20 current `CBMi...` links were offline-decodable;
+  - batchexecute resolution worked on the sampled Reuters link;
+  - successful resolution stores the publisher URL while preserving `original_url`;
+  - failed or disabled resolution keeps the Google News URL and marks `url_decoded=false`.
+- Added optional direct-link/fulltext legs, both default off:
+  - `USE_SEARXNG` + `SEARXNG_URL` collector for local SearXNG JSON results;
+  - `FULLTEXT_USE_SCRAPLING` variant that lazily imports Scrapling and reuses `extract_from_html`.
+- Added article-level decode trace fields and payload output: `original_url`, `url_decoded`.
+- Decode diagnostics now track default-off GNews URL resolution as `disabled`, not `failed`.
+- Kept all new network-dependent paths soft-degrading and covered with monkeypatched tests; no real SearXNG/Scrapling service is required in CI.
+
+### Verification
+
+- Red tests first for GNews decode traces, Scrapling optional fallback, SearXNG collector, and article payload decode trace.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_rss_collector.py tests/test_topic_ops.py tests/test_fulltext.py tests/test_deep_analysis.py tests/test_searxng_collector.py tests/test_api_helpers.py -q` -> `51 passed, 5 warnings`.
+- Review fix red-green: `tests/test_topic_ops.py::test_decode_stats_tracks_default_disabled_gnews_without_failed` failed before the fix and passed after it.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_topic_ops.py tests/test_rss_collector.py -q` -> `18 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `272 passed, 5 warnings`.
+
 ## 2026-07-07 Stage 0.4 Agent Mail Windows CLI Shim
 
 - Routed Agent Mail CLI invocation through `cmd /c` on Windows so npm-style `agently-cli.cmd` shims can start from Python subprocess.

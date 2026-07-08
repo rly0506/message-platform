@@ -82,6 +82,8 @@ def article_payload(topic_article: TopicArticle, article: Article) -> dict[str, 
     return {
         "id": article.id,
         "url": article.url,
+        "original_url": article.original_url,
+        "url_decoded": article.url_decoded,
         "title": article.title,
         "title_zh": article.title_zh,
         "source": article.source,

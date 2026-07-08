@@ -420,6 +420,32 @@ def test_fetch_bodies_disabled_by_config(monkeypatch):
     assert called == []
 
 
+def test_fetch_bodies_uses_scrapling_when_enabled(monkeypatch):
+    """FULLTEXT_USE_SCRAPLING switches the body fetcher without changing callers."""
+    called = []
+    monkeypatch.setattr(topic_ops.config, "ENRICH_FETCH_FULLTEXT", True)
+    monkeypatch.setattr(topic_ops.config, "FULLTEXT_USE_SCRAPLING", True)
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_scrapling",
+        lambda url: called.append(url) or topic_ops.fulltext.Extracted(
+            url=url,
+            full_text=f"scrapling body for {url}",
+            ok=True,
+        ),
+    )
+    monkeypatch.setattr(
+        topic_ops.fulltext,
+        "extract_url_proxied",
+        lambda url: (_ for _ in ()).throw(AssertionError("proxied path should not run")),
+    )
+
+    result = topic_ops._fetch_bodies(["https://example.com/a"])
+
+    assert called == ["https://example.com/a"]
+    assert result == {"https://example.com/a": "scrapling body for https://example.com/a"}
+
+
 def test_enrich_topic_articles_backfills_emotion_for_already_enriched_with_substance(monkeypatch):
     """旧主题: 已 enriched + 已有干货分 + emotion=-1, 重跑深度分析应补上情绪分。
 

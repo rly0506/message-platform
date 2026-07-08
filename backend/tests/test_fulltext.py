@@ -1,4 +1,6 @@
 """全文抓取测试 —— 用 HTML 字符串验证抽取, 不依赖网络。"""
+from types import SimpleNamespace
+
 from app.pipeline import fulltext
 
 
@@ -77,6 +79,40 @@ def test_extract_url_proxied_degrades_on_fetch_error(monkeypatch):
     res = fulltext.extract_url_proxied("http://example.com/x")
     assert res.ok is False
     assert res.error
+
+
+def test_extract_url_scrapling_degrades_when_unavailable(monkeypatch):
+    """Scrapling is optional: missing package should not break fulltext extraction."""
+    monkeypatch.setattr(fulltext, "_scrapling_fetcher", lambda: None)
+
+    res = fulltext.extract_url_scrapling("https://example.com/story")
+
+    assert res.ok is False
+    assert "scrapling unavailable" in res.error
+
+
+def test_extract_url_scrapling_reuses_html_extractor(monkeypatch):
+    """Scrapling fetches HTML; extraction still goes through extract_from_html."""
+    captured = {}
+
+    class DummyFetcher:
+        def fetch(self, url):
+            return SimpleNamespace(text="<html><article><p>public article body</p></article></html>")
+
+    def fake_extract(html, url=""):
+        captured["args"] = (html, url)
+        return fulltext.Extracted(url=url, full_text="public article body", ok=True)
+
+    monkeypatch.setattr(fulltext, "_scrapling_fetcher", lambda: DummyFetcher())
+    monkeypatch.setattr(fulltext, "extract_from_html", fake_extract)
+
+    res = fulltext.extract_url_scrapling("https://example.com/story")
+
+    assert res.ok is True
+    assert captured["args"] == (
+        "<html><article><p>public article body</p></article></html>",
+        "https://example.com/story",
+    )
 
 
 def test_extract_url_proxied_extracts_from_fetched_html(monkeypatch):

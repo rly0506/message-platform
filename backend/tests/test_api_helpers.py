@@ -78,6 +78,25 @@ def test_article_payload_includes_info_value_labels():
     ]
 
 
+def test_article_payload_includes_url_decode_trace():
+    topic_article = api.TopicArticle(topic_id=1, article_id=1, relevance=0.8, relevant=True)
+    article = api.Article(
+        id=1,
+        url="https://www.reuters.com/world/story",
+        original_url="https://news.google.com/rss/articles/CBMiSample?oc=5",
+        url_decoded=True,
+        title="Reuters story",
+        source="Reuters",
+        snippet="A story resolved from Google News.",
+    )
+
+    payload = payloads.article_payload(topic_article, article)
+
+    assert payload["url"] == "https://www.reuters.com/world/story"
+    assert payload["original_url"] == "https://news.google.com/rss/articles/CBMiSample?oc=5"
+    assert payload["url_decoded"] is True
+
+
 def test_article_evidence_lookup_includes_report_category():
     topic_article = api.TopicArticle(topic_id=1, article_id=1, relevance=0.8, relevant=True)
     article = api.Article(

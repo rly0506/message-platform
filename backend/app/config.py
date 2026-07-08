@@ -52,6 +52,10 @@ RSS_PROXY = os.getenv("RSS_PROXY", "").strip()                   # 显式代理 
 # 超时比 RSS 更短 —— 深度分析逐篇等不起, 抓得到就用、抓不到快速放弃。
 FULLTEXT_FETCH_TIMEOUT = float(os.getenv("FULLTEXT_FETCH_TIMEOUT", "8"))  # 单篇全文抓取超时 (秒)
 ENRICH_FETCH_FULLTEXT = os.getenv("ENRICH_FETCH_FULLTEXT", "1").strip() not in ("0", "false", "False", "")  # 关掉则省钱省时, 退回纯标题+摘要判分
+FULLTEXT_USE_SCRAPLING = os.getenv("FULLTEXT_USE_SCRAPLING", "0").strip() not in ("0", "false", "False", "")
+GNEWS_DECODE_URLS = os.getenv("GNEWS_DECODE_URLS", "0").strip() not in ("0", "false", "False", "")
+USE_SEARXNG = os.getenv("USE_SEARXNG", "0").strip() not in ("0", "false", "False", "")
+SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8080").strip()
 
 # 后端运行期自动刷新 (方案B): 仅自动重采"过期话题的新闻"+"前沿日报", 绝不自动跑 LLM/学界/民间/三方。
 # 本地工具: "自动"只在后端进程开着时有效, 关机不更新。红线: 不烧 LLM、不碰 OpenCLI。

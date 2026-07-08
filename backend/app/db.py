@@ -71,6 +71,8 @@ class Article(SQLModel, table=True):
     """单篇报道的元数据 (默认只存标题/摘要/链接，不存全文)。"""
     id: Optional[int] = Field(default=None, primary_key=True)
     url: str = Field(unique=True, index=True)
+    original_url: str = ""
+    url_decoded: bool = False
     title: str = ""
     title_zh: str = ""              # LLM 译文 (富化阶段填充)
     source: str = ""               # 媒体域名/名称
@@ -243,6 +245,10 @@ def _migrate() -> None:
             ("substance_note", "VARCHAR DEFAULT ''"),
             ("emotion_score", "INTEGER DEFAULT -1"),
             ("emotion_note", "VARCHAR DEFAULT ''"),
+        ],
+        "article": [
+            ("original_url", "VARCHAR DEFAULT ''"),
+            ("url_decoded", "INTEGER DEFAULT 0"),
         ],
         "sentimentpost": [
             ("kind", "VARCHAR DEFAULT 'post'"),

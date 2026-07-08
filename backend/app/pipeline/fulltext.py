@@ -40,6 +40,15 @@ def _trafilatura():
         return None
 
 
+def _scrapling_fetcher():
+    """Lazy import Scrapling; unavailable is a normal soft-degrade path."""
+    try:
+        from scrapling.fetchers import StealthyFetcher
+        return StealthyFetcher
+    except Exception:
+        return None
+
+
 def extract_url(url: str) -> Extracted:
     """抓取单个 URL 的正文。失败/不可用 -> ok=False, 不抛异常。"""
     if not url:
@@ -89,6 +98,23 @@ def extract_from_html(html: str, url: str = "") -> Extracted:
         )
     except Exception as exc:
         return Extracted(url=url, ok=False, error=f"{type(exc).__name__}: {exc}")
+
+
+def extract_url_scrapling(url: str) -> Extracted:
+    """Fetch a public page with Scrapling, then reuse the normal HTML extractor."""
+    if not url:
+        return Extracted(url=url, ok=False, error="empty url")
+    fetcher = _scrapling_fetcher()
+    if fetcher is None:
+        return Extracted(url=url, ok=False, error="scrapling unavailable")
+    try:
+        page = fetcher.fetch(url)
+        html = getattr(page, "text", "") or str(page or "")
+        if not html:
+            return Extracted(url=url, ok=False, error="fetch failed")
+    except Exception as exc:
+        return Extracted(url=url, ok=False, error=f"{type(exc).__name__}: {str(exc)[:80]}")
+    return extract_from_html(html, url=url)
 
 
 def extract_url_proxied(url: str) -> Extracted:

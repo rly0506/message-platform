@@ -51,6 +51,31 @@ venv\Scripts\python.exe backend\cli.py enrich <topic_id>
 venv\Scripts\python.exe backend\cli.py build <topic_id>
 ```
 
+## Optional Fulltext / Direct-Link Sources
+
+These switches are off by default except the existing trafilatura fulltext path.
+Use them only on trusted local infrastructure and public pages; they are not for
+paywall bypass.
+
+```env
+USE_SEARXNG=1
+SEARXNG_URL=http://localhost:8080
+GNEWS_DECODE_URLS=1
+FULLTEXT_USE_SCRAPLING=1
+```
+
+SearXNG must already be running, for example at
+`http://localhost:8080/search?q=OpenAI&format=json&categories=news`.
+Scrapling is an optional Python package; install it only if you intend to test
+the anti-bot public-page variant:
+
+```powershell
+venv\Scripts\python.exe -m pip install scrapling
+```
+
+Google News RSS links are decoded when possible. If decoding fails, the original
+Google News URL is retained and marked as not decoded instead of being dropped.
+
 ## Frontend
 
 ```powershell
