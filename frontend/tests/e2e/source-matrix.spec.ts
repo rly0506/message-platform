@@ -820,6 +820,43 @@ test('renders local evidence edges between events in the event network', async (
   await expect(sourceRow.locator('.evidence-item', { hasText: /^Reuters$/ })).toBeVisible()
 })
 
+test('prefers the backend event graph and maps node ids to display order', async ({ page }) => {
+  // 后端返回的 id 是任意主键(51/52),适配器要按顺序映射成 #1/#2,并且后端标题压过本地兜底。
+  await page.route('**/api/topics/101/event-graph', async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          { id: 51, date: '2026-06-20', title_zh: '后端事件A：冲突升级', summary_zh: '后端摘要A', source_count: 4, article_count: 6 },
+          { id: 52, date: '2026-06-21', title_zh: '后端事件B：外交斡旋', summary_zh: '后端摘要B', source_count: 3, article_count: 3 },
+        ],
+        edges: [
+          { from_id: 51, to_id: 52, relation_type: 'chronological', direction: 'directed', evidence: '时间先后', items: [] },
+          { from_id: 51, to_id: 52, relation_type: 'shared_source', direction: 'symmetric', evidence: '共同来源', items: ['Reuters'] },
+        ],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+
+  await openWorkbench(page)
+  await page.locator('details.media-collapse > summary').filter({
+    hasText: /事件发展网络.*2 节点/,
+  }).click()
+
+  const network = page.locator('.event-graph')
+  await expect(network.locator('.event-graph-node')).toHaveCount(2)
+  // 后端标题压过本地兜底事件
+  await expect(network.getByRole('button', { name: /后端事件A：冲突升级/ })).toBeVisible()
+  await expect(network.getByRole('button', { name: /后端事件B：外交斡旋/ })).toBeVisible()
+  // id 51/52 → 序号 #1/#2，而非原始主键
+  const chronRow = network.locator('.event-graph-evidence-row').filter({ hasText: '时间顺序' })
+  const sourceRow = network.locator('.event-graph-evidence-row').filter({ hasText: '共同来源' })
+  await expect(chronRow).toContainText('#1 → #2')
+  await expect(sourceRow).toContainText('#1 ↔ #2')
+  await expect(sourceRow.locator('.evidence-item', { hasText: /^Reuters$/ })).toBeVisible()
+})
+
 test('shows selected event detail inline below the clicked timeline node', async ({ page }) => {
   await openWorkbench(page)
 

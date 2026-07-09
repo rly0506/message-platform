@@ -518,6 +518,31 @@ export type LocalEventsPayload = {
   narrative_signals?: NarrativeSignal[]
 }
 
+export type EventGraphNodeDTO = {
+  id: number
+  date: string | null
+  title_zh: string
+  summary_zh: string
+  source_count: number
+  article_count: number
+}
+
+export type EventGraphEdgeDTO = {
+  from_id: number
+  to_id: number
+  relation_type: 'chronological' | 'shared_article' | 'shared_entity' | 'shared_source'
+  direction: 'directed' | 'symmetric'
+  evidence: string
+  items: string[]
+}
+
+export type EventGraphPayload = {
+  nodes: EventGraphNodeDTO[]
+  edges: EventGraphEdgeDTO[]
+  degraded: boolean
+  note: string
+}
+
 export type SearchResponse = LocalEventsPayload & {
   topic: TopicSummary
   collect: {

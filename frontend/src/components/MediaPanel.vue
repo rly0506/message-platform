@@ -9,6 +9,7 @@ import type {
   CountryFirstReporter,
   Criterion,
   EntityGroup,
+  EventGraphPayload,
   EvidenceArticle,
   Keyword,
   LocalEvent,
@@ -58,6 +59,7 @@ const props = defineProps<{
   articleCategoryFilter: string
   localLoading: boolean
   majorEvents: LocalEvent[]
+  eventGraph: EventGraphPayload | null
   selectedEventIndex: number
   expandedTimelineIndex: number | null
   hasLlmAnalysis: boolean
@@ -128,7 +130,52 @@ const substanceStats = computed(() => {
   return stats
 })
 
+// 后端 event-graph 的 relation_type → 前端中文 label（EventGraph 按中文 key 分色）
+const RELATION_LABELS: Record<string, string> = {
+  chronological: '时间顺序',
+  shared_article: '同组报道',
+  shared_entity: '共享对象',
+  shared_source: '共同来源',
+}
+
+// F2: 后端 payload 权威（存在即用），null 时回退前端现算——保证无后端/加载中也能画。
 const eventNetwork = computed<{ nodes: EventNetworkNode[]; edges: EventNetworkEdge[] }>(() => {
+  const backend = props.eventGraph
+  if (backend && backend.nodes.length) return adaptBackendGraph(backend)
+  return computeLocalNetwork()
+})
+
+function adaptBackendGraph(payload: EventGraphPayload): { nodes: EventNetworkNode[]; edges: EventNetworkEdge[] } {
+  const nodes = payload.nodes.map((node, index) => ({
+    key: String(node.id),
+    index,
+    title: node.title_zh,
+    date: node.date,
+    summary: node.summary_zh,
+    evidence: `${node.source_count || 0} 源 · ${node.article_count || 0} 篇`,
+  }))
+  // 后端 edge 用 Event.id，前端组件吃下标——建 id→index 映射，映射不到的边丢弃（防越界）
+  const idToIndex = new Map(payload.nodes.map((node, index) => [node.id, index]))
+  // degraded=true 时后端 edges 为空，这里自然产出空边；EventGraph 已能优雅显示「暂无可连接的事件边」
+  const edges: EventNetworkEdge[] = []
+  for (const edge of payload.edges) {
+    const from = idToIndex.get(edge.from_id)
+    const to = idToIndex.get(edge.to_id)
+    if (from === undefined || to === undefined) continue
+    edges.push({
+      key: `${edge.relation_type}-${edge.from_id}-${edge.to_id}`,
+      from,
+      to,
+      label: RELATION_LABELS[edge.relation_type] || edge.relation_type,
+      direction: edge.direction,
+      evidence: edge.evidence,
+      items: edge.items || [],
+    })
+  }
+  return { nodes, edges }
+}
+
+function computeLocalNetwork(): { nodes: EventNetworkNode[]; edges: EventNetworkEdge[] } {
   const nodes = props.majorEvents.map((event, index) => ({
     key: `${event.date || 'unknown'}-${event.title_zh}-${index}`,
     index,
@@ -199,7 +246,7 @@ const eventNetwork = computed<{ nodes: EventNetworkNode[]; edges: EventNetworkEd
   }
 
   return { nodes, edges: edges.slice(0, 24) }
-})
+}
 
 const stanceTrends = computed<StanceTrend[]>(() => {
   const periods = props.stancePeriods

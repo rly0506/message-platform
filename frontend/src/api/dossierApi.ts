@@ -12,6 +12,7 @@ import type {
   DiscoveryReport,
   DiscoveryReportMeta,
   DiscoveryTimelineTree,
+  EventGraphPayload,
   LocalEventsPayload,
   OpenCliDiagnostics,
   ProjectSummary,
@@ -165,6 +166,11 @@ export async function fetchCognitionProfile() {
 
 export async function fetchLocalEvents(id: number) {
   const res = await axios.get<LocalEventsPayload>(`${API_BASE}/api/topics/${id}/local-events`)
+  return res.data
+}
+
+export async function fetchEventGraph(topicId: number) {
+  const res = await axios.get<EventGraphPayload>(`${API_BASE}/api/topics/${topicId}/event-graph`)
   return res.data
 }
 

@@ -6,6 +6,7 @@ import {
   deleteTopic,
   errorMessage,
   fetchArticles,
+  fetchEventGraph,
   fetchLocalEvents,
   fetchProjects,
   fetchTopic,
@@ -14,7 +15,7 @@ import {
   updateProject,
   updateTopic,
 } from '../api/dossierApi'
-import type { Article, LocalEventsPayload, ProjectSummary, TopicDetail, TopicSummary } from '../types/dossier'
+import type { Article, EventGraphPayload, LocalEventsPayload, ProjectSummary, TopicDetail, TopicSummary } from '../types/dossier'
 
 const pageSize = 80
 
@@ -24,11 +25,13 @@ export function useTopicData() {
   const selectedTopicId = ref<number | null>(null)
   const detail = ref<TopicDetail | null>(null)
   const localData = ref<LocalEventsPayload | null>(null)
+  const eventGraph = ref<EventGraphPayload | null>(null)
   const articles = ref<Article[]>([])
   const totalArticles = ref(0)
   const loading = ref(true)
   const articleLoading = ref(false)
   const localLoading = ref(false)
+  const eventGraphLoading = ref(false)
   const error = ref('')
 
   const selectedTopic = computed(() =>
@@ -78,6 +81,18 @@ export function useTopicData() {
       localData.value = await fetchLocalEvents(id)
     } finally {
       localLoading.value = false
+    }
+  }
+
+  async function loadEventGraph(id: number) {
+    eventGraphLoading.value = true
+    try {
+      eventGraph.value = await fetchEventGraph(id)
+    } catch {
+      // 事件图是增量增强，后端失败/未分析时静默回退到前端现算，绝不因此让页面崩。
+      eventGraph.value = null
+    } finally {
+      eventGraphLoading.value = false
     }
   }
 
@@ -159,17 +174,20 @@ export function useTopicData() {
     selectedTopicId,
     detail,
     localData,
+    eventGraph,
     articles,
     totalArticles,
     loading,
     articleLoading,
     localLoading,
+    eventGraphLoading,
     error,
     selectedTopic,
     loadTopics,
     loadTopic,
     loadArticles,
     loadLocalEvents,
+    loadEventGraph,
     createTopicInProject,
     saveProject,
     archiveProject,

@@ -97,6 +97,7 @@ const {
   selectedTopicId,
   detail,
   localData,
+  eventGraph,
   articles,
   totalArticles,
   loading,
@@ -108,6 +109,7 @@ const {
   loadTopic,
   loadArticles,
   loadLocalEvents,
+  loadEventGraph,
   saveProject,
   archiveProject,
   removeProject,
@@ -677,6 +679,7 @@ function trackTopic(topicId: number) {
 watch(selectedTopicId, async (id) => {
   if (id) {
     localData.value = null
+    eventGraph.value = null
     resetCountryCompare()
     resetCrossSynthesisState()
     resetAcademicState()
@@ -690,6 +693,7 @@ watch(selectedTopicId, async (id) => {
       loadTopic(id),
       loadArticles(id),
       loadLocalEvents(id),
+      loadEventGraph(id),
       loadCrossSynthesisLayer(id),
       loadAcademicLayer(id),
       loadSentimentLayer(id),
@@ -1464,6 +1468,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
           v-model:article-category-filter="articleCategoryFilter"
           :local-loading="localLoading"
           :major-events="majorEvents"
+          :event-graph="eventGraph"
           :selected-event-index="selectedEventIndex"
           :expanded-timeline-index="expandedTimelineIndex"
           :has-llm-analysis="hasLlmAnalysis"
