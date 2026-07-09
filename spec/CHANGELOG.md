@@ -1,5 +1,22 @@
 # Spec Changelog
 
+## 2026-07-09 Event Graph Backend V1
+
+- Added stable `Event` nodes and `EventRelation` evidence edges for the topic-level event graph.
+- Added `GET /api/topics/{topic_id}/event-graph` returning `{nodes, edges, degraded, note}` with `from_id`/`to_id` based on stable event ids, not array indexes.
+- Persisted local-analysis events idempotently and rebuilt four evidence edge types: chronological, shared article, shared entity, and shared source.
+- Kept causal/root-cause claims out of V1; insufficient samples or all-unknown dates degrade honestly with no fabricated edges.
+- Confirmed the suspected `payloads.py` nested entity-loop bug is not present in the current file.
+
+### Verification
+
+- Red test first: `tests/test_event_graph.py` initially failed because `Event`/`EventRelation` and `/event-graph` did not exist.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_graph.py -q` -> `5 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_graph.py tests/test_topic_ops.py tests/test_deep_analysis.py tests/test_remove_topic.py tests/test_api_helpers.py tests/test_local_analyze.py -q` -> `60 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `277 passed, 5 warnings`.
+- `git diff --check` -> pass, LF/CRLF warnings only.
+- GitNexus `detect-changes --scope all` after re-index -> risk `high`, limited to the new event graph API/service/model flow and expected central `db.py` model impact.
+
 ## 2026-07-08 Data-Line Direct URL / Fulltext Patch
 
 - Added an opt-in Google News RSS URL resolver (`GNEWS_DECODE_URLS=1`):
@@ -1364,3 +1381,9 @@ Give future agents a stable project map and reproducible acceptance standard bef
 - **阶段 3.3 价值透镜 chip**：类型加 InfoValueLabel + info_value_labels?（文章+种子，可选）；DiscoveryPanel 头版/边界卡 + MediaPanel 文章行渲染 chip（提示样式非警告，用 span 不污染 li 计数）；加 e2e 断言。交接契约：消费 GPT 在 article_payload/collect_seeds 加的 info_value_labels:[{code,label,note,severity}]。
 
 门禁：`npm run build` 过；`npm run test:e2e --workers=1` → **100 passed (2.8m)**（含新增 chip 测试）。只碰 frontend/ + spec/CHANGELOG，未碰 backend/AGENTS/CLAUDE/.env/真实库。GPT 后端线已交接至 .agent-bridge/TO_CODEX.md，待其从阶段 1 起手。
+
+## 2026-07-09 — spec/ 与 .agent-bridge/ 整理
+
+- **changed files**: spec/ 18 个历史文件移入 spec/archive/（12 tracked 用 git mv，6 untracked 移动）；新建 spec/archive/README.md 索引；更新 spec/README.md 必读顺序（移除已完结 14 点 Sprint 指向，改指事件图 V1）；更新 spec/roadmap.md 当前优先级（校准 V1 → 事件图 V1 + 资讯vs理解战略判据）。.agent-bridge/TO_CLAUDE.md 401KB 日志滚存至 TO_CLAUDE.archive-2026-07-09.md，头文件精简至当前状态。BOARD.md Current Goal 更新为事件图 V1。
+- **reason**: 文件过多（spec/ 31 个、TO_CLAUDE 8975 行）导致 Claude 与 GPT 读取困难、目标误判（GPT 因 BOARD/README 未更新而误以为当前目标仍是数据线）。历史全部归档保留，不删除。
+- **verification**: spec/ 根目录 31→13 个活文档；TO_CLAUDE.md 401KB→965B（完整历史存档一字不丢）；git mv 保留跟踪历史。前端 build + 32 e2e 在 F1 提交 729ed05 时已全绿。

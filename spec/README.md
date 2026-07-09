@@ -6,20 +6,21 @@ This folder is the project harness: the shared map, rules, and acceptance gates 
 
 Read in this order:
 
-1. `AGENTS.md` for the workspace map and GitNexus rules.
-2. `spec/current-state.md` for the latest project truth, completed work, gaps, and next candidates.
-3. `spec/14-point-acceptance-2026-07-04.md` for the active 14-point sprint acceptance ledger.
-4. `spec/14-point-remaining-decisions-2026-07-04.md` for the remaining human/Claude decisions before the sprint can close.
-5. `spec/bug-audit-2026-07-05.md` before touching auto-refresh, persistence, narrative signals, discovery cognition marks, or search-job concurrency.
-6. `spec/project.md` for the product goal and architecture.
+1. `.agent-bridge/BOARD.md` for the single current truth: current goal, latest commit, who does what next.
+2. `AGENTS.md` for the workspace map and GitNexus rules.
+3. `spec/roadmap-event-graph-2026-07-09.md` for the CURRENT sprint: evidence-first event graph (V1 within-topic, V2 cross-topic).
+4. `spec/project.md` for the product goal and architecture.
+5. `spec/current-state.md` for prior project truth and completed work (being refreshed each major iteration).
+6. `spec/bug-audit-2026-07-05.md` before touching auto-refresh, persistence, narrative signals, discovery cognition marks, or search-job concurrency.
 7. `spec/development.md` for development constraints.
 8. `spec/acceptance.md` before claiming work is complete.
-9. `spec/roadmap.md` to understand the current iteration direction.
+9. `spec/roadmap.md` for the broader product direction (design-first backlog).
 10. `spec/local-capability-boundary.md` to understand what works without LLM access.
-11. `spec/academic-filtering-design.md` when working on the academic layer filtering iteration.
-12. `spec/event-tree-literature-graph-design.md` before planning event-tree or academic graph work.
+11. `spec/event-tree-literature-graph-design.md` before planning event-tree or academic graph work (the understanding-layer boundary).
+12. `spec/academic-filtering-design.md` when working on the academic layer filtering iteration.
 13. `spec/discovery-archive-cognition-timeline-design.md` before planning discovery history or cross-day cognition-tree work.
 14. `spec/CHANGELOG.md` to understand recent spec changes.
+15. Historical sprint snapshots (14-point ledgers, dated audits, superseded roadmaps) are archived under `spec/archive/`.
 
 ## What Counts As Done
 
