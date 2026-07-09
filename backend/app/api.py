@@ -26,7 +26,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, auto_refresh, country_compare, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services import article_perspective, auto_refresh, country_compare, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.pipeline import academic, cross_synthesis, sentiment
 
 DEFAULT_COGNITION_PROFILE = [
@@ -505,6 +505,18 @@ def event_graph_view(topic_id: int) -> dict[str, Any]:
         if not topic:
             raise HTTPException(status_code=404, detail="Topic not found")
         return event_graph.topic_event_graph_payload(session, topic)
+
+
+@app.get("/api/topics/{topic_id}/events/{event_id}/contrast")
+def event_contrast_view(topic_id: int, event_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        try:
+            return event_contrast.event_contrast_payload(session, topic, event_id)
+        except event_contrast.EventNotFoundInTopic as exc:
+            raise HTTPException(status_code=404, detail="Event not found in topic") from exc
 
 
 @app.get("/api/topics/{topic_id}/evidence-package")

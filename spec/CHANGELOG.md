@@ -1,5 +1,26 @@
 # Spec Changelog
 
+## 2026-07-09 Understanding Layer U2 Contrast Backend
+
+- Added `GET /api/topics/{topic_id}/events/{event_id}/contrast` for event-level multi-source contrast.
+- Added read-only `backend/app/services/event_contrast.py`, anchored only to persisted local `Event.article_ids`; no LLM, no new collection, and no new tables.
+- Returned per-source contrast fields: tier/tier label, stance and stance summary, substance/emotion scores with notes, representative article, article ids, emphasized entities, emphasized keywords, and lightweight article links.
+- Added neutral coverage differences as `coverage_gaps[].not_observed_in` with `evidence_article_ids` and `salience=max(count)`; payload note states that sample-level non-observation is not absence or deliberate omission.
+- Sorted coverage gaps by `salience` before limiting to 30 items so weak one-off differences cannot crowd out stronger sample-level differences.
+- Kept degraded behavior honest: empty event article samples and fewer than two sources degrade without fabricating coverage differences; missing enrichment fields return `-1` and `未评分` without blocking the contrast payload.
+
+### Verification
+
+- Red tests first: `tests/test_event_contrast.py` initially failed because the `/contrast` route did not exist.
+- Salience red test: weak/strong coverage differences initially failed with missing `salience`.
+- Salience ordering red test: a strong late-sorted gap was initially pushed behind weak gaps and risked being truncated before the sort key used `salience`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_contrast.py -q` -> `6 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_contrast.py tests/test_event_graph.py -q` -> `11 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `283 passed, 5 warnings`.
+- `git diff --check` -> pass, LF/CRLF warnings only.
+- GitNexus impact before editing: `backend/app/api.py` and `backend/app/services/event_graph.py` upstream risk `LOW`.
+- GitNexus `detect-changes -r message-platform --scope staged` with only this batch staged -> risk `high`, limited to the new event contrast payload route/service flow.
+
 ## 2026-07-09 Event Graph Backend V1
 
 - Added stable `Event` nodes and `EventRelation` evidence edges for the topic-level event graph.
