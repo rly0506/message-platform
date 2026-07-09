@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import EventGraph from './EventGraph.vue'
 import type {
   Article,
   ArticlePerspective,
@@ -237,10 +238,6 @@ const hasEnoughStanceTrendSample = computed(() => {
   return props.stancePeriods.reduce((sum, period) => sum + periodCountTotal(period), 0) >= 6
 })
 const shouldShowStanceTrends = computed(() => hasEnoughStanceTrendSample.value && hasMeaningfulStanceTrend.value)
-
-function eventEdgeConnector(edge: EventNetworkEdge) {
-  return edge.direction === 'directed' ? '→' : '↔'
-}
 
 const emit = defineEmits<{
   'update:query': [value: string]
@@ -668,34 +665,13 @@ function emotionClass(score: number) {
         <span>{{ eventNetwork.nodes.length }} 节点 · {{ eventNetwork.edges.length }} 边</span>
       </summary>
       <div class="collapse-body event-network">
-        <p class="event-structure-note">本地证据边，不显示 LLM 因果假设。</p>
-        <div class="event-network-grid">
-          <article
-            v-for="node in eventNetwork.nodes"
-            :key="node.key"
-            :class="['event-network-node', { active: node.index === selectedEventIndex }]"
-          >
-            <div>
-              <time>{{ fmtDate(node.date) }}</time>
-              <strong>{{ node.title }}</strong>
-              <span>{{ node.evidence }}</span>
-            </div>
-            <p>{{ node.summary }}</p>
-          </article>
-        </div>
-        <div class="event-network-edges">
-          <article v-for="edge in eventNetwork.edges" :key="edge.key" class="event-network-edge">
-            <div>
-              <strong>{{ edge.label }}</strong>
-              <span>#{{ edge.from + 1 }} {{ eventEdgeConnector(edge) }} #{{ edge.to + 1 }}</span>
-            </div>
-            <p>{{ edge.evidence }}</p>
-            <ul v-if="edge.items.length">
-              <li v-for="item in edge.items" :key="item">{{ item }}</li>
-            </ul>
-          </article>
-          <p v-if="!eventNetwork.edges.length" class="source-matrix-empty">暂无可连接的事件边。</p>
-        </div>
+        <EventGraph
+          :nodes="eventNetwork.nodes"
+          :edges="eventNetwork.edges"
+          :selected-index="selectedEventIndex"
+          :fmt-date="fmtDate"
+          @select="toggleTimelineEvent"
+        />
       </div>
     </details>
 

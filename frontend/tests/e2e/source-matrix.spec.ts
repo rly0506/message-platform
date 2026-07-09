@@ -761,10 +761,11 @@ test('shows an event structure tree from existing media signals', async ({ page 
 
   await toggle.click()
 
-  const network = page.locator('.event-network')
+  const network = page.locator('.event-graph')
   await expect(network).toBeVisible()
   await expect(network.getByText('本地证据边，不显示 LLM 因果假设。')).toBeVisible()
-  await expect(network.locator('.event-network-node').getByText('美国与伊朗冲突进入关键节点')).toBeVisible()
+  // 节点标题在 SVG 里按宽度截断，全名保留在 <g role="button"> 的 aria-label 中
+  await expect(network.getByRole('button', { name: /美国与伊朗冲突进入关键节点/ })).toBeVisible()
   await expect(network.getByText('暂无可连接的事件边。')).toBeVisible()
 })
 
@@ -806,16 +807,17 @@ test('renders local evidence edges between events in the event network', async (
     hasText: /事件发展网络.*2 节点/,
   }).click()
 
-  const network = page.locator('.event-network')
-  await expect(network.locator('.event-network-node')).toHaveCount(2)
-  await expect(network.getByText('时间顺序')).toBeVisible()
-  await expect(network.getByText('共享对象')).toBeVisible()
-  await expect(network.getByText('共同来源')).toBeVisible()
-  await expect(network.locator('.event-network-edge').filter({ hasText: '时间顺序' })).toContainText('#1 → #2')
-  await expect(network.locator('.event-network-edge').filter({ hasText: '共享对象' })).toContainText('#1 ↔ #2')
-  await expect(network.locator('.event-network-edge').filter({ hasText: '共同来源' })).toContainText('#1 ↔ #2')
-  await expect(network.locator('.event-network-edge').filter({ hasText: '共享对象' }).locator('li', { hasText: /^伊朗$/ })).toBeVisible()
-  await expect(network.locator('.event-network-edge').filter({ hasText: '共同来源' }).locator('li', { hasText: /^Reuters$/ })).toBeVisible()
+  const network = page.locator('.event-graph')
+  await expect(network.locator('.event-graph-node')).toHaveCount(2)
+  // 证据边始终可见（审计红线）：每条边一行，标签 + 连接符 + 可核查证据项
+  const chronRow = network.locator('.event-graph-evidence-row').filter({ hasText: '时间顺序' })
+  const entityRow = network.locator('.event-graph-evidence-row').filter({ hasText: '共享对象' })
+  const sourceRow = network.locator('.event-graph-evidence-row').filter({ hasText: '共同来源' })
+  await expect(chronRow).toContainText('#1 → #2')
+  await expect(entityRow).toContainText('#1 ↔ #2')
+  await expect(sourceRow).toContainText('#1 ↔ #2')
+  await expect(entityRow.locator('.evidence-item', { hasText: /^伊朗$/ })).toBeVisible()
+  await expect(sourceRow.locator('.evidence-item', { hasText: /^Reuters$/ })).toBeVisible()
 })
 
 test('shows selected event detail inline below the clicked timeline node', async ({ page }) => {
