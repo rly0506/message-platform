@@ -26,7 +26,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, auto_refresh, country_compare, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services import article_perspective, auto_refresh, country_compare, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.pipeline import academic, cross_synthesis, sentiment
 
 DEFAULT_COGNITION_PROFILE = [
@@ -496,6 +496,15 @@ def local_events(topic_id: int) -> dict[str, Any]:
             "criteria": data["criteria"],
             "narrative_signals": narrative_signals.detect_narrative_signals(article_rows),
         }
+
+
+@app.get("/api/topics/{topic_id}/event-graph")
+def event_graph_view(topic_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return event_graph.topic_event_graph_payload(session, topic)
 
 
 @app.get("/api/topics/{topic_id}/evidence-package")

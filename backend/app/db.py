@@ -188,6 +188,33 @@ class CognitionProfile(SQLModel, table=True):
     recommended_seed_style: str = "mechanism"
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
+# --- 本地规则事件图表: 无 LLM，边只表示可核查证据关系 ---
+
+class Event(SQLModel, table=True):
+    """Stable local event node for evidence-first event graphs."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    topic_id: int = Field(foreign_key="topic.id", index=True)
+    date: Optional[datetime] = Field(default=None, index=True)
+    title: str = ""
+    title_zh: str = ""
+    summary_zh: str = ""
+    article_ids: list = Field(default_factory=list, sa_column=Column(JSON))
+    sources: list = Field(default_factory=list, sa_column=Column(JSON))
+    entities: list = Field(default_factory=list, sa_column=Column(JSON))
+    source_count: int = 0
+    article_count: int = 0
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class EventRelation(SQLModel, table=True):
+    """Evidence edge between stable events. Causal hypotheses are intentionally excluded."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    from_event_id: int = Field(foreign_key="event.id", index=True)
+    to_event_id: int = Field(foreign_key="event.id", index=True)
+    relation_type: str = Field(index=True)
+    evidence: str = ""
+    items: list = Field(default_factory=list, sa_column=Column(JSON))
+
 
 # --- 以下为 LLM 综合产出表，Phase 1 步骤 5 才会写入 ---
 

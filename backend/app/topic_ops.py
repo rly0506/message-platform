@@ -15,7 +15,7 @@ from app.pipeline import enrich as enrichp
 from app.pipeline import fulltext
 from app.pipeline import local_analyze, prefilter
 from app.pipeline import synthesize as synthp
-from app.services import evidence_package as evidence_service
+from app.services import event_graph, evidence_package as evidence_service
 
 
 LLM_ANALYSIS_MARKER = "<!-- analysis-source: llm -->"
@@ -242,6 +242,8 @@ def analyze_topic(session: Session, topic: Topic, persist: bool = True) -> dict[
     data = local_analyze.analyze_topic(topic.name, rows)
     if persist:
         _persist_analysis(session, topic.id, data)
+        events = event_graph.sync_topic_events(session, topic.id, data.get("events", []))
+        event_graph.rebuild_event_relations(session, topic.id, events=events)
     data["article_count"] = len(rows)
     return data
 
@@ -498,6 +500,7 @@ def remove_topic(session: Session, topic_id: int, *, dry_run: bool = True) -> di
     if dry_run:
         return result
 
+    event_graph.delete_topic_graph(session, topic_id)
     for row in [*timeline, *framing, *analyses]:
         session.delete(row)
     for link in links:
