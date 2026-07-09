@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import EventGraph from './EventGraph.vue'
+import EventContrast from './EventContrast.vue'
 import type {
   Article,
   ArticlePerspective,
@@ -9,6 +10,7 @@ import type {
   CountryFirstReporter,
   Criterion,
   EntityGroup,
+  EventContrastPayload,
   EventGraphPayload,
   EvidenceArticle,
   Keyword,
@@ -108,6 +110,11 @@ const props = defineProps<{
   toggleTimelineEvent: (index: number) => void
   searchRelated: (term: string, kind?: 'subtopic' | 'analogue') => void
   loadCountryCompareForSelectedEvent: () => void
+  selectedEventId: number | null
+  eventContrastLoading: boolean
+  eventContrastError: string
+  visibleEventContrast: EventContrastPayload | null
+  loadEventContrastForSelectedEvent: () => void
   showAuthoritySources: () => void
   showEarliestSources: () => void
   showMostCoveredSources: () => void
@@ -689,6 +696,33 @@ function emotionClass(score: number) {
                   </article>
                 </div>
               </template>
+            </section>
+            <section class="event-contrast-panel">
+              <div class="evidence-header">
+                <div>
+                  <strong>多源对照</strong>
+                  <span v-if="visibleEventContrast">
+                    {{ visibleEventContrast.sources.length || 0 }} 个来源并排 ·
+                    {{ visibleEventContrast.coverage_gaps.length || 0 }} 处覆盖差异
+                  </span>
+                  <span v-else-if="selectedEventId !== null">把各来源对这一事件的报道并排，看谁强调什么、谁没提什么</span>
+                  <span v-else>需先切到后端事件图（稳定事件 id）才能生成多源对照</span>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button"
+                  :disabled="eventContrastLoading || selectedEventId === null"
+                  @click="loadEventContrastForSelectedEvent"
+                >
+                  {{ visibleEventContrast ? '刷新对照' : '生成对照' }}
+                </button>
+              </div>
+              <EventContrast
+                v-if="eventContrastError || eventContrastLoading || visibleEventContrast"
+                :payload="visibleEventContrast"
+                :loading="eventContrastLoading"
+                :error="eventContrastError"
+              />
             </section>
             <div class="breakdown-grid">
               <div v-for="item in event.score_breakdown" :key="item.label">

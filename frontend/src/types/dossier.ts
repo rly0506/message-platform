@@ -543,6 +543,65 @@ export type EventGraphPayload = {
   note: string
 }
 
+// —— U2 对比透镜（理解层透镜2）契约。字段严格照 GPT 已定形状：中性 not_observed_in、可点回证据。 ——
+export type EventContrastTerm = {
+  term: string
+  count: number
+  kind: string
+}
+
+export type EventContrastArticle = {
+  id: number
+  title: string
+  url: string
+  published_at: string | null
+  stance?: string
+  substance_score?: number
+  emotion_score?: number
+}
+
+export type EventContrastSource = {
+  source: string
+  tier: string
+  tier_label: string
+  stance: string
+  stance_summary: string
+  substance_score: number
+  substance_note: string
+  emotion_score: number
+  emotion_note: string
+  emphasized_entities: EventContrastTerm[]
+  emphasized_keywords: EventContrastTerm[]
+  representative_title: string
+  url: string
+  article_ids: number[]
+  articles: EventContrastArticle[]
+}
+
+// 覆盖差异：某实体/关键词被部分来源提及、另一部分未观察到。中性措辞（not_observed_in ≠ 蓄意隐瞒）。
+export type EventContrastGap = {
+  term: string
+  kind: string
+  covered_by: string[]
+  not_observed_in: string[]
+  evidence_article_ids: number[]
+}
+
+export type EventContrastPayload = {
+  event: {
+    id: number
+    date: string | null
+    title_zh: string
+    summary_zh: string
+    source_count: number
+    article_count: number
+  }
+  sources: EventContrastSource[]
+  coverage_gaps: EventContrastGap[]
+  degraded: boolean
+  note: string
+}
+
 export type SearchResponse = LocalEventsPayload & {
   topic: TopicSummary
   collect: {

@@ -871,6 +871,86 @@ test('shows selected event detail inline below the clicked timeline node', async
   await expect(page.locator('.feed-pane > .event-detail')).toHaveCount(0)
 })
 
+test('renders the multi-source contrast table with neutral coverage-gap wording', async ({ page }) => {
+  // 对照台按 event_id 取数：先给后端事件图一个稳定 id（node[0].id=51），
+  // 选中时间轴第 0 个节点 → selectedEventId=51 → 触发 /events/51/contrast。
+  await page.route('**/api/topics/101/event-graph', async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 3, article_count: 6 },
+        ],
+        edges: [],
+        degraded: true,
+        note: '',
+      },
+    })
+  })
+  await page.route('**/api/topics/101/events/51/contrast', async (route) => {
+    await route.fulfill({
+      json: {
+        event: { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 3, article_count: 6 },
+        sources: [
+          {
+            source: 'Reuters', tier: 'wire', tier_label: '通讯社',
+            stance: '风险/审慎', stance_summary: '强调升级风险',
+            substance_score: 82, substance_note: '含具体时间和可核查事实',
+            emotion_score: 25, emotion_note: '修辞压力较低',
+            emphasized_entities: [{ term: '霍尔木兹海峡', count: 2, kind: 'entity' }],
+            emphasized_keywords: [{ term: '制裁', count: 1, kind: 'keyword' }],
+            representative_title: 'Reuters headline', url: 'https://example.com/r1',
+            article_ids: [10, 11],
+            articles: [{ id: 10, title: 'Reuters headline', url: 'https://example.com/r1', published_at: '2026-06-20T01:00:00' }],
+          },
+          {
+            source: 'BBC', tier: 'mainstream', tier_label: '主流媒体',
+            stance: '中性观察', stance_summary: '侧重外交降温',
+            substance_score: -1, substance_note: '',
+            emotion_score: -1, emotion_note: '',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'BBC headline', url: 'https://example.com/b1',
+            article_ids: [12],
+            articles: [{ id: 12, title: 'BBC headline', url: 'https://example.com/b1', published_at: '2026-06-20T03:00:00' }],
+          },
+        ],
+        coverage_gaps: [
+          { term: '霍尔木兹海峡', kind: 'entity', covered_by: ['Reuters'], not_observed_in: ['BBC'], evidence_article_ids: [10] },
+        ],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+
+  await openWorkbench(page)
+  await page.locator('.timeline-node').filter({ hasText: '美国与伊朗冲突进入关键节点' }).click()
+
+  const panel = page.locator('.event-contrast-panel')
+  await panel.getByRole('button', { name: '生成对照' }).click()
+
+  const contrast = panel.locator('.event-contrast')
+  // 两个来源并排成列
+  await expect(contrast.locator('.contrast-col')).toHaveCount(2)
+  await expect(contrast.locator('.contrast-col-head', { hasText: 'Reuters' })).toBeVisible()
+  await expect(contrast.locator('.contrast-col-head', { hasText: 'BBC' })).toBeVisible()
+  // 富化字段缺失（-1）诚实标「未评分」，不伪造分数
+  await expect(contrast.locator('.contrast-col').filter({ hasText: 'BBC' }).locator('.unscored')).toHaveCount(2)
+  // 覆盖差异用中性措辞「未在…样本中观察到」，不写成蓄意隐瞒
+  const gap = contrast.locator('.contrast-gap-row').filter({ hasText: '霍尔木兹海峡' })
+  await expect(gap).toContainText('仅见于 Reuters')
+  await expect(gap).toContainText('未在 BBC 的样本中观察到')
+})
+
+test('disables the contrast trigger when no stable backend event id is available', async ({ page }) => {
+  // 无后端事件图 → 本地兜底事件无稳定 id → 按钮禁用并诚实提示，不伪造 id。
+  await openWorkbench(page)
+  await page.locator('.timeline-node').filter({ hasText: '美国与伊朗冲突进入关键节点' }).click()
+
+  const panel = page.locator('.event-contrast-panel')
+  await expect(panel.getByRole('button', { name: '生成对照' })).toBeDisabled()
+  await expect(panel).toContainText('需先切到后端事件图')
+})
+
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {
   await openWorkbench(page)
 

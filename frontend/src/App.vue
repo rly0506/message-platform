@@ -6,6 +6,7 @@ import {
   fetchCognitionMarks,
   fetchCognitionProfile,
   fetchCountryCompare,
+  fetchEventContrast,
   fetchSources,
   createSource,
   importSources,
@@ -35,6 +36,7 @@ import type {
   CountryCompare,
   CountryCompareCountry,
   DiscoverySeed,
+  EventContrastPayload,
   EvidenceArticle,
   Keyword,
   LocalEvent,
@@ -47,6 +49,10 @@ const countryCompareLoading = ref(false)
 const countryCompare = ref<CountryCompare | null>(null)
 const countryCompareError = ref('')
 const countryCompareEventKey = ref('')
+const eventContrastLoading = ref(false)
+const eventContrast = ref<EventContrastPayload | null>(null)
+const eventContrastError = ref('')
+const eventContrastEventKey = ref('')
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
@@ -681,6 +687,7 @@ watch(selectedTopicId, async (id) => {
     localData.value = null
     eventGraph.value = null
     resetCountryCompare()
+    resetEventContrast()
     resetCrossSynthesisState()
     resetAcademicState()
     resetSentimentState()
@@ -722,6 +729,44 @@ function resetCountryCompare() {
   countryCompareError.value = ''
   countryCompareEventKey.value = ''
 }
+
+// 对照台按 event_id 取数（GPT 契约）。选中 index → 后端事件图同序节点的稳定 Event.id。
+// 后端图缺席（本地兜底）时无稳定 id → null，按钮据此禁用并诚实提示，不伪造 id。
+const selectedEventId = computed<number | null>(() => {
+  const nodes = eventGraph.value?.nodes
+  if (!nodes || !nodes.length) return null
+  const node = nodes[selectedEventIndex.value]
+  return node ? node.id : null
+})
+
+async function loadContrastForSelectedEvent() {
+  const topicId = selectedTopicId.value
+  const eventId = selectedEventId.value
+  if (!topicId || eventId === null || eventContrastLoading.value) return
+  eventContrastLoading.value = true
+  eventContrastError.value = ''
+  try {
+    eventContrast.value = await fetchEventContrast(topicId, eventId)
+    eventContrastEventKey.value = selectedEventKey.value
+  } catch (err) {
+    eventContrastError.value = readableError(err)
+  } finally {
+    eventContrastLoading.value = false
+  }
+}
+
+function resetEventContrast() {
+  eventContrast.value = null
+  eventContrastError.value = ''
+  eventContrastEventKey.value = ''
+}
+
+// 只在对照数据属于当前选中事件时才显示，切换事件后旧对照不串台。
+const visibleEventContrast = computed<EventContrastPayload | null>(() =>
+  eventContrast.value && eventContrastEventKey.value === selectedEventKey.value
+    ? eventContrast.value
+    : null,
+)
 
 function fmtDate(value: string | null, withTime = false) {
   if (!value) return '未知时间'
@@ -1517,6 +1562,11 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :toggle-timeline-event="toggleTimelineEvent"
           :search-related="searchRelated"
           :load-country-compare-for-selected-event="loadCountryCompareForSelectedEvent"
+          :selected-event-id="selectedEventId"
+          :event-contrast-loading="eventContrastLoading"
+          :event-contrast-error="eventContrastError"
+          :visible-event-contrast="visibleEventContrast"
+          :load-event-contrast-for-selected-event="loadContrastForSelectedEvent"
           :show-authority-sources="showAuthoritySources"
           :show-earliest-sources="showEarliestSources"
           :show-most-covered-sources="showMostCoveredSources"

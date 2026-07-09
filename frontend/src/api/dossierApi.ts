@@ -12,6 +12,7 @@ import type {
   DiscoveryReport,
   DiscoveryReportMeta,
   DiscoveryTimelineTree,
+  EventContrastPayload,
   EventGraphPayload,
   LocalEventsPayload,
   OpenCliDiagnostics,
@@ -171,6 +172,13 @@ export async function fetchLocalEvents(id: number) {
 
 export async function fetchEventGraph(topicId: number) {
   const res = await axios.get<EventGraphPayload>(`${API_BASE}/api/topics/${topicId}/event-graph`)
+  return res.data
+}
+
+export async function fetchEventContrast(topicId: number, eventId: number) {
+  const res = await axios.get<EventContrastPayload>(
+    `${API_BASE}/api/topics/${topicId}/events/${eventId}/contrast`,
+  )
   return res.data
 }
 
