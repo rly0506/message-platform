@@ -155,13 +155,13 @@ def _coverage_gaps(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     },
                 )
                 entry["covered_by"].add(source["source"])
-                entry["evidence_article_ids"].update(source.get("article_ids", []))
+                entry["evidence_article_ids"].update(item.get("evidence_article_ids", []))
                 entry["salience"] = max(entry["salience"], int(item.get("count") or 0))
 
         for entry in term_map.values():
             covered_by = sorted(entry["covered_by"], key=all_sources.index)
             not_observed = [source for source in all_sources if source not in entry["covered_by"]]
-            if not covered_by or not not_observed:
+            if not covered_by or not not_observed or not entry["evidence_article_ids"]:
                 continue
             entries.append({
                 "term": entry["term"],
@@ -189,8 +189,13 @@ def _event_payload(event: Event, source_count: int, article_count: int) -> dict[
 def _emphasized_entities(source: str, rows: list[tuple[TopicArticle, Article]]) -> list[dict[str, Any]]:
     text = " ".join(f"{_article_title(article)} {_article_snippet(article)}" for _, article in rows)
     entities = local_analyze._entities_for_text(text, limit=ENTITY_LIMIT, source_names=[source], use_spacy=False)
+    evidence_by_term = _entity_evidence_by_term(source, rows)
     return [
-        {"term": str(item.get("term", "")), "count": int(item.get("count") or 0)}
+        {
+            "term": str(item.get("term", "")),
+            "count": int(item.get("count") or 0),
+            "evidence_article_ids": evidence_by_term.get(_normalize_term(item.get("term", "")), []),
+        }
         for item in entities
         if item.get("term") and int(item.get("count") or 0) > 0
     ]
@@ -198,11 +203,48 @@ def _emphasized_entities(source: str, rows: list[tuple[TopicArticle, Article]]) 
 
 def _emphasized_keywords(rows: list[local_analyze.ArticleRow]) -> list[dict[str, Any]]:
     keywords = local_analyze._keywords_for_rows(rows, limit=KEYWORD_LIMIT)
+    evidence_by_term = _keyword_evidence_by_term(rows)
     return [
-        {"term": str(item.get("term", "")), "count": int(item.get("count") or 0)}
+        {
+            "term": str(item.get("term", "")),
+            "count": int(item.get("count") or 0),
+            "evidence_article_ids": evidence_by_term.get(_normalize_term(item.get("term", "")), []),
+        }
         for item in keywords
         if item.get("term") and int(item.get("count") or 0) > 0
     ]
+
+
+def _entity_evidence_by_term(
+    source: str,
+    rows: list[tuple[TopicArticle, Article]],
+) -> dict[str, list[int]]:
+    evidence: dict[str, set[int]] = defaultdict(set)
+    for _, article in rows:
+        if article.id is None:
+            continue
+        text = f"{_article_title(article)} {_article_snippet(article)}"
+        entities = local_analyze._entities_for_text(
+            text,
+            limit=max(ENTITY_LIMIT, len(text)),
+            source_names=[source],
+            use_spacy=False,
+        )
+        for item in entities:
+            normalized = _normalize_term(item.get("term", ""))
+            if normalized:
+                evidence[normalized].add(article.id)
+    return {term: sorted(article_ids) for term, article_ids in evidence.items()}
+
+
+def _keyword_evidence_by_term(rows: list[local_analyze.ArticleRow]) -> dict[str, list[int]]:
+    evidence: dict[str, set[int]] = defaultdict(set)
+    for row in rows:
+        for term in local_analyze._signature(f"{row.title} {row.snippet}"):
+            normalized = _normalize_term(term)
+            if normalized:
+                evidence[normalized].add(row.id)
+    return {term: sorted(article_ids) for term, article_ids in evidence.items()}
 
 
 def _score_and_note(rows: list[tuple[TopicArticle, Article]], score_attr: str, note_attr: str) -> tuple[int, str]:

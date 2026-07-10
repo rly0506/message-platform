@@ -1,6 +1,8 @@
 """Read-only FastAPI surface for the dossier database."""
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
@@ -26,7 +28,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, auto_refresh, country_compare, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services import article_perspective, auto_refresh, country_compare, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.pipeline import academic, cross_synthesis, sentiment
 
 DEFAULT_COGNITION_PROFILE = [
@@ -200,10 +202,23 @@ COGNITION_MARK_DELTAS = {
     "unfamiliar": -5,
 }
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    init_db()
+    search_service.mark_interrupted_search_jobs()
+    auto_refresh.start_auto_refresh_scheduler()
+    try:
+        yield
+    finally:
+        auto_refresh.stop_auto_refresh_scheduler()
+
+
 app = FastAPI(
     title="Dossier API",
     version="0.1.0",
     description="Read-only API for collected topic dossiers.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -215,18 +230,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
-    search_service.mark_interrupted_search_jobs()
-    auto_refresh.start_auto_refresh_scheduler()
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    auto_refresh.stop_auto_refresh_scheduler()
 
 
 @app.get("/api/health")
@@ -516,6 +519,18 @@ def event_contrast_view(topic_id: int, event_id: int) -> dict[str, Any]:
         try:
             return event_contrast.event_contrast_payload(session, topic, event_id)
         except event_contrast.EventNotFoundInTopic as exc:
+            raise HTTPException(status_code=404, detail="Event not found in topic") from exc
+
+
+@app.get("/api/topics/{topic_id}/events/{event_id}/analogues")
+def event_analogues_view(topic_id: int, event_id: int) -> dict[str, Any]:
+    with Session(engine) as session:
+        topic = session.get(Topic, topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        try:
+            return event_analogues.event_analogues_payload(session, topic, event_id)
+        except event_analogues.EventNotFoundInTopic as exc:
             raise HTTPException(status_code=404, detail="Event not found in topic") from exc
 
 

@@ -1,5 +1,21 @@
 # Spec Changelog
 
+## 2026-07-10 Understanding Layer U1 Event Analogues Backend
+
+- Added `GET /api/topics/{topic_id}/events/{event_id}/analogues` for read-only, cross-topic event analogues.
+- Added transparent local scoring across shared entities, keywords, narrative signals, source-tier shape, and sample/date shape; fixed score bands are `>=70` for `较强相似`, `40-69` for `有限相似`, and lower scores are omitted.
+- Returned weighted `basis[]` evidence, concrete `differences[]`, supporting article ids, and explicit non-causal/non-predictive notes for every result.
+- Excluded events from the target topic, capped the V1 linear scan at 500 cross-topic candidates, limited output to 8 results, and exposed scan/truncation metadata.
+- Kept the route read-only: it does not write `EventRelation` rows, trigger collection, sync missing events, or require an LLM. Topics without persisted events degrade honestly.
+
+### Verification
+
+- Red tests first: `tests/test_event_analogues.py` initially failed because the route/service did not exist.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_analogues.py -q` -> `7 passed, 1 warning`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_analogues.py tests/test_event_contrast.py tests/test_event_graph.py -q` -> `22 passed, 1 warning`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `295 passed, 1 warning`.
+- GitNexus impact before API editing: `backend/app/api.py` top-level `app` upstream risk `LOW` with no identified affected process.
+
 ## 2026-07-09 Understanding Layer U2 Contrast Backend
 
 - Added `GET /api/topics/{topic_id}/events/{event_id}/contrast` for event-level multi-source contrast.

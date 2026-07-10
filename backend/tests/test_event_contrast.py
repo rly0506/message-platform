@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from app import api
 from app.db import Article, Event, Topic, TopicArticle, engine, init_db
-from app.services.event_contrast import _coverage_gaps
+from app.services.event_contrast import SourceBundle, _coverage_gaps, _source_payload
 
 
 def test_event_contrast_returns_multi_source_payload_with_neutral_gaps():
@@ -35,7 +35,9 @@ def test_event_contrast_returns_multi_source_payload_with_neutral_gaps():
     assert sources["Reuters"]["representative_title"] == "Reuters: Iran strike near Hormuz"
     assert sources["Reuters"]["url"] == "https://example.com/reuters-main"
     assert sources["Reuters"]["article_ids"]
-    assert {"term": "伊朗", "count": 2} in sources["Reuters"]["emphasized_entities"]
+    iran = next(item for item in sources["Reuters"]["emphasized_entities"] if item["term"] == "伊朗")
+    assert iran["count"] == 2
+    assert iran["evidence_article_ids"] == sources["Reuters"]["article_ids"]
     assert all("count" in item for item in sources["Reuters"]["emphasized_keywords"])
 
     gaps = payload["coverage_gaps"]
@@ -102,11 +104,17 @@ def test_event_contrast_normalizes_terms_before_gap_detection():
 
 
 def test_event_contrast_ranks_and_limits_gaps_by_salience():
-    weak_terms = [{"term": f"a-weak-{index:02d}", "count": 1} for index in range(35)]
+    weak_terms = [
+        {"term": f"a-weak-{index:02d}", "count": 1, "evidence_article_ids": [101]}
+        for index in range(35)
+    ]
     sources = [
         {
             "source": "Reuters",
-            "emphasized_entities": [*weak_terms, {"term": "z-strong", "count": 5}],
+            "emphasized_entities": [
+                *weak_terms,
+                {"term": "z-strong", "count": 5, "evidence_article_ids": [101]},
+            ],
             "emphasized_keywords": [],
             "article_ids": [101],
         },
@@ -124,6 +132,119 @@ def test_event_contrast_ranks_and_limits_gaps_by_salience():
     assert gaps[0]["term"] == "z-strong"
     assert gaps[0]["salience"] == 5
     assert all(gap["salience"] == 1 for gap in gaps[1:])
+
+
+def test_source_payload_tracks_evidence_articles_for_each_emphasized_term():
+    matching = Article(
+        id=101,
+        url="https://example.com/reuters-hormuz",
+        title="Reuters: Iran keeps Hormuz shipping open 伊朗",
+        source="Reuters",
+        snippet="Shipping continues through Hormuz after the announcement.",
+        published_at=datetime(2026, 6, 1, 8, 0),
+    )
+    unrelated = Article(
+        id=102,
+        url="https://example.com/reuters-oil",
+        title="Reuters: Oil prices edge higher",
+        source="Reuters",
+        snippet="Energy markets moved in early trading.",
+        published_at=datetime(2026, 6, 1, 9, 0),
+    )
+    rows = [
+        (TopicArticle(topic_id=1, article_id=101, relevance=0.9), matching),
+        (TopicArticle(topic_id=1, article_id=102, relevance=0.8), unrelated),
+    ]
+
+    source = _source_payload(SourceBundle(source="Reuters", rows=rows))
+
+    hormuz = next(item for item in source["emphasized_keywords"] if item["term"] == "hormuz")
+    assert hormuz["evidence_article_ids"] == [101]
+    iran = next(item for item in source["emphasized_entities"] if item["term"] == "伊朗")
+    assert iran["evidence_article_ids"] == [101]
+
+
+def test_source_payload_does_not_truncate_entity_evidence_per_article(monkeypatch):
+    def fake_entities(text: str, *, limit: int, **_kwargs):
+        if 'first-marker' in text and 'second-marker' in text:
+            return [{'term': 'Shared Entity', 'count': 2}]
+        decoys = [{'term': f'Decoy {index}', 'count': 1} for index in range(10)]
+        if limit > 10:
+            decoys.append({'term': 'Shared Entity', 'count': 1})
+        return decoys
+
+    monkeypatch.setattr('app.services.event_contrast.local_analyze._entities_for_text', fake_entities)
+    rows = [
+        (
+            TopicArticle(topic_id=1, article_id=101, relevance=0.9),
+            Article(
+                id=101,
+                url='https://example.com/reuters-first',
+                title='first-marker',
+                source='Reuters',
+                snippet='',
+                published_at=datetime(2026, 6, 1, 8, 0),
+            ),
+        ),
+        (
+            TopicArticle(topic_id=1, article_id=102, relevance=0.8),
+            Article(
+                id=102,
+                url='https://example.com/reuters-second',
+                title='second-marker',
+                source='Reuters',
+                snippet='',
+                published_at=datetime(2026, 6, 1, 9, 0),
+            ),
+        ),
+    ]
+
+    source = _source_payload(SourceBundle(source='Reuters', rows=rows))
+
+    entity = next(item for item in source['emphasized_entities'] if item['term'] == 'Shared Entity')
+    assert entity['evidence_article_ids'] == [101, 102]
+
+
+def test_coverage_gaps_use_term_evidence_instead_of_every_source_article():
+    sources = [
+        {
+            "source": "Reuters",
+            "emphasized_entities": [],
+            "emphasized_keywords": [
+                {"term": "hormuz", "count": 2, "evidence_article_ids": [101]},
+            ],
+            "article_ids": [101, 102],
+        },
+        {
+            "source": "BBC",
+            "emphasized_entities": [],
+            "emphasized_keywords": [],
+            "article_ids": [201],
+        },
+    ]
+
+    gaps = _coverage_gaps(sources)
+
+    assert gaps[0]["evidence_article_ids"] == [101]
+
+
+def test_coverage_gaps_skip_terms_without_article_evidence():
+    sources = [
+        {
+            "source": "Reuters",
+            "emphasized_entities": [],
+            "emphasized_keywords": [{"term": "hormuz", "count": 2, "evidence_article_ids": []}],
+            "article_ids": [101],
+        },
+        {
+            "source": "BBC",
+            "emphasized_entities": [],
+            "emphasized_keywords": [],
+            "article_ids": [201],
+        },
+    ]
+
+    assert _coverage_gaps(sources) == []
 
 
 def _seed_contrast_topic(tag: str, with_missing_enrichment: bool = False) -> tuple[int, int]:

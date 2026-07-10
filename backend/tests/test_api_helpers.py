@@ -1,8 +1,38 @@
+import asyncio
+
 from app import api
 from app.db import SearchJob, engine, init_db
 from app.services import payloads, search_service
 from fastapi import HTTPException
 from sqlmodel import Session
+
+
+def test_api_lifespan_runs_startup_and_shutdown_hooks(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(api, "init_db", lambda: calls.append("init_db"))
+    monkeypatch.setattr(
+        api.search_service,
+        "mark_interrupted_search_jobs",
+        lambda: calls.append("mark_interrupted"),
+    )
+    monkeypatch.setattr(
+        api.auto_refresh,
+        "start_auto_refresh_scheduler",
+        lambda: calls.append("start_scheduler"),
+    )
+    monkeypatch.setattr(
+        api.auto_refresh,
+        "stop_auto_refresh_scheduler",
+        lambda: calls.append("stop_scheduler"),
+    )
+
+    async def exercise_lifespan() -> None:
+        async with api.lifespan(api.app):
+            assert calls == ["init_db", "mark_interrupted", "start_scheduler"]
+
+    asyncio.run(exercise_lifespan())
+
+    assert calls == ["init_db", "mark_interrupted", "start_scheduler", "stop_scheduler"]
 
 
 def test_attach_event_evidence_adds_article_payloads_and_respects_limit():
