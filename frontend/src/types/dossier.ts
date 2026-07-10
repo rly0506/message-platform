@@ -582,6 +582,7 @@ export type EventContrastSource = {
 export type EventContrastGap = {
   term: string
   kind: string
+  salience: number
   covered_by: string[]
   not_observed_in: string[]
   evidence_article_ids: number[]

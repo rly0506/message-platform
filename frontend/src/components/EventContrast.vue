@@ -103,8 +103,14 @@ const event = computed(() => props.payload?.event ?? null)
         <div v-if="gaps.length" class="contrast-gaps">
           <strong>覆盖差异</strong>
           <ul>
-            <li v-for="gap in gaps" :key="`${gap.kind}-${gap.term}`" class="contrast-gap-row">
+            <li
+              v-for="gap in gaps"
+              :key="`${gap.kind}-${gap.term}`"
+              class="contrast-gap-row"
+              :class="{ weak: gap.salience <= 1 }"
+            >
               <span class="gap-term" :class="gap.kind === 'entity' ? 'is-entity' : 'is-keyword'">{{ gap.term }}</span>
+              <span class="gap-strength">强调 ×{{ gap.salience }}</span>
               <span class="gap-covered">仅见于 {{ gap.covered_by.join('、') }}</span>
               <span class="gap-missing">未在 {{ gap.not_observed_in.join('、') }} 的样本中观察到</span>
             </li>
@@ -367,5 +373,15 @@ const event = computed(() => props.payload?.event ?? null)
 
 .gap-missing {
   color: var(--text-faint);
+}
+
+.gap-strength {
+  color: var(--text-faint);
+  font-weight: 700;
+}
+
+/* 弱差异（salience==1，仅单次提及）淡化：不隐藏、不静默丢，只降视觉权重，让强信号先被看见 */
+.contrast-gap-row.weak {
+  opacity: 0.55;
 }
 </style>

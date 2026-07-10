@@ -914,7 +914,8 @@ test('renders the multi-source contrast table with neutral coverage-gap wording'
           },
         ],
         coverage_gaps: [
-          { term: '霍尔木兹海峡', kind: 'entity', covered_by: ['Reuters'], not_observed_in: ['BBC'], evidence_article_ids: [10] },
+          { term: '霍尔木兹海峡', kind: 'entity', salience: 3, covered_by: ['Reuters'], not_observed_in: ['BBC'], evidence_article_ids: [10] },
+          { term: '油价', kind: 'keyword', salience: 1, covered_by: ['Reuters'], not_observed_in: ['BBC'], evidence_article_ids: [10] },
         ],
         degraded: false,
         note: '',
@@ -939,6 +940,12 @@ test('renders the multi-source contrast table with neutral coverage-gap wording'
   const gap = contrast.locator('.contrast-gap-row').filter({ hasText: '霍尔木兹海峡' })
   await expect(gap).toContainText('仅见于 Reuters')
   await expect(gap).toContainText('未在 BBC 的样本中观察到')
+  // 强度亮出来（诚实展示证据强度，不藏阈值）：强差异 ×3
+  await expect(gap).toContainText('强调 ×3')
+  // 弱差异（salience==1）淡化，但不静默丢弃——仍可见、仍可核查
+  const weakGap = contrast.locator('.contrast-gap-row').filter({ hasText: '油价' })
+  await expect(weakGap).toHaveClass(/weak/)
+  await expect(weakGap).toContainText('强调 ×1')
 })
 
 test('disables the contrast trigger when no stable backend event id is available', async ({ page }) => {
