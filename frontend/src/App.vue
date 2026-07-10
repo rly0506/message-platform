@@ -20,6 +20,7 @@ import DiscoveryPanel from './components/DiscoveryPanel.vue'
 import LlmPanel from './components/LlmPanel.vue'
 import MediaPanel from './components/MediaPanel.vue'
 import SentimentPanel from './components/SentimentPanel.vue'
+import { useDigQueue, digItemKey } from './composables/useDigQueue'
 import { useDiscovery } from './composables/useDiscovery'
 import { useEventWorkbench } from './composables/useEventWorkbench'
 import { useJobRunner } from './composables/useJobRunner'
@@ -608,7 +609,23 @@ onMounted(async () => {
     loadLatestDiscovery(),
     loadSeedCognitionState(),
   ])
+  // 邮件深链（省力早报 → 硬核台的桥）：?topic=&event=&view=contrast。
+  // 无 router，纯读 URLSearchParams；topic 必需，event 可选，view 默认对照。
+  parseDeepLink()
 })
+
+// 解析地址栏 deep-link 参数，命中则进入深挖（复用 digestDigTarget 的定位机）。
+function parseDeepLink() {
+  const params = new URLSearchParams(window.location.search)
+  const rawTopic = params.get('topic')
+  if (!rawTopic) return
+  const topicId = Number(rawTopic)
+  if (!Number.isInteger(topicId) || topicId <= 0) return
+  const rawEvent = params.get('event')
+  const eventId = rawEvent && /^\d+$/.test(rawEvent) ? Number(rawEvent) : null
+  const view = params.get('view') || 'contrast'
+  digestDigTarget(topicId, eventId, view)
+}
 
 watch(appMode, (mode) => {
   if (mode === 'discovery' && !discoveryLoaded.value) {
@@ -705,6 +722,8 @@ watch(selectedTopicId, async (id) => {
       loadAcademicLayer(id),
       loadSentimentLayer(id),
     ])
+    // 事件图已到位：若有待消化目标（来自队列/头版深挖/邮件深链），此刻按 eventId 定位。
+    if (pendingDigest.value) await resolvePendingDigest()
   }
 })
 
@@ -742,12 +761,17 @@ const selectedEventId = computed<number | null>(() => {
 async function loadContrastForSelectedEvent() {
   const topicId = selectedTopicId.value
   const eventId = selectedEventId.value
+  // 请求发起时的事件身份，await 期间用户若切走，结果不得贴到新事件上（证据归属红线）。
+  const requestedKey = selectedEventKey.value
   if (!topicId || eventId === null || eventContrastLoading.value) return
   eventContrastLoading.value = true
   eventContrastError.value = ''
   try {
-    eventContrast.value = await fetchEventContrast(topicId, eventId)
-    eventContrastEventKey.value = selectedEventKey.value
+    const payload = await fetchEventContrast(topicId, eventId)
+    // 迟到的响应：已切到别的事件则丢弃，不污染当前事件的证据。
+    if (selectedEventKey.value !== requestedKey) return
+    eventContrast.value = payload
+    eventContrastEventKey.value = requestedKey
   } catch (err) {
     eventContrastError.value = readableError(err)
   } finally {
@@ -767,6 +791,68 @@ const visibleEventContrast = computed<EventContrastPayload | null>(() =>
     ? eventContrast.value
     : null,
 )
+
+// ── 深挖队列消化 + deep-link(双模式桥梁 V1a）──
+// 队列条目、头版深挖入口(A)、邮件深链共用同一台「按 eventId 定位并展开对照」解析机。
+// 切 topic 会触发 watch(selectedTopicId) 异步加载事件图；图到位前先把目标记进 pendingDigest，
+// 图加载完在 watch 尾解析，避免竞态。
+const { digItems, digCount, addToDigQueue, removeFromDigQueue } = useDigQueue()
+
+// topicId 必存：审计 #3——只凭 eventId 会被任意话题加载抢先消费。解析前校验目标话题==当前话题。
+type PendingDigest = { topicId: number; eventId: number | null; view: string }
+const pendingDigest = ref<PendingDigest | null>(null)
+// 深链/队列消化落空时的诚实提示（审计 #8：不再静默丢意图）。
+const digestNotice = ref('')
+
+// 解析待消化目标：切到 workbench+media，按 eventId 找同序节点 → 选中+展开；view=contrast 则拉对照。
+// eventId=null(话题级标记）只停在默认选中事件不定位。
+async function resolvePendingDigest() {
+  const target = pendingDigest.value
+  if (!target) return
+  // 审计 #3：目标话题 ≠ 当前话题（旧话题的 watch 抢跑）→ 不消费，留给正确话题的加载解析。
+  if (selectedTopicId.value !== target.topicId) return
+  // 到这里已确认在正确话题、事件图已加载完（watch 尾调用）→ 可以安全清空并解析。
+  pendingDigest.value = null
+  appMode.value = 'workbench'
+  activeWorkspaceTab.value = 'media'
+  if (target.eventId !== null) {
+    const nodes = eventGraph.value?.nodes || []
+    const index = nodes.findIndex((node) => node.id === target.eventId)
+    if (index >= 0) {
+      toggleTimelineEvent(index)
+    } else {
+      // 审计 #8：事件不在当前图里（本地兜底/已归档）→ 明确告知，不假装成功也不静默丢。
+      digestNotice.value = '该深挖目标事件不在当前事件图中，已切到话题但未能定位到具体事件。'
+    }
+  }
+  if (target.view === 'contrast' && selectedEventId.value !== null) {
+    await loadContrastForSelectedEvent()
+  }
+}
+
+// 进入深挖：同 topic 直接解析；跨 topic 先切（触发 watch 加载图），watch 尾会解析。
+function digestDigTarget(topicId: number, eventId: number | null, view = 'contrast') {
+  digestNotice.value = ''
+  pendingDigest.value = { topicId, eventId, view }
+  if (selectedTopicId.value === topicId) {
+    void resolvePendingDigest()
+  } else {
+    selectedTopicId.value = topicId
+    appMode.value = 'workbench'
+  }
+}
+
+// 头版「回头深挖」标记 → 入队（话题级，手机低意图场景，缓冲到电脑消化）。
+function markTopicForDig(topic: { id: number; name: string }) {
+  addToDigQueue({
+    id: digItemKey(topic.id, null),
+    topicId: topic.id,
+    topicName: topic.name,
+    eventId: null,
+    eventTitle: topic.name,
+    view: 'contrast',
+  })
+}
 
 function fmtDate(value: string | null, withTime = false) {
   if (!value) return '未知时间'
@@ -1272,6 +1358,7 @@ function countryCoverageNote(country: CountryCompareCountry) {
       @select-discovery-report="loadDiscoveryReport"
       @analyze-seed="analyzeSeed"
       @track-topic="trackTopic"
+      @mark-topic-for-dig="markTopicForDig"
       @mark-seed-cognition="markSeedCognition"
     />
 
@@ -1490,6 +1577,37 @@ function countryCoverageNote(country: CountryCompareCountry) {
           <small v-if="autoRefreshError">{{ autoRefreshError }}</small>
           <small v-for="item in autoRefreshErrors" :key="item">{{ item }}</small>
         </div>
+      </section>
+
+      <!-- 深链/队列消化落空时的诚实提示（审计 #8：意图不静默丢） -->
+      <p v-if="digestNotice" class="dig-queue-notice" role="status">{{ digestNotice }}</p>
+
+      <!-- 深挖队列消化卡带（双模式桥梁 V1a）：手机标记的好奇心在电脑上排队等消化 -->
+      <section v-if="digCount" class="dig-queue-band" aria-label="待深挖队列">
+        <header class="dig-queue-head">
+          <strong>待深挖 {{ digCount }} 件</strong>
+          <span class="dig-queue-hint">手机标记的好奇心，在这里逐条消化</span>
+        </header>
+        <ul class="dig-queue-list">
+          <li v-for="item in digItems" :key="item.id" class="dig-queue-item">
+            <button
+              type="button"
+              class="dig-queue-open"
+              @click="digestDigTarget(item.topicId, item.eventId, item.view)"
+            >
+              <span class="dig-queue-topic">{{ item.topicName }}</span>
+              <span v-if="item.eventId !== null" class="dig-queue-event">{{ item.eventTitle }}</span>
+            </button>
+            <button
+              type="button"
+              class="dig-queue-remove"
+              aria-label="移出队列"
+              @click="removeFromDigQueue(item.id)"
+            >
+              ×
+            </button>
+          </li>
+        </ul>
       </section>
 
       <nav class="workspace-tabs" aria-label="专题视图导航">

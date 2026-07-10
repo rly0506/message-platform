@@ -942,6 +942,10 @@ test('renders the multi-source contrast table with neutral coverage-gap wording'
   await expect(gap).toContainText('未在 BBC 的样本中观察到')
   // 强度亮出来（诚实展示证据强度，不藏阈值）：强差异 ×3
   await expect(gap).toContainText('强调 ×3')
+  // 证据点回：差异不是断言，evidence_article_ids[10] → 映射成可点原文链接
+  const gapEvidence = gap.getByRole('link', { name: 'Reuters headline' })
+  await expect(gapEvidence).toBeVisible()
+  await expect(gapEvidence).toHaveAttribute('href', 'https://example.com/r1')
   // 弱差异（salience==1）淡化，但不静默丢弃——仍可见、仍可核查
   const weakGap = contrast.locator('.contrast-gap-row').filter({ hasText: '油价' })
   await expect(weakGap).toHaveClass(/weak/)
@@ -956,6 +960,216 @@ test('disables the contrast trigger when no stable backend event id is available
   const panel = page.locator('.event-contrast-panel')
   await expect(panel.getByRole('button', { name: '生成对照' })).toBeDisabled()
   await expect(panel).toContainText('需先切到后端事件图')
+})
+
+// 邮件深链（省力早报 → 硬核台的桥）：?topic=&event=&view=contrast 直接落到对照台。
+test('opens the deep-linked event contrast straight from a URL query', async ({ page }) => {
+  await page.route('**/api/topics/101/event-graph', async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 3, article_count: 6 },
+        ],
+        edges: [],
+        degraded: true,
+        note: '',
+      },
+    })
+  })
+  await page.route('**/api/topics/101/events/51/contrast', async (route) => {
+    await route.fulfill({
+      json: {
+        event: { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 2, article_count: 4 },
+        sources: [
+          {
+            source: 'Reuters', tier: 'wire', tier_label: '通讯社',
+            stance: '风险/审慎', stance_summary: '强调升级风险',
+            substance_score: 82, substance_note: '含具体时间',
+            emotion_score: 25, emotion_note: '修辞压力较低',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'Reuters headline', url: 'https://example.com/r1',
+            article_ids: [10],
+            articles: [{ id: 10, title: 'Reuters headline', url: 'https://example.com/r1', published_at: '2026-06-20T01:00:00' }],
+          },
+          {
+            source: 'BBC', tier: 'mainstream', tier_label: '主流媒体',
+            stance: '中性观察', stance_summary: '侧重外交降温',
+            substance_score: -1, substance_note: '',
+            emotion_score: -1, emotion_note: '',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'BBC headline', url: 'https://example.com/b1',
+            article_ids: [12],
+            articles: [{ id: 12, title: 'BBC headline', url: 'https://example.com/b1', published_at: '2026-06-20T03:00:00' }],
+          },
+        ],
+        coverage_gaps: [],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+
+  // 直接带 deep-link 参数进入：onMounted 解析 → 切 topic → 图加载 → 定位事件 → 拉对照。
+  await page.goto('/?topic=101&event=51&view=contrast')
+
+  // 无需人工点「事件分析台」或选专题：深链应自动把用户送到对照台并展开对照。
+  const contrast = page.locator('.event-contrast')
+  await expect(contrast.locator('.contrast-col')).toHaveCount(2)
+  await expect(contrast.locator('.contrast-col-head', { hasText: 'Reuters' })).toBeVisible()
+  await expect(contrast.locator('.contrast-col-head', { hasText: 'BBC' })).toBeVisible()
+})
+
+// 深挖队列（双模式桥）：localStorage 里排队的好奇心 → 卡带渲染 → 点击消化 → 移除。
+test('digests a queued curiosity from the dig-queue band into the contrast lens', async ({ page }) => {
+  await page.route('**/api/topics/101/event-graph', async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 3, article_count: 6 },
+        ],
+        edges: [],
+        degraded: true,
+        note: '',
+      },
+    })
+  })
+  await page.route('**/api/topics/101/events/51/contrast', async (route) => {
+    await route.fulfill({
+      json: {
+        event: { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 2, article_count: 4 },
+        sources: [
+          {
+            source: 'Reuters', tier: 'wire', tier_label: '通讯社',
+            stance: '风险/审慎', stance_summary: '强调升级风险',
+            substance_score: 82, substance_note: '含具体时间',
+            emotion_score: 25, emotion_note: '修辞压力较低',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'Reuters headline', url: 'https://example.com/r1',
+            article_ids: [10],
+            articles: [{ id: 10, title: 'Reuters headline', url: 'https://example.com/r1', published_at: '2026-06-20T01:00:00' }],
+          },
+          {
+            source: 'BBC', tier: 'mainstream', tier_label: '主流媒体',
+            stance: '中性观察', stance_summary: '侧重外交降温',
+            substance_score: -1, substance_note: '',
+            emotion_score: -1, emotion_note: '',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'BBC headline', url: 'https://example.com/b1',
+            article_ids: [12],
+            articles: [{ id: 12, title: 'BBC headline', url: 'https://example.com/b1', published_at: '2026-06-20T03:00:00' }],
+          },
+        ],
+        coverage_gaps: [],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+
+  // 页面脚本执行前先在 localStorage 种一条事件级队列项（模拟手机上标记的好奇心）。
+  // 队列是模块级单例，导入时 loadFromStorage() 读取，故须在 goto 前 addInitScript。
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'message-platform:dig-queue:v1',
+      JSON.stringify([
+        {
+          id: 't:101:e:51',
+          topicId: 101,
+          topicName: '美伊战争',
+          eventId: 51,
+          eventTitle: '美国与伊朗冲突进入关键节点',
+          view: 'contrast',
+          addedAt: '2026-07-09T08:00:00.000Z',
+        },
+      ]),
+    )
+  })
+
+  await openWorkbench(page)
+
+  // 卡带出现，显示待深挖件数与话题名。
+  const band = page.locator('.dig-queue-band')
+  await expect(band).toContainText('待深挖 1 件')
+  await expect(band.locator('.dig-queue-topic')).toContainText('美伊战争')
+
+  // 点击队列项 → 消化：定位事件 51 + 展开对照台。
+  await band.locator('.dig-queue-open').click()
+  const contrast = page.locator('.event-contrast')
+  await expect(contrast.locator('.contrast-col')).toHaveCount(2)
+
+  // 移出队列 → 卡带消失（digCount 归零）。
+  await band.locator('.dig-queue-remove').click()
+  await expect(page.locator('.dig-queue-band')).toHaveCount(0)
+})
+
+test('does not attach a slow contrast response to the event selected after the switch', async ({ page }) => {
+  // 审计 #1 回归：为事件 A 生成对照，响应回来前切到事件 B，A 的对照绝不能显示成 B 的证据。
+  // 证据归属红线（证据≠推断永不混层）。旧代码 await 后读当前 selectedEventKey → 挂错；
+  // 修复后按调用时捕获的 key 校验，切走则丢弃不提交。
+  const twoEvents = {
+    ...localEvents,
+    events: [
+      { ...localEvents.events[0], title_zh: '事件A · 关键节点', article_ids: [1, 2] },
+      { ...localEvents.events[0], title_zh: '事件B · 后续节点', article_ids: [3, 4] },
+    ],
+  }
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({ json: twoEvents })
+  })
+  await page.route('**/api/topics/101/event-graph', async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          { id: 51, date: '2026-06-20', title_zh: '事件A · 关键节点', summary_zh: '摘要', source_count: 2, article_count: 2 },
+          { id: 52, date: '2026-06-21', title_zh: '事件B · 后续节点', summary_zh: '摘要', source_count: 2, article_count: 2 },
+        ],
+        edges: [],
+        degraded: true,
+        note: '',
+      },
+    })
+  })
+  // 事件 51 的对照故意延迟；51 的证据里有独特标题，方便断言它没串到 B。
+  await page.route('**/api/topics/101/events/51/contrast', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    await route.fulfill({
+      json: {
+        event: { id: 51, date: '2026-06-20', title_zh: '事件A · 关键节点', summary_zh: '摘要', source_count: 1, article_count: 1 },
+        sources: [
+          {
+            source: 'STALE-A-SOURCE', tier: 'wire', tier_label: '通讯社',
+            stance: '风险/审慎', stance_summary: '',
+            substance_score: 80, substance_note: '',
+            emotion_score: 20, emotion_note: '',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'A headline', url: 'https://example.com/a1',
+            article_ids: [1],
+            articles: [{ id: 1, title: 'A headline', url: 'https://example.com/a1', published_at: '2026-06-20T01:00:00' }],
+          },
+        ],
+        coverage_gaps: [],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+  // 事件 52 无对照路由被命中的必要：切过去后不主动拉，断言面板保持空即可。
+
+  await openWorkbench(page)
+
+  // 选中事件 A（时间轴第 0 个）→ 点生成对照，触发延迟中的 51 请求。
+  await page.locator('.timeline-node').filter({ hasText: '事件A' }).click()
+  const panel = page.locator('.event-contrast-panel')
+  await panel.getByRole('button', { name: '生成对照' }).click()
+
+  // 响应回来前切到事件 B（时间轴第 1 个）→ selectedEventKey 改变。
+  await page.locator('.timeline-node').filter({ hasText: '事件B' }).click()
+
+  // 等到迟到的 51 响应真正返回（而非固定睡眠）——确保"丢弃"逻辑已经历过一次真实响应。
+  await page.waitForResponse('**/api/topics/101/events/51/contrast')
+  // 迟到响应处理完后 loading 落地；面板恒在（上面已取 panel），断言它绝不含事件 A 的独特来源名。
+  await expect(panel).not.toContainText('STALE-A-SOURCE')
+  await expect(panel.locator('.contrast-col')).toHaveCount(0)
 })
 
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {

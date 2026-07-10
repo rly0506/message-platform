@@ -985,6 +985,91 @@ button:disabled {
   color: #7a4a20;
 }
 
+.dig-queue-band {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid #d3c4a0;
+  border-radius: 8px;
+  background: #fdf9ef;
+}
+
+.dig-queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.dig-queue-head strong {
+  color: #7a5a1e;
+  font-size: 15px;
+}
+
+.dig-queue-hint {
+  color: #9a8250;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dig-queue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dig-queue-item {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #dcc98f;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.dig-queue-open {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dig-queue-open:hover {
+  background: #fbf3df;
+}
+
+.dig-queue-topic {
+  color: #7a5a1e;
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.dig-queue-event {
+  color: #6b6152;
+  font-size: 12px;
+}
+
+.dig-queue-remove {
+  min-width: 30px;
+  border: 0;
+  border-left: 1px solid #ecdfbf;
+  background: transparent;
+  color: #b08a3a;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dig-queue-remove:hover {
+  background: #f6ead0;
+  color: #8a6520;
+}
+
 .workspace-tabs {
   display: flex;
   flex-wrap: wrap;

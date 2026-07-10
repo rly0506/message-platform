@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { EventContrastPayload, EventContrastSource } from '../types/dossier'
+import type { EventContrastArticle, EventContrastPayload, EventContrastSource } from '../types/dossier'
 
 const props = defineProps<{
   payload: EventContrastPayload | null
@@ -25,6 +25,32 @@ function hasScore(value: number | null | undefined): boolean {
 const sources = computed<EventContrastSource[]>(() => props.payload?.sources ?? [])
 const gaps = computed(() => props.payload?.coverage_gaps ?? [])
 const event = computed(() => props.payload?.event ?? null)
+
+// 证据点回：把 gap.evidence_article_ids 映射成可点原文链接。
+// 索引跨所有来源的 articles（后端已把 evidence 精确到词级，id 必在某来源列内）。
+const articleById = computed(() => {
+  const index = new Map<number, EventContrastArticle>()
+  for (const src of sources.value) {
+    for (const art of src.articles) {
+      if (!index.has(art.id)) index.set(art.id, art)
+    }
+  }
+  return index
+})
+
+// 每个 gap 预解析一次证据（Ponytail shrink：模板别重复调 gapEvidence 两次）。
+// evidence 只保留索引命中的文章（诚实：id 无对应文章则不伪造链接，直接略过）。
+const gapRows = computed(() =>
+  gaps.value.map((gap) => {
+    const map = articleById.value
+    const evidence: EventContrastArticle[] = []
+    for (const id of gap.evidence_article_ids) {
+      const art = map.get(id)
+      if (art) evidence.push(art)
+    }
+    return { ...gap, evidence }
+  }),
+)
 </script>
 
 <template>
@@ -100,11 +126,11 @@ const event = computed(() => props.payload?.event ?? null)
         </div>
 
         <!-- 覆盖差异：中性措辞 + 可点回证据 -->
-        <div v-if="gaps.length" class="contrast-gaps">
+        <div v-if="gapRows.length" class="contrast-gaps">
           <strong>覆盖差异</strong>
           <ul>
             <li
-              v-for="gap in gaps"
+              v-for="gap in gapRows"
               :key="`${gap.kind}-${gap.term}`"
               class="contrast-gap-row"
               :class="{ weak: gap.salience <= 1 }"
@@ -113,6 +139,21 @@ const event = computed(() => props.payload?.event ?? null)
               <span class="gap-strength">强调 ×{{ gap.salience }}</span>
               <span class="gap-covered">仅见于 {{ gap.covered_by.join('、') }}</span>
               <span class="gap-missing">未在 {{ gap.not_observed_in.join('、') }} 的样本中观察到</span>
+              <!-- 证据点回：差异不是断言，点开看它出自哪几篇 -->
+              <span
+                v-if="gap.evidence.length"
+                class="gap-evidence"
+              >
+                <span class="gap-evidence-label">证据</span>
+                <a
+                  v-for="art in gap.evidence"
+                  :key="art.id"
+                  :href="art.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="gap-evidence-link"
+                >{{ art.title }}</a>
+              </span>
             </li>
           </ul>
         </div>
@@ -383,5 +424,30 @@ const event = computed(() => props.payload?.event ?? null)
 /* 弱差异（salience==1，仅单次提及）淡化：不隐藏、不静默丢，只降视觉权重，让强信号先被看见 */
 .contrast-gap-row.weak {
   opacity: 0.55;
+}
+
+.gap-evidence {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  flex-basis: 100%;
+}
+
+.gap-evidence-label {
+  color: var(--text-faint);
+  font-size: var(--font-size-0);
+  font-weight: 700;
+}
+
+.gap-evidence-link {
+  color: var(--text-link, var(--accent));
+  font-size: var(--font-size-0);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--border-strong);
+}
+
+.gap-evidence-link:hover {
+  border-bottom-style: solid;
 }
 </style>

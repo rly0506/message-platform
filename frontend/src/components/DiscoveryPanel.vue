@@ -128,6 +128,7 @@ const emit = defineEmits<{
   runDiscovery: []
   analyzeSeed: [seed: DiscoverySeed]
   trackTopic: [topicId: number]
+  markTopicForDig: [topic: { id: number; name: string }]
   markSeedCognition: [seed: DiscoverySeed, label: CognitionLabel, note?: string]
   selectDiscoveryReport: [runId: string]
 }>()
@@ -466,6 +467,12 @@ function styleLabel(style: string | undefined) {
                   <span class="frontpage-update-name">{{ topic.name }}</span>
                   <span class="frontpage-update-meta">{{ topic.article_count }} 篇 · {{ topic.source_count }} 源</span>
                 </button>
+                <!-- 双模式桥梁：手机低意图场景「先标记，回头深挖」，缓冲到电脑消化，不硬逼当场跳转 -->
+                <button
+                  type="button"
+                  class="frontpage-update-dig"
+                  @click="$emit('markTopicForDig', { id: topic.id, name: topic.name })"
+                >回头深挖</button>
               </li>
             </ol>
           </div>
@@ -980,6 +987,26 @@ function styleLabel(style: string | undefined) {
 .frontpage-update-meta {
   color: var(--text-faint);
   font-size: 0.74rem;
+}
+
+/* 双模式桥梁: 头版「回头深挖」标记按钮, 克制副操作样式(不与主跳转抢视觉) */
+.frontpage-update-dig {
+  margin-top: var(--space-1);
+  padding: 3px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-round);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.frontpage-update-dig:hover {
+  border-color: var(--brand-accent);
+  color: var(--brand);
 }
 
 /* 正在追踪: 已建专题的鸟瞰, 点一个跳进分析台 */
