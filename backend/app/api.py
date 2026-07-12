@@ -28,7 +28,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, auto_refresh, country_compare, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services import article_perspective, auto_refresh, country_compare, coverage_snapshot, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.services.topic_locks import claim_topic
 from app.pipeline import academic, cross_synthesis, sentiment
 
@@ -474,6 +474,20 @@ def list_articles(
             "offset": offset,
             "items": [payloads.article_payload(topic_article, article) for topic_article, article in page],
         }
+
+
+@app.get('/api/topics/{topic_id}/coverage')
+def topic_coverage(
+    topic_id: int,
+    event_id: int | None = Query(default=None),
+) -> dict[str, Any]:
+    with Session(engine) as session:
+        try:
+            return coverage_snapshot.build_coverage_snapshot(session, topic_id, event_id)
+        except coverage_snapshot.TopicNotFoundError as exc:
+            raise HTTPException(status_code=404, detail='Topic not found') from exc
+        except coverage_snapshot.EventNotFoundError as exc:
+            raise HTTPException(status_code=404, detail='Event not found in topic') from exc
 
 
 @app.get("/api/topics/{topic_id}/articles/{article_id}/perspective")
