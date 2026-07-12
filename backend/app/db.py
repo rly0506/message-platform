@@ -242,6 +242,8 @@ class Analysis(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     topic_id: int = Field(foreign_key="topic.id", index=True)
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+    sample_article_count: Optional[int] = None
+    sample_latest_published_at: Optional[datetime] = None
     content_md: str = ""
 
 
@@ -304,6 +306,10 @@ def _migrate() -> None:
             ("project_id", "INTEGER"),
             ("archived_at", "DATETIME"),
             ("updated_at", "DATETIME"),
+        ],
+        'analysis': [
+            ('sample_article_count', 'INTEGER'),
+            ('sample_latest_published_at', 'DATETIME'),
         ],
         "sourceregistry": [
             ("name", "VARCHAR DEFAULT ''"),

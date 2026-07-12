@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -5,6 +6,23 @@ from sqlmodel import Session, select
 
 from app import api, topic_ops
 from app.db import Article, Event, EventRelation, Topic, TopicArticle, engine, init_db
+
+
+def test_event_graph_view_claims_blocking_topic_guard(monkeypatch):
+    topic_id = _seed_topic_with_articles("Guarded Event Graph")
+    claims: list[tuple[int, bool]] = []
+
+    @contextmanager
+    def fake_claim(claimed_topic_id: int, *, blocking: bool):
+        claims.append((claimed_topic_id, blocking))
+        yield True
+
+    monkeypatch.setattr(api, "claim_topic", fake_claim)
+
+    response = TestClient(api.app).get(f"/api/topics/{topic_id}/event-graph")
+
+    assert response.status_code == 200
+    assert claims == [(topic_id, True)]
 
 
 def test_event_graph_api_falls_back_to_local_events_for_legacy_topic():

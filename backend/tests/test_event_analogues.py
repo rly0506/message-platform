@@ -110,6 +110,49 @@ def test_event_analogues_records_candidate_scan_truncation(monkeypatch):
     assert "截断" in payload["scan"]["note"]
 
 
+def test_event_analogues_candidate_cap_prefers_newest_events(monkeypatch):
+    from app.services import event_analogues
+
+    monkeypatch.setattr(event_analogues, "CANDIDATE_SCAN_CAP", 1)
+    with Session(engine) as session:
+        init_db()
+        target_topic = _topic(session, "Newest target")
+        other_topic = _topic(session, "Newest candidates")
+        target = _event(
+            session,
+            target_topic,
+            "newest-target",
+            datetime(2027, 7, 1),
+            ["Iran", "Hormuz"],
+            ["Reuters", "BBC"],
+            ["Iran Hormuz shipping pressure grows", "Iran Hormuz shipping pressure continues"],
+        )
+        newest = _event(
+            session,
+            other_topic,
+            "newest-related",
+            datetime(2027, 7, 2),
+            ["Iran", "Hormuz"],
+            ["Reuters", "AP News"],
+            ["Iran Hormuz shipping pressure returns", "Iran Hormuz shipping pressure widens"],
+        )
+        _event(
+            session,
+            other_topic,
+            "old-unrelated",
+            datetime(2020, 1, 1),
+            ["Brazil"],
+            ["Financial Times"],
+            ["Brazil agriculture rainfall outlook"],
+        )
+        topic_id, target_id, newest_id = target_topic.id, target.id, newest.id
+
+    payload = TestClient(api.app).get(f"/api/topics/{topic_id}/events/{target_id}/analogues").json()
+
+    assert payload["scan"]["truncated"] is True
+    assert newest_id in {item["event_id"] for item in payload["items"]}
+
+
 def test_event_analogues_is_read_only_and_avoids_generated_causal_claims():
     with Session(engine) as session:
         init_db()

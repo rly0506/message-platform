@@ -216,17 +216,45 @@ def test_cognition_profile_updates_calibration_fields():
     assert by_key["energy"]["recommended_seed_style"] == "comparison"
 
 
-def test_cognition_profile_backfills_legacy_profile_rows():
+def test_cognition_profile_preserves_explicit_generic_values():
+    init_db()
+    client = TestClient(api.app)
+
+    response = client.put('/api/cognition/profile', json=[
+        {
+            'domain_key': 'ai_infra',
+            'depth': 'none',
+            'interest': 'medium',
+            'confidence': 50,
+            'recommended_seed_style': 'mechanism',
+        }
+    ])
+
+    assert response.status_code == 200
+    by_key = {item['domain_key']: item for item in response.json()}
+    assert by_key['ai_infra']['depth'] == 'none'
+    assert by_key['ai_infra']['interest'] == 'medium'
+    assert by_key['ai_infra']['confidence'] == 50
+    assert by_key['ai_infra']['recommended_seed_style'] == 'mechanism'
+
+    persisted = {item['domain_key']: item for item in client.get('/api/cognition/profile').json()}
+    assert persisted['ai_infra']['depth'] == 'none'
+    assert persisted['ai_infra']['interest'] == 'medium'
+    assert persisted['ai_infra']['confidence'] == 50
+    assert persisted['ai_infra']['recommended_seed_style'] == 'mechanism'
+
+
+def test_cognition_profile_backfills_only_missing_legacy_fields():
     client = TestClient(api.app)
     client.get("/api/cognition/profile")
     with Session(engine) as session:
         item = session.exec(select(CognitionProfile).where(CognitionProfile.domain_key == "ai_infra")).one()
         item.note = "旧库里只有 level 和 note。"
-        item.depth = "none"
-        item.interest = "medium"
+        item.depth = ""
+        item.interest = ""
         item.confidence = 50
         item.evidence = ""
-        item.recommended_seed_style = "mechanism"
+        item.recommended_seed_style = ""
         session.add(item)
         session.commit()
 
@@ -237,7 +265,7 @@ def test_cognition_profile_backfills_legacy_profile_rows():
     assert by_key["ai_infra"]["note"] == "旧库里只有 level 和 note。"
     assert by_key["ai_infra"]["depth"] == "terms"
     assert by_key["ai_infra"]["interest"] == "high"
-    assert by_key["ai_infra"]["confidence"] == 60
+    assert by_key["ai_infra"]["confidence"] == 50
     assert by_key["ai_infra"]["evidence"]
     assert by_key["ai_infra"]["recommended_seed_style"] == "mechanism"
 

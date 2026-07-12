@@ -29,6 +29,7 @@ from app.db import (
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
 from app.services import article_perspective, auto_refresh, country_compare, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services.topic_locks import claim_topic
 from app.pipeline import academic, cross_synthesis, sentiment
 
 DEFAULT_COGNITION_PROFILE = [
@@ -352,6 +353,30 @@ def create_topic(payload: dict[str, Any]) -> dict[str, Any]:
         return payloads.topic_summary(session, topic)
 
 
+def _analysis_meta(session: Session, topic_id: int, analysis: Analysis) -> dict[str, Any]:
+    current_count, current_latest = topic_ops.analysis_sample(session, topic_id)
+    sample_count = analysis.sample_article_count
+    sample_latest = analysis.sample_latest_published_at
+    if sample_count is None:
+        sample_changed = None
+        evidence_newer = None
+    else:
+        sample_changed = current_count != sample_count or current_latest != sample_latest
+        evidence_newer = current_count > sample_count or bool(
+            current_latest and (sample_latest is None or current_latest > sample_latest)
+        )
+    return {
+        'source': 'llm' if topic_ops.LLM_ANALYSIS_MARKER in (analysis.content_md or '') else 'local',
+        'generated_at': payloads.iso(analysis.generated_at),
+        'sample_article_count': sample_count,
+        'sample_latest_published_at': payloads.iso(sample_latest),
+        'current_article_count': current_count,
+        'current_latest_published_at': payloads.iso(current_latest),
+        'evidence_newer': evidence_newer,
+        'sample_changed': sample_changed,
+    }
+
+
 @app.get("/api/topics/{topic_id}")
 def get_topic(topic_id: int) -> dict[str, Any]:
     with Session(engine) as session:
@@ -376,46 +401,52 @@ def get_topic(topic_id: int) -> dict[str, Any]:
 
         summary["timeline"] = [payloads.timeline_event(row) for row in timeline]
         summary["framing"] = [payloads.source_framing(row) for row in framing]
-        summary["analysis"] = payloads.analysis_payload(analyses[0]) if analyses else None
+        latest_analysis = analyses[0] if analyses else None
+        summary["analysis"] = payloads.analysis_payload(latest_analysis) if latest_analysis else None
+        summary['analysis_meta'] = (
+            _analysis_meta(session, topic_id, latest_analysis) if latest_analysis else None
+        )
         return summary
 
 
 @app.patch("/api/topics/{topic_id}")
 def update_topic(topic_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    with Session(engine) as session:
-        topic = session.get(Topic, topic_id)
-        if not topic:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        if "project_id" in payload:
-            project_id = parse_optional_int(payload.get("project_id"), "Project id must be an integer")
-            if project_id is None:
-                topic.project_id = None
-            else:
-                if not session.get(Project, project_id):
-                    raise HTTPException(status_code=404, detail="Project not found")
-                topic.project_id = project_id
-        if "name" in payload:
-            topic.name = clean_required_text(payload.get("name"), "Topic name is required")
-        if "description" in payload:
-            topic.description = clean_text(payload.get("description"))
-        if "queries" in payload:
-            topic.queries = clean_queries(payload.get("queries"), topic.name)
-        if "status" in payload:
-            apply_status(topic, clean_status(payload.get("status"), topic.status))
-        topic.updated_at = datetime.utcnow()
-        session.add(topic)
-        session.commit()
-        session.refresh(topic)
-        return payloads.topic_summary(session, topic)
+    with claim_topic(topic_id, blocking=True):
+        with Session(engine) as session:
+            topic = session.get(Topic, topic_id)
+            if not topic:
+                raise HTTPException(status_code=404, detail="Topic not found")
+            if "project_id" in payload:
+                project_id = parse_optional_int(payload.get("project_id"), "Project id must be an integer")
+                if project_id is None:
+                    topic.project_id = None
+                else:
+                    if not session.get(Project, project_id):
+                        raise HTTPException(status_code=404, detail="Project not found")
+                    topic.project_id = project_id
+            if "name" in payload:
+                topic.name = clean_required_text(payload.get("name"), "Topic name is required")
+            if "description" in payload:
+                topic.description = clean_text(payload.get("description"))
+            if "queries" in payload:
+                topic.queries = clean_queries(payload.get("queries"), topic.name)
+            if "status" in payload:
+                apply_status(topic, clean_status(payload.get("status"), topic.status))
+            topic.updated_at = datetime.utcnow()
+            session.add(topic)
+            session.commit()
+            session.refresh(topic)
+            return payloads.topic_summary(session, topic)
 
 
 @app.delete("/api/topics/{topic_id}")
 def delete_topic(topic_id: int) -> dict[str, Any]:
-    with Session(engine) as session:
-        result = topic_ops.remove_topic(session, topic_id, dry_run=False)
-        if not result.get("found"):
-            raise HTTPException(status_code=404, detail="Topic not found")
-        return result
+    with claim_topic(topic_id, blocking=True):
+        with Session(engine) as session:
+            result = topic_ops.remove_topic(session, topic_id, dry_run=False)
+            if not result.get("found"):
+                raise HTTPException(status_code=404, detail="Topic not found")
+            return result
 
 
 @app.get("/api/topics/{topic_id}/articles")
@@ -503,11 +534,12 @@ def local_events(topic_id: int) -> dict[str, Any]:
 
 @app.get("/api/topics/{topic_id}/event-graph")
 def event_graph_view(topic_id: int) -> dict[str, Any]:
-    with Session(engine) as session:
-        topic = session.get(Topic, topic_id)
-        if not topic:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        return event_graph.topic_event_graph_payload(session, topic)
+    with claim_topic(topic_id, blocking=True):
+        with Session(engine) as session:
+            topic = session.get(Topic, topic_id)
+            if not topic:
+                raise HTTPException(status_code=404, detail="Topic not found")
+            return event_graph.topic_event_graph_payload(session, topic)
 
 
 @app.get("/api/topics/{topic_id}/events/{event_id}/contrast")
@@ -939,17 +971,17 @@ def cognition_profile_payload(item: CognitionProfile) -> dict[str, Any]:
 
 def apply_cognition_profile_defaults(item: CognitionProfile, default: dict[str, Any]) -> bool:
     changed = False
-    for key, fallback, generic_default in (
-        ("depth", "none", "none"),
-        ("interest", "medium", "medium"),
-        ("evidence", "", ""),
-        ("recommended_seed_style", "mechanism", "mechanism"),
+    for key, fallback in (
+        ("depth", "none"),
+        ("interest", "medium"),
+        ("evidence", ""),
+        ("recommended_seed_style", "mechanism"),
     ):
         value = getattr(item, key, "")
-        if not value or (default and value == generic_default and default.get(key) != generic_default):
+        if not value:
             setattr(item, key, default.get(key, fallback))
             changed = True
-    if item.confidence is None or (default and item.confidence == 50 and default.get("confidence") != 50):
+    if item.confidence is None:
         item.confidence = int(default.get("confidence", 50))
         changed = True
     return changed

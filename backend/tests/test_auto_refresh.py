@@ -16,7 +16,19 @@ from sqlmodel import Session, select
 import pytest
 
 from app import config, topic_ops
-from app.db import Analysis, Article, SearchJob, Topic, TopicArticle, engine, init_db
+from app.db import (
+    Analysis,
+    Article,
+    Event,
+    EventRelation,
+    SearchJob,
+    SourceFraming,
+    TimelineEvent,
+    Topic,
+    TopicArticle,
+    engine,
+    init_db,
+)
 from app.discovery import run as discovery_run
 from app.services import auto_refresh
 
@@ -26,7 +38,17 @@ def _clean_db():
     """每个测试前清空相关表 —— 自动刷新按"全库 stale 话题"查, 累积会污染断言。"""
     init_db()
     with Session(engine) as session:
-        for model in (SearchJob, TopicArticle, Article, Topic):
+        for model in (
+            SearchJob,
+            EventRelation,
+            Event,
+            TimelineEvent,
+            SourceFraming,
+            Analysis,
+            TopicArticle,
+            Article,
+            Topic,
+        ):
             for row in session.exec(select(model)).all():
                 session.delete(row)
         session.commit()
@@ -61,7 +83,7 @@ def _patch_collectors(monkeypatch, calls: dict):
     def fake_collect(session, topic, **kw):
         calls.setdefault("collect", []).append((topic.id, kw))
         return {}
-    def fake_analyze(session, topic, persist=True):
+    def fake_analyze(session, topic, persist=True, commit=True):
         calls.setdefault("analyze", []).append((topic.id, persist))
         return {}
     monkeypatch.setattr(topic_ops, "collect_topic", fake_collect)
@@ -135,7 +157,7 @@ def test_topic_error_isolated(monkeypatch):
             raise RuntimeError("collect failed")
         return {}
     monkeypatch.setattr(topic_ops, "collect_topic", collect)
-    monkeypatch.setattr(topic_ops, "analyze_topic", lambda s, t, persist=True: {})
+    monkeypatch.setattr(topic_ops, "analyze_topic", lambda s, t, persist=True, commit=True: {})
     monkeypatch.setattr(discovery_run, "latest_report", lambda: {"run_id": "20260704T115900Z"})
 
     result = auto_refresh.refresh_once(now=now)  # 不应抛
@@ -145,11 +167,109 @@ def test_topic_error_isolated(monkeypatch):
     assert result["running"] is False
 
 
+def test_topic_database_error_rolls_back_before_next_topic(monkeypatch):
+    now = datetime(2026, 7, 4, 12, 0, 0)
+    failing = _seed_topic("db-failure", now - timedelta(hours=12))
+    healthy = _seed_topic("db-healthy", now - timedelta(hours=10))
+    succeeded: list[int] = []
+
+    def collect(session, topic, **kw):
+        if topic.id == failing:
+            existing = session.exec(select(Article)).first()
+            session.add(Article(url=existing.url))
+            session.flush()
+        session.exec(select(Topic).where(Topic.id == topic.id)).one()
+        succeeded.append(topic.id)
+        return {}
+
+    monkeypatch.setattr(topic_ops, "collect_topic", collect)
+    monkeypatch.setattr(topic_ops, "analyze_topic", lambda s, t, persist=True, commit=True: {})
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: {"run_id": "20260704T115900Z"})
+
+    result = auto_refresh.refresh_once(now=now)
+
+    assert healthy in succeeded
+    assert result["news_refreshed"] == 1
+    assert len(result["news_errors"]) == 1
+
+
+def test_refresh_failure_rolls_back_collection_and_analysis(monkeypatch):
+    now = datetime(2026, 7, 4, 12, 0, 0)
+    topic_id = _seed_topic("rollback topic", now - timedelta(hours=12), n=1)
+    new_url = "https://example.com/rollback-topic/new-report"
+
+    with Session(engine) as session:
+        session.add(Analysis(topic_id=topic_id, content_md="previous local analysis"))
+        session.commit()
+
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: {"run_id": "20260704T115900Z"})
+    monkeypatch.setattr(topic_ops.rss, "collect_gnews", lambda query: [])
+    monkeypatch.setattr(
+        topic_ops.feed_registry,
+        "enabled_registry_feeds",
+        lambda session: [{
+            "name": "Rollback Wire",
+            "url": "https://example.com/rollback-feed",
+            "country": "United States",
+            "lang": "en",
+            "tier": "wire",
+            "source_id": None,
+        }],
+    )
+    monkeypatch.setattr(
+        topic_ops.rss,
+        "collect_feed",
+        lambda url, metadata=None: [{
+            "url": new_url,
+            "title": "Rollback topic new report",
+            "source": metadata["name"],
+            "source_lang": metadata["lang"],
+            "source_country": metadata["country"],
+            "published_at": now,
+            "snippet": "A new report about the rollback topic.",
+            "collector": "rss",
+        }],
+    )
+
+    original_analyze = topic_ops.analyze_topic
+
+    def fail_after_analysis(session, topic, persist=True, commit=True):
+        original_analyze(session, topic, persist=persist, commit=commit)
+        raise RuntimeError("fail after analysis persistence")
+
+    monkeypatch.setattr(topic_ops, "analyze_topic", fail_after_analysis)
+
+    result = auto_refresh.refresh_once(now=now)
+
+    assert any("fail after analysis persistence" in error for error in result["news_errors"])
+    with Session(engine) as session:
+        assert session.exec(select(Article).where(Article.url == new_url)).first() is None
+        analyses = session.exec(select(Analysis).where(Analysis.topic_id == topic_id)).all()
+        assert [row.content_md for row in analyses] == ["previous local analysis"]
+
+
+def test_refresh_skips_topic_with_active_write_guard(monkeypatch):
+    from app.services.topic_locks import claim_topic
+
+    now = datetime(2026, 7, 4, 12, 0, 0)
+    topic_id = _seed_topic("guarded", now - timedelta(hours=10))
+    calls: dict = {}
+    _patch_collectors(monkeypatch, calls)
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: {"run_id": "20260704T115900Z"})
+
+    with claim_topic(topic_id, blocking=True) as acquired:
+        assert acquired is True
+        result = auto_refresh.refresh_once(now=now)
+
+    assert topic_id not in {item[0] for item in calls.get("collect", [])}
+    assert result["skipped_active"] == 1
+
+
 def test_frontier_only_when_stale(monkeypatch):
     now = datetime(2026, 7, 4, 12, 0, 0)
     _seed_topic("t", now - timedelta(hours=1))  # fresh, 新闻不刷
     monkeypatch.setattr(topic_ops, "collect_topic", lambda s, t, **k: {})
-    monkeypatch.setattr(topic_ops, "analyze_topic", lambda s, t, persist=True: {})
+    monkeypatch.setattr(topic_ops, "analyze_topic", lambda s, t, persist=True, commit=True: {})
     ran = {"count": 0, "annotate": None}
     def fake_save(annotate=False):
         ran["count"] += 1

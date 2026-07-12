@@ -1,4 +1,8 @@
-from app import topic_ops
+from datetime import datetime
+
+from fastapi.testclient import TestClient
+
+from app import api, topic_ops
 from app.db import Analysis, Article, SourceFraming, SourceRegistry, TimelineEvent, Topic, TopicArticle, engine, init_db
 from sqlmodel import Session, select
 
@@ -356,3 +360,101 @@ def test_local_analysis_persist_preserves_existing_llm_analysis():
         session.delete(article)
         session.delete(topic)
         session.commit()
+
+
+def test_topic_detail_reports_when_llm_analysis_evidence_is_outdated():
+    init_db()
+    with Session(engine) as session:
+        topic = Topic(name='Evidence drift', queries=['evidence drift'])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+
+        def add_article(day: int) -> None:
+            article = Article(
+                url=f'https://example.com/evidence/{topic.id}/{day}',
+                title=f'Evidence {day}',
+                source='Example',
+                published_at=datetime(2026, 7, day, 8),
+                collector='test',
+            )
+            session.add(article)
+            session.commit()
+            session.refresh(article)
+            session.add(TopicArticle(topic_id=topic.id, article_id=article.id, relevance=0.9))
+            session.commit()
+
+        add_article(1)
+        topic_ops._persist_analysis(session, topic.id, {
+            'events': [],
+            'framing': [],
+            'analysis_md': f'{topic_ops.LLM_ANALYSIS_MARKER}\nInitial LLM analysis',
+        })
+        add_article(2)
+        topic_ops.analyze_topic(session, topic, persist=True)
+        topic_id = topic.id
+
+    payload = TestClient(api.app).get(f'/api/topics/{topic_id}').json()
+    assert 'Initial LLM analysis' in payload['analysis']['content_md']
+    assert payload['analysis_meta']['source'] == 'llm'
+    assert payload['analysis_meta']['sample_article_count'] == 1
+    assert payload['analysis_meta']['current_article_count'] == 2
+    assert payload['analysis_meta']['sample_latest_published_at'] == '2026-07-01T08:00:00'
+    assert payload['analysis_meta']['current_latest_published_at'] == '2026-07-02T08:00:00'
+    assert payload['analysis_meta']['evidence_newer'] is True
+    assert payload['analysis_meta']['sample_changed'] is True
+
+    with Session(engine) as session:
+        topic_ops._persist_analysis(session, topic_id, {
+            'events': [],
+            'framing': [],
+            'analysis_md': f'{topic_ops.LLM_ANALYSIS_MARKER}\nRefreshed LLM analysis',
+        })
+
+    refreshed = TestClient(api.app).get(f'/api/topics/{topic_id}').json()
+    assert refreshed['analysis_meta']['sample_article_count'] == 2
+    assert refreshed['analysis_meta']['current_article_count'] == 2
+    assert refreshed['analysis_meta']['evidence_newer'] is False
+    assert refreshed['analysis_meta']['sample_changed'] is False
+
+    with Session(engine) as session:
+        topic_ops.remove_topic(session, topic_id, dry_run=False)
+
+
+def test_topic_detail_keeps_legacy_analysis_freshness_unknown():
+    init_db()
+    with Session(engine) as session:
+        topic = Topic(name='Legacy analysis metadata', queries=['legacy analysis metadata'])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+
+        article = Article(
+            url=f'https://example.com/legacy-analysis/{topic.id}',
+            title='Evidence added before sample metadata existed',
+            source='Example',
+            published_at=datetime(2026, 7, 3, 8),
+            collector='test',
+        )
+        session.add(article)
+        session.commit()
+        session.refresh(article)
+        session.add(TopicArticle(topic_id=topic.id, article_id=article.id, relevance=0.9))
+        session.add(
+            Analysis(
+                topic_id=topic.id,
+                content_md='Legacy analysis without a recorded evidence snapshot',
+                sample_article_count=None,
+                sample_latest_published_at=None,
+            )
+        )
+        session.commit()
+        topic_id = topic.id
+
+    payload = TestClient(api.app).get(f'/api/topics/{topic_id}').json()
+    assert payload['analysis_meta']['sample_article_count'] is None
+    assert payload['analysis_meta']['evidence_newer'] is None
+    assert payload['analysis_meta']['sample_changed'] is None
+
+    with Session(engine) as session:
+        topic_ops.remove_topic(session, topic_id, dry_run=False)

@@ -83,13 +83,19 @@ def local_events_for_topic(session: Session, topic: Topic) -> list[dict[str, Any
     return local_analyze.analyze_topic(topic.name, article_rows).get("events", [])
 
 
-def sync_topic_events(session: Session, topic_id: int, events: list[dict[str, Any]]) -> list[Event]:
+def sync_topic_events(
+    session: Session,
+    topic_id: int,
+    events: list[dict[str, Any]],
+    *,
+    commit: bool = True,
+) -> list[Event]:
     incoming = _events_by_key(events)
     existing = _topic_events(session, topic_id)
     existing_by_key = {_event_key(row.date): row for row in existing}
 
     stale_ids = [row.id for key, row in existing_by_key.items() if key not in incoming and row.id is not None]
-    _delete_relations_for_event_ids(session, stale_ids)
+    _delete_relations_for_event_ids(session, stale_ids, commit=False)
     for key, row in existing_by_key.items():
         if key not in incoming:
             session.delete(row)
@@ -108,7 +114,10 @@ def sync_topic_events(session: Session, topic_id: int, events: list[dict[str, An
         row.article_count = data["article_count"]
         row.updated_at = datetime.utcnow()
         session.add(row)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
     rows = _topic_events(session, topic_id)
     for row in rows:
@@ -120,11 +129,17 @@ def rebuild_event_relations(
     session: Session,
     topic_id: int,
     events: list[Event] | None = None,
+    *,
+    commit: bool = True,
 ) -> list[EventRelation]:
     events = events or _topic_events(session, topic_id)
     event_ids = _event_ids(events)
-    _delete_relations_for_event_ids(session, event_ids)
+    _delete_relations_for_event_ids(session, event_ids, commit=False)
     if _degraded_note(events):
+        if commit:
+            session.commit()
+        else:
+            session.flush()
         return []
 
     for spec in _relation_specs(events):
@@ -135,13 +150,16 @@ def rebuild_event_relations(
             evidence=spec["evidence"],
             items=spec["items"],
         ))
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     return _topic_relations(session, events)
 
 
 def delete_topic_graph(session: Session, topic_id: int) -> None:
     events = _topic_events(session, topic_id)
-    _delete_relations_for_event_ids(session, _event_ids(events))
+    _delete_relations_for_event_ids(session, _event_ids(events), commit=False)
     for event in events:
         session.delete(event)
     session.commit()
@@ -251,7 +269,12 @@ def _topic_relations(session: Session, events: list[Event]) -> list[EventRelatio
     return sorted(unique.values(), key=lambda row: row.id or 0)
 
 
-def _delete_relations_for_event_ids(session: Session, event_ids: list[int]) -> None:
+def _delete_relations_for_event_ids(
+    session: Session,
+    event_ids: list[int],
+    *,
+    commit: bool = True,
+) -> None:
     if not event_ids:
         return
     rows = session.exec(select(EventRelation).where(EventRelation.from_event_id.in_(event_ids))).all()
@@ -263,7 +286,10 @@ def _delete_relations_for_event_ids(session: Session, event_ids: list[int]) -> N
         if row.id is not None:
             seen.add(row.id)
         session.delete(row)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
 
 def _node_payload(row: Event) -> dict[str, Any]:

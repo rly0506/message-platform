@@ -15,6 +15,7 @@ from app.db import SearchJob, Topic, engine, init_db
 from app.pipeline import academic, cross_synthesis, sentiment
 from app.schemas.search import SearchRequest
 from app.services import payloads
+from app.services.topic_locks import claim_topic
 
 
 MAX_SEARCH_JOBS = 50
@@ -131,9 +132,10 @@ def run_topic_job(
 
     def run_with_topic(runner: JobRunner) -> dict[str, Any]:
         init_db()
-        with Session(engine) as session:
-            topic = topic_or_404(session, topic_id)
-            return work(session, topic, runner)
+        with claim_topic(topic_id, blocking=True):
+            with Session(engine) as session:
+                topic = topic_or_404(session, topic_id)
+                return work(session, topic, runner)
 
     runner.run(run_with_topic, status_for_result)
 
@@ -155,6 +157,8 @@ def rerun_search_job(job_id: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="Search job not found")
         if job.status not in {"interrupted", "failed"}:
             raise HTTPException(status_code=409, detail="Only interrupted or failed jobs can be rerun")
+        if (job.payload or {}).get("kind") not in {None, "search"}:
+            raise HTTPException(status_code=409, detail="Only search jobs can be rerun")
         payload = search_request_from_job(job)
     return enqueue_search_job(payload)
 
@@ -227,47 +231,48 @@ def run_search(payload: SearchRequest, job_id: str | None = None) -> dict[str, A
             query,
             topic_ops.query_variants(query),
         )
-        set_step(steps, "topic", "done", job_id)
-        collect_stats = {"raw": 0, "kept": 0, "new_articles": 0, "new_links": 0}
-        if payload.collect:
-            set_step(steps, "collect", "running", job_id)
-            collect_stats = topic_ops.collect_topic(
-                session,
-                topic,
-                gnews=True,
-                gdelt_on=payload.gdelt,
-                years=payload.years,
-                min_rel=payload.min_relevance,
-                extra_queries=extra_queries,
-            )
-            steps[1]["status"] = "warning" if collect_stats.get("errors") else "done"
-            if collect_stats["raw"] == 0 and not collect_stats.get("errors"):
-                steps[1]["status"] = "empty"
-                collect_stats["errors"] = ["采集源返回 0 条结果，请尝试更具体或中英文混合的关键词。"]
+        with claim_topic(topic.id, blocking=True):
+            set_step(steps, "topic", "done", job_id)
+            collect_stats = {"raw": 0, "kept": 0, "new_articles": 0, "new_links": 0}
+            if payload.collect:
+                set_step(steps, "collect", "running", job_id)
+                collect_stats = topic_ops.collect_topic(
+                    session,
+                    topic,
+                    gnews=True,
+                    gdelt_on=payload.gdelt,
+                    years=payload.years,
+                    min_rel=payload.min_relevance,
+                    extra_queries=extra_queries,
+                )
+                steps[1]["status"] = "warning" if collect_stats.get("errors") else "done"
+                if collect_stats["raw"] == 0 and not collect_stats.get("errors"):
+                    steps[1]["status"] = "empty"
+                    collect_stats["errors"] = ["采集源返回 0 条结果，请尝试更具体或中英文混合的关键词。"]
+                sync_job_steps(steps, job_id)
+            else:
+                set_step(steps, "collect", "skipped", job_id)
+            set_step(steps, "analyze", "running", job_id)
+            data = topic_ops.analyze_topic(session, topic, persist=True)
+            evidence_lookup = payloads.topic_evidence_lookup(session, topic.id)
+            data["events"] = payloads.attach_event_evidence(data["events"], evidence_lookup)
+            steps[2]["status"] = "done" if data.get("events") else "empty"
             sync_job_steps(steps, job_id)
-        else:
-            set_step(steps, "collect", "skipped", job_id)
-        set_step(steps, "analyze", "running", job_id)
-        data = topic_ops.analyze_topic(session, topic, persist=True)
-        evidence_lookup = payloads.topic_evidence_lookup(session, topic.id)
-        data["events"] = payloads.attach_event_evidence(data["events"], evidence_lookup)
-        steps[2]["status"] = "done" if data.get("events") else "empty"
-        sync_job_steps(steps, job_id)
-        return {
-            "topic": payloads.topic_summary(session, topic),
-            "collect": collect_stats,
-            "steps": steps,
-            "events": data["events"],
-            "framing": data["framing"],
-            "analysis_md": data["analysis_md"],
-            "stance_evolution": data["stance_evolution"],
-            "keywords": data["keywords"],
-            "entities": data["entities"],
-            "entity_groups": data["entity_groups"],
-            "criteria": data["criteria"],
-            "subtopics": subtopics,
-            "analogues": analogues,
-        }
+            return {
+                "topic": payloads.topic_summary(session, topic),
+                "collect": collect_stats,
+                "steps": steps,
+                "events": data["events"],
+                "framing": data["framing"],
+                "analysis_md": data["analysis_md"],
+                "stance_evolution": data["stance_evolution"],
+                "keywords": data["keywords"],
+                "entities": data["entities"],
+                "entity_groups": data["entity_groups"],
+                "criteria": data["criteria"],
+                "subtopics": subtopics,
+                "analogues": analogues,
+            }
 
 
 def run_search_job(job_id: str, payload: SearchRequest) -> None:

@@ -19,6 +19,7 @@ from sqlmodel import Session, select
 
 from app import config
 from app.db import Article, SearchJob, Topic, TopicArticle, engine
+from app.services.topic_locks import claim_topic
 
 _lock = threading.Lock()          # 只防调度器自身重入
 _stop_event = threading.Event()
@@ -146,31 +147,46 @@ def _refresh_due_news(now: datetime) -> tuple[int, int, list[str]]:
     errors: list[str] = []
     with Session(engine) as session:
         topics = session.exec(select(Topic).where(Topic.status == "active")).all()
-        busy = _active_job_topic_ids(session)  # 一次查出忙碌话题, 循环内直接判
         # 先算 stale 候选(有文章且过期), 按最旧优先。
-        candidates: list[tuple[datetime, Topic]] = []
+        candidates: list[tuple[datetime, int, str]] = []
         for topic in topics:
             latest = _topic_latest_published(session, topic.id)
             if latest is None:
                 continue  # 空话题不自动刷
             if now - latest < interval:
                 continue  # 还新鲜
-            candidates.append((latest, topic))
+            candidates.append((latest, topic.id, topic.name))
         candidates.sort(key=lambda t: t[0])  # 最旧的先刷
-        for _latest, topic in candidates:
-            if refreshed >= config.AUTO_REFRESH_MAX_TOPICS_PER_CYCLE:
-                break
-            if topic.id in busy:
+    for _latest, topic_id, topic_name in candidates:
+        if refreshed >= config.AUTO_REFRESH_MAX_TOPICS_PER_CYCLE:
+            break
+        with claim_topic(topic_id, blocking=False) as acquired:
+            if not acquired:
                 skipped += 1
                 continue
-            try:
-                topic_ops.collect_topic(session, topic, gnews=True, gdelt_on=False,
-                                        use_curated_feeds=True, min_rel=0.2)
-                topic_ops.analyze_topic(session, topic, persist=True)
-                refreshed += 1
-            except Exception as exc:  # 单话题失败隔离, 继续下一个, 但记录原因(失败可见)
-                errors.append(f"{topic.name}: {type(exc).__name__}: {str(exc)[:80]}")
-                continue
+            with Session(engine) as session:
+                topic = session.get(Topic, topic_id)
+                if not topic or topic.status != "active":
+                    continue
+                if topic_id in _active_job_topic_ids(session):
+                    skipped += 1
+                    continue
+                try:
+                    topic_ops.collect_topic(
+                        session,
+                        topic,
+                        gnews=True,
+                        gdelt_on=False,
+                        use_curated_feeds=True,
+                        min_rel=0.2,
+                        commit=False,
+                    )
+                    topic_ops.analyze_topic(session, topic, persist=True, commit=False)
+                    session.commit()
+                    refreshed += 1
+                except Exception as exc:  # 单话题失败隔离, 继续下一个, 但记录原因(失败可见)
+                    session.rollback()
+                    errors.append(f"{topic_name}: {type(exc).__name__}: {str(exc)[:80]}")
     return refreshed, skipped, errors
 
 

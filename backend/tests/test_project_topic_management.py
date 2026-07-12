@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -142,3 +144,37 @@ def test_create_topic_rejects_invalid_project_id_without_server_error():
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Project id must be an integer"
+
+
+def test_topic_update_and_delete_claim_blocking_write_guard(monkeypatch):
+    init_db()
+    client = TestClient(api.app)
+    updated_topic = client.post("/api/topics", json={
+        "name": "Guarded topic update",
+        "queries": ["guarded topic update"],
+    }).json()
+    deleted_topic = client.post("/api/topics", json={
+        "name": "Guarded topic delete",
+        "queries": ["guarded topic delete"],
+    }).json()
+    claims: list[tuple[int, bool]] = []
+
+    @contextmanager
+    def fake_claim(topic_id: int, *, blocking: bool):
+        claims.append((topic_id, blocking))
+        yield True
+
+    monkeypatch.setattr(api, "claim_topic", fake_claim, raising=False)
+
+    update_response = client.patch(
+        f"/api/topics/{updated_topic['id']}",
+        json={"description": "Updated while holding the topic guard."},
+    )
+    delete_response = client.delete(f"/api/topics/{deleted_topic['id']}")
+
+    assert update_response.status_code == 200
+    assert delete_response.status_code == 200
+    assert claims == [
+        (updated_topic["id"], True),
+        (deleted_topic["id"], True),
+    ]

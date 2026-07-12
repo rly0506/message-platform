@@ -37,7 +37,9 @@ class EventFeatures:
 
 
 def event_analogues_payload(session: Session, topic: Topic, event_id: int) -> dict[str, Any]:
-    all_events = session.exec(select(Event).order_by(Event.id)).all()
+    all_events = session.exec(
+        select(Event).order_by(Event.date.desc(), Event.updated_at.desc(), Event.id.desc())
+    ).all()
     topic_events = [event for event in all_events if event.topic_id == topic.id]
     if not topic_events:
         return _degraded_payload(topic, event_id, len(all_events))

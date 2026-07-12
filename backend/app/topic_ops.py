@@ -65,6 +65,7 @@ def collect_topic(
     min_rel: float = 0.0,
     use_curated_feeds: bool = False,
     extra_queries: list[str] | None = None,
+    commit: bool = True,
 ) -> dict[str, Any]:
     raw: list[dict] = []
     errors: list[str] = []
@@ -184,7 +185,7 @@ def collect_topic(
                 collector=item.get("collector", ""),
             )
             session.add(art)
-            session.commit()
+            session.flush()
             session.refresh(art)
             new_articles += 1
         else:
@@ -197,7 +198,10 @@ def collect_topic(
         if not link:
             session.add(TopicArticle(topic_id=topic.id, article_id=art.id, relevance=item["relevance"]))
             new_links += 1
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
     return {
         "raw": len(raw),
@@ -213,7 +217,12 @@ def collect_topic(
     }
 
 
-def analyze_topic(session: Session, topic: Topic, persist: bool = True) -> dict[str, Any]:
+def analyze_topic(
+    session: Session,
+    topic: Topic,
+    persist: bool = True,
+    commit: bool = True,
+) -> dict[str, Any]:
     rows_db = session.exec(
         select(TopicArticle, Article)
         .where(TopicArticle.article_id == Article.id)
@@ -241,9 +250,14 @@ def analyze_topic(session: Session, topic: Topic, persist: bool = True) -> dict[
 
     data = local_analyze.analyze_topic(topic.name, rows)
     if persist:
-        _persist_analysis(session, topic.id, data)
-        events = event_graph.sync_topic_events(session, topic.id, data.get("events", []))
-        event_graph.rebuild_event_relations(session, topic.id, events=events)
+        _persist_analysis(session, topic.id, data, commit=commit)
+        events = event_graph.sync_topic_events(
+            session,
+            topic.id,
+            data.get("events", []),
+            commit=commit,
+        )
+        event_graph.rebuild_event_relations(session, topic.id, events=events, commit=commit)
     data["article_count"] = len(rows)
     return data
 
@@ -515,7 +529,24 @@ def remove_topic(session: Session, topic_id: int, *, dry_run: bool = True) -> di
     return result
 
 
-def _persist_analysis(session: Session, topic_id: int, data: dict[str, Any]) -> None:
+def analysis_sample(session: Session, topic_id: int) -> tuple[int, datetime | None]:
+    published_values = session.exec(
+        select(Article.published_at)
+        .join(TopicArticle, TopicArticle.article_id == Article.id)
+        .where(TopicArticle.topic_id == topic_id)
+        .where(TopicArticle.relevant == True)  # noqa: E712
+    ).all()
+    latest = max((value for value in published_values if value), default=None)
+    return len(published_values), latest
+
+
+def _persist_analysis(
+    session: Session,
+    topic_id: int,
+    data: dict[str, Any],
+    *,
+    commit: bool = True,
+) -> None:
     analysis_md = data.get("analysis_md", "")
     incoming_is_llm = LLM_ANALYSIS_MARKER in analysis_md
     existing_analyses = session.exec(select(Analysis).where(Analysis.topic_id == topic_id)).all()
@@ -526,7 +557,6 @@ def _persist_analysis(session: Session, topic_id: int, data: dict[str, Any]) -> 
         rows = existing_analyses if model is Analysis else session.exec(select(model).where(model.topic_id == topic_id)).all()
         for old in rows:
             session.delete(old)
-    session.commit()
 
     for ev in data.get("events", []):
         session.add(TimelineEvent(
@@ -544,8 +574,17 @@ def _persist_analysis(session: Session, topic_id: int, data: dict[str, Any]) -> 
             summary_zh=fr.get("summary_zh", ""),
             article_ids=fr.get("article_ids", []),
         ))
-    session.add(Analysis(topic_id=topic_id, content_md=analysis_md))
-    session.commit()
+    sample_count, sample_latest = analysis_sample(session, topic_id)
+    session.add(Analysis(
+        topic_id=topic_id,
+        content_md=analysis_md,
+        sample_article_count=sample_count,
+        sample_latest_published_at=sample_latest,
+    ))
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
 
 def _parse_date(value: str | None):

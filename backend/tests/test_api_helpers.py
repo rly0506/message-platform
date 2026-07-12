@@ -1,10 +1,13 @@
 import asyncio
+from contextlib import contextmanager
+from uuid import uuid4
 
-from app import api
-from app.db import SearchJob, engine, init_db
+from app import api, db
+from app.db import SearchJob, Topic, engine, init_db
+from app.schemas.search import SearchRequest
 from app.services import payloads, search_service
 from fastapi import HTTPException
-from sqlmodel import Session
+from sqlmodel import Session, create_engine
 
 
 def test_api_lifespan_runs_startup_and_shutdown_hooks(monkeypatch):
@@ -266,3 +269,124 @@ def test_rerun_search_job_rejects_completed_jobs():
             if job:
                 session.delete(job)
                 session.commit()
+
+
+def test_rerun_search_job_rejects_non_search_job_kinds(monkeypatch):
+    job_id = 'test-rerun-deep-analysis'
+    init_db()
+    with Session(engine) as session:
+        session.add(SearchJob(
+            id=job_id,
+            query='deep-analysis:Ukraine',
+            status='failed',
+            steps=[],
+            payload={'topic_id': 1, 'enrich_limit': 30, 'kind': 'deep_analysis'},
+        ))
+        session.commit()
+
+    monkeypatch.setattr(
+        search_service,
+        'enqueue_search_job',
+        lambda payload: {'unexpected_query': payload.query},
+    )
+    try:
+        try:
+            search_service.rerun_search_job(job_id)
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert 'search' in str(exc.detail).lower()
+        else:
+            raise AssertionError('non-search jobs must not be converted into search reruns')
+    finally:
+        with Session(engine) as session:
+            job = session.get(SearchJob, job_id)
+            if job:
+                session.delete(job)
+                session.commit()
+
+
+def test_run_search_claims_blocking_topic_write_guard(monkeypatch):
+    claims: list[tuple[int, bool]] = []
+
+    @contextmanager
+    def fake_claim(topic_id: int, *, blocking: bool):
+        claims.append((topic_id, blocking))
+        yield True
+
+    monkeypatch.setattr(search_service, 'claim_topic', fake_claim, raising=False)
+    monkeypatch.setattr(
+        search_service.topic_ops,
+        'analyze_topic',
+        lambda session, topic, persist=True: {
+            'events': [],
+            'framing': [],
+            'analysis_md': '',
+            'stance_evolution': [],
+            'keywords': [],
+            'entities': [],
+            'entity_groups': {},
+            'criteria': {},
+        },
+    )
+
+    result = search_service.run_search(SearchRequest(query=f'guard-{uuid4().hex}', collect=False))
+
+    assert result['events'] == []
+    assert len(claims) == 1
+    assert claims[0][1] is True
+
+
+def test_run_topic_job_claims_blocking_topic_write_guard(monkeypatch):
+    init_db()
+    job_id = f'guard-job-{uuid4().hex}'
+    with Session(engine) as session:
+        topic = Topic(name=f'guard-topic-{uuid4().hex}', queries=['guard'])
+        session.add(topic)
+        session.commit()
+        session.refresh(topic)
+        topic_id = topic.id
+        session.add(SearchJob(id=job_id, query='guard', status='queued', steps=[], payload={'topic_id': topic_id}))
+        session.commit()
+
+    claims: list[tuple[int, bool]] = []
+
+    @contextmanager
+    def fake_claim(claimed_topic_id: int, *, blocking: bool):
+        claims.append((claimed_topic_id, blocking))
+        yield True
+
+    monkeypatch.setattr(search_service, 'claim_topic', fake_claim, raising=False)
+    search_service.run_topic_job(
+        job_id,
+        topic_id,
+        [],
+        lambda session, topic, runner: {'topic_id': topic.id},
+    )
+
+    assert claims == [(topic_id, True)]
+
+
+def test_migrate_adds_analysis_sample_metadata_columns(tmp_path, monkeypatch):
+    legacy_path = tmp_path / 'legacy.db'
+    legacy_engine = create_engine(f'sqlite:///{legacy_path}')
+    tables = (
+        'topicarticle', 'article', 'sentimentpost', 'cognitionmark',
+        'cognitionprofile', 'paper', 'topic', 'sourceregistry',
+    )
+    with legacy_engine.connect() as conn:
+        for table in tables:
+            conn.exec_driver_sql(f'CREATE TABLE {table} (id INTEGER PRIMARY KEY)')
+        conn.exec_driver_sql(
+            'CREATE TABLE analysis ('
+            'id INTEGER PRIMARY KEY, topic_id INTEGER, '
+            'generated_at DATETIME, content_md VARCHAR)'
+        )
+        conn.commit()
+
+    monkeypatch.setattr(db, 'engine', legacy_engine)
+    db._migrate()
+
+    with legacy_engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(analysis)')}
+
+    assert {'sample_article_count', 'sample_latest_published_at'} <= columns
