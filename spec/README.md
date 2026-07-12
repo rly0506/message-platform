@@ -28,7 +28,8 @@ Do not load mail archives, the full changelog archive, completed roadmaps, build
 | Discovery archive or cognition timeline | `spec/discovery-archive-cognition-timeline-design.md` |
 | Browser control and OpenCLI boundary | `spec/browser-control-decision-2026-07-10.md` |
 | AI controllability and multi-format source candidate | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` |
-| Static knowledge publishing and inspectable reasoning references | `spec/knowledge-publishing-and-reasoning-reference-2026-07-12.md` |
+| User feedback, reflections, developer observations, and external references | `spec/feedback-and-ideas/README.md` |
+| Static knowledge publishing and inspectable reasoning references | `spec/feedback-and-ideas/references/knowledge-publishing-and-reasoning-reference-2026-07-12.md` |
 | Broader future priorities | `spec/roadmap.md` |
 | Recent documentation changes | `spec/CHANGELOG.md` |
 

@@ -2,6 +2,14 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-12 Feedback And Ideas Library
+
+- Added `spec/feedback-and-ideas/` as the stable home for user feedback, reflections, developer observations, and external project references.
+- Added a feedback ledger linking the historical 14-point source files and the surviving 10-point mailbox record without rewriting either source.
+- Added a reference index and dedicated notes for `Mr-Salticidae/knowledge-base`, its Astro/Pagefind display pattern, and OpenSPG/KAG.
+- Moved the existing combined publishing/reasoning review into the new reference directory without deleting its content.
+- Kept all external projects at `REFERENCE` or `DEFERRED CANDIDATE`; none were added to RM-050 or the implementation backlog.
+
 ## 2026-07-12 Documentation Context Consolidation
 
 - Archived full snapshots of BOARD, both live mailboxes, and the changelog before shortening them.

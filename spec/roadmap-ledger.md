@@ -47,7 +47,7 @@
 - 14 点意见修复：已经形成可用的阶段性基线，但不是“永不再优化”。后续残余问题按新审计批和新路线图处理，不重开原始 14 点清单。
 - Fable 5 bug audit：属于稳定性治理依据，详见 `spec/bug-audit-2026-07-05.md`，不是产品路线图。
 - 浏览器控制与 OpenCLI：属于运行边界决策，详见 `spec/browser-control-decision-2026-07-10.md`，不等同于产品采集路线图。
-- Astro/Pagefind 与 OpenSPG/KAG：属于外部架构参考，详见 `spec/knowledge-publishing-and-reasoning-reference-2026-07-12.md`；未经人类立项，不进入 RM-050，也不代表已集成。
+- Astro/Pagefind 与 OpenSPG/KAG：属于外部架构参考，详见 `spec/feedback-and-ideas/references/`；未经人类立项，不进入 RM-050，也不代表已集成。
 
 ## 更新规则
 

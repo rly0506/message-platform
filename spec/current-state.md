@@ -92,7 +92,7 @@ These debts are real but are not regressions introduced by the current backend P
 
 ## External Architecture Inputs
 
-Two external projects were reviewed on 2026-07-12. Conclusions are recorded in `spec/knowledge-publishing-and-reasoning-reference-2026-07-12.md`.
+User feedback, reflections, developer observations, and external project references are indexed under `spec/feedback-and-ideas/`. The 2026-07-12 publishing and reasoning review is preserved at `spec/feedback-and-ideas/references/knowledge-publishing-and-reasoning-reference-2026-07-12.md`.
 
 - Astro/Pagefind knowledge-base pattern: useful for a future public or read-only archive through content/display separation, repository dispatch with scheduled fallback, build-time publication whitelists, and static full-text search. It must not replace the operational FastAPI workbench.
 - OpenSPG/KAG: useful as a design reference for schema-constrained evidence graphs, source-to-knowledge mutual indexing, explicit query plans, and inspectable multi-hop evidence paths. Do not adopt KAG/OpenSPG during the current RM-050 gate; direct integration would add Docker, graph-platform, and LLM complexity.
