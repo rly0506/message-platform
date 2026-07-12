@@ -1,46 +1,55 @@
 # Spec Harness
 
-This folder is the project harness: the shared map, rules, and acceptance gates used by coding agents and reviewers.
+This folder is the project harness: current product truth, roadmap state, task-specific design constraints, and reproducible acceptance gates.
 
-## How To Use
+## Minimal Startup Context
 
-Read in this order:
+Normal agent startup reads only:
 
-1. `.agent-bridge/BOARD.md` for the single current truth: current goal, latest commit, who does what next.
-2. `AGENTS.md` for the workspace map and GitNexus rules.
-3. `spec/roadmap-event-graph-2026-07-09.md` for the CURRENT sprint: evidence-first event graph (V1 within-topic, V2 cross-topic).
-4. `spec/project.md` for the product goal and architecture.
-5. `spec/current-state.md` for prior project truth and completed work (being refreshed each major iteration).
-6. `spec/bug-audit-2026-07-05.md` before touching auto-refresh, persistence, narrative signals, discovery cognition marks, or search-job concurrency.
-7. `spec/development.md` for development constraints.
-8. `spec/acceptance.md` before claiming work is complete.
-9. `spec/roadmap.md` for the broader product direction (design-first backlog).
-10. `spec/local-capability-boundary.md` to understand what works without LLM access.
-11. `spec/event-tree-literature-graph-design.md` before planning event-tree or academic graph work (the understanding-layer boundary).
-12. `spec/academic-filtering-design.md` when working on the academic layer filtering iteration.
-13. `spec/discovery-archive-cognition-timeline-design.md` before planning discovery history or cross-day cognition-tree work.
-14. `spec/CHANGELOG.md` to understand recent spec changes.
-15. Historical sprint snapshots (14-point ledgers, dated audits, superseded roadmaps) are archived under `spec/archive/`.
+1. `AGENTS.md` - mandatory engineering contract and project map.
+2. `.agent-bridge/BOARD.md` - current checkpoint, owners, blockers, and next gate.
+3. `spec/roadmap-ledger.md` - roadmap IDs and status.
+4. `spec/current-state.md` - implemented, partial, missing, and known limitations.
+
+Do not load mail archives, the full changelog archive, completed roadmaps, build logs, or generated discovery reports during normal startup.
+
+## Task Routing
+
+| Task | Read |
+|---|---|
+| Current product sprint | `spec/roadmap-dual-mode-2026-07-09.md` |
+| Product goal and architecture | `spec/project.md` |
+| Development constraints | `spec/development.md` |
+| Completion claim or release review | `spec/acceptance.md` |
+| Auto-refresh, persistence, narrative signals, cognition marks, search concurrency | `spec/bug-audit-2026-07-05.md` |
+| No-LLM capability boundary | `spec/local-capability-boundary.md` |
+| Event/literature graph planning | `spec/event-tree-literature-graph-design.md` |
+| Academic filtering | `spec/academic-filtering-design.md` |
+| Discovery archive or cognition timeline | `spec/discovery-archive-cognition-timeline-design.md` |
+| Browser control and OpenCLI boundary | `spec/browser-control-decision-2026-07-10.md` |
+| AI controllability and multi-format source candidate | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` |
+| Static knowledge publishing and inspectable reasoning references | `spec/knowledge-publishing-and-reasoning-reference-2026-07-12.md` |
+| Broader future priorities | `spec/roadmap.md` |
+| Recent documentation changes | `spec/CHANGELOG.md` |
+
+## Historical Material
+
+- Completed and superseded roadmaps: `spec/archive/roadmaps/` and `spec/archive/`.
+- Full changelog through 2026-07-12: `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
+- Historical implementation plans: `spec/archive/plans/`.
+- Historical backend build logs: `spec/archive/build-logs/`.
+- External project references: `docs/references/`.
+- Agent coordination history: `.agent-bridge/archive/` (local only).
+- `backend/discovery_reports/` contains product data, not project documentation.
 
 ## What Counts As Done
 
-A change is not done until the final report includes reproducible evidence:
-
-- changed files
-- commands run
-- exit codes or pass counts
-- GitNexus risk summary when code symbols changed
-- confirmation that `backend/.env` and `backend/dossier.db` were not tracked or written
-
-## Document Scope
-
-Keep this folder small. Add a new subdocument only when one of these files becomes hard to scan or a repeated workflow needs its own checklist.
+A completion report must include changed files, commands and results, GitNexus risk evidence when symbols changed, and confirmation that real secrets/databases were not tracked or written. Exact gates live in `spec/acceptance.md`.
 
 ## Maintenance
 
-When changing `AGENTS.md` or any file in `spec/`, append a dated entry to `spec/CHANGELOG.md` with:
-
-- date
-- changed files
-- reason
-- verification evidence
+- Give every executable roadmap a stable ID in `spec/roadmap-ledger.md`.
+- Keep only one `CURRENT` product roadmap.
+- Keep BOARD and live mailboxes current; archive history instead of appending forever.
+- Keep `spec/CHANGELOG.md` as a short recent window and roll full history into `spec/archive/changelog/`.
+- Do not silently delete historical decisions.

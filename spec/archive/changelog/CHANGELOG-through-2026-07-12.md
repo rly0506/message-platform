@@ -1,0 +1,1439 @@
+# Spec Changelog
+
+## 2026-07-12 Roadmap Ledger And Information-Boundary Record
+
+- Added `spec/roadmap-ledger.md` as the stable roadmap ID and status index.
+- Marked RM-050 as the only current product roadmap: M1 complete, M2 partial, M3/M4 pending, with the current backend repair batch treated as an active stabilization gate.
+- Added `spec/ai-collaboration-and-source-boundary-2026-07-12.md` to preserve the user's reflections on AI expression burden, information asymmetry, and future public long-form/audio/video/authorized-private ingestion boundaries.
+- Corrected `spec/README.md`, which still named the completed event-graph sprint as current.
+- Added status banners to RM-030, RM-040, and RM-050 without rewriting their historical decisions.
+
+### Verification
+
+- Documentation-only change; no business code or database touched.
+- `git diff --check` and roadmap-reference checks run after editing.
+
+## 2026-07-10 Understanding Layer U1 Event Analogues Backend
+
+- Added `GET /api/topics/{topic_id}/events/{event_id}/analogues` for read-only, cross-topic event analogues.
+- Added transparent local scoring across shared entities, keywords, narrative signals, source-tier shape, and sample/date shape; fixed score bands are `>=70` for `较强相似`, `40-69` for `有限相似`, and lower scores are omitted.
+- Returned weighted `basis[]` evidence, concrete `differences[]`, supporting article ids, and explicit non-causal/non-predictive notes for every result.
+- Excluded events from the target topic, capped the V1 linear scan at 500 cross-topic candidates, limited output to 8 results, and exposed scan/truncation metadata.
+- Kept the route read-only: it does not write `EventRelation` rows, trigger collection, sync missing events, or require an LLM. Topics without persisted events degrade honestly.
+
+### Verification
+
+- Red tests first: `tests/test_event_analogues.py` initially failed because the route/service did not exist.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_analogues.py -q` -> `7 passed, 1 warning`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_analogues.py tests/test_event_contrast.py tests/test_event_graph.py -q` -> `22 passed, 1 warning`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `295 passed, 1 warning`.
+- GitNexus impact before API editing: `backend/app/api.py` top-level `app` upstream risk `LOW` with no identified affected process.
+
+## 2026-07-09 Understanding Layer U2 Contrast Backend
+
+- Added `GET /api/topics/{topic_id}/events/{event_id}/contrast` for event-level multi-source contrast.
+- Added read-only `backend/app/services/event_contrast.py`, anchored only to persisted local `Event.article_ids`; no LLM, no new collection, and no new tables.
+- Returned per-source contrast fields: tier/tier label, stance and stance summary, substance/emotion scores with notes, representative article, article ids, emphasized entities, emphasized keywords, and lightweight article links.
+- Added neutral coverage differences as `coverage_gaps[].not_observed_in` with `evidence_article_ids` and `salience=max(count)`; payload note states that sample-level non-observation is not absence or deliberate omission.
+- Sorted coverage gaps by `salience` before limiting to 30 items so weak one-off differences cannot crowd out stronger sample-level differences.
+- Kept degraded behavior honest: empty event article samples and fewer than two sources degrade without fabricating coverage differences; missing enrichment fields return `-1` and `未评分` without blocking the contrast payload.
+
+### Verification
+
+- Red tests first: `tests/test_event_contrast.py` initially failed because the `/contrast` route did not exist.
+- Salience red test: weak/strong coverage differences initially failed with missing `salience`.
+- Salience ordering red test: a strong late-sorted gap was initially pushed behind weak gaps and risked being truncated before the sort key used `salience`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_contrast.py -q` -> `6 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_contrast.py tests/test_event_graph.py -q` -> `11 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `283 passed, 5 warnings`.
+- `git diff --check` -> pass, LF/CRLF warnings only.
+- GitNexus impact before editing: `backend/app/api.py` and `backend/app/services/event_graph.py` upstream risk `LOW`.
+- GitNexus `detect-changes -r message-platform --scope staged` with only this batch staged -> risk `high`, limited to the new event contrast payload route/service flow.
+
+## 2026-07-09 Event Graph Backend V1
+
+- Added stable `Event` nodes and `EventRelation` evidence edges for the topic-level event graph.
+- Added `GET /api/topics/{topic_id}/event-graph` returning `{nodes, edges, degraded, note}` with `from_id`/`to_id` based on stable event ids, not array indexes.
+- Persisted local-analysis events idempotently and rebuilt four evidence edge types: chronological, shared article, shared entity, and shared source.
+- Kept causal/root-cause claims out of V1; insufficient samples or all-unknown dates degrade honestly with no fabricated edges.
+- Confirmed the suspected `payloads.py` nested entity-loop bug is not present in the current file.
+
+### Verification
+
+- Red test first: `tests/test_event_graph.py` initially failed because `Event`/`EventRelation` and `/event-graph` did not exist.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_graph.py -q` -> `5 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_event_graph.py tests/test_topic_ops.py tests/test_deep_analysis.py tests/test_remove_topic.py tests/test_api_helpers.py tests/test_local_analyze.py -q` -> `60 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `277 passed, 5 warnings`.
+- `git diff --check` -> pass, LF/CRLF warnings only.
+- GitNexus `detect-changes --scope all` after re-index -> risk `high`, limited to the new event graph API/service/model flow and expected central `db.py` model impact.
+
+## 2026-07-08 Data-Line Direct URL / Fulltext Patch
+
+- Added an opt-in Google News RSS URL resolver (`GNEWS_DECODE_URLS=1`):
+  - real spike found 0/20 current `CBMi...` links were offline-decodable;
+  - batchexecute resolution worked on the sampled Reuters link;
+  - successful resolution stores the publisher URL while preserving `original_url`;
+  - failed or disabled resolution keeps the Google News URL and marks `url_decoded=false`.
+- Added optional direct-link/fulltext legs, both default off:
+  - `USE_SEARXNG` + `SEARXNG_URL` collector for local SearXNG JSON results;
+  - `FULLTEXT_USE_SCRAPLING` variant that lazily imports Scrapling and reuses `extract_from_html`.
+- Added article-level decode trace fields and payload output: `original_url`, `url_decoded`.
+- Decode diagnostics now track default-off GNews URL resolution as `disabled`, not `failed`.
+- Kept all new network-dependent paths soft-degrading and covered with monkeypatched tests; no real SearXNG/Scrapling service is required in CI.
+
+### Verification
+
+- Red tests first for GNews decode traces, Scrapling optional fallback, SearXNG collector, and article payload decode trace.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_rss_collector.py tests/test_topic_ops.py tests/test_fulltext.py tests/test_deep_analysis.py tests/test_searxng_collector.py tests/test_api_helpers.py -q` -> `51 passed, 5 warnings`.
+- Review fix red-green: `tests/test_topic_ops.py::test_decode_stats_tracks_default_disabled_gnews_without_failed` failed before the fix and passed after it.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_topic_ops.py tests/test_rss_collector.py -q` -> `18 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `272 passed, 5 warnings`.
+
+## 2026-07-07 Stage 0.4 Agent Mail Windows CLI Shim
+
+- Routed Agent Mail CLI invocation through `cmd /c` on Windows so npm-style `agently-cli.cmd` shims can start from Python subprocess.
+- Kept SMTP sending unchanged and covered the Agent Mail path with a monkeypatched subprocess test, so tests never send real email.
+
+### Verification
+
+- Red test first: Windows-mode `run_agently_cli(["agently-cli", ...])` initially passed the command directly instead of using `cmd /c`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_daily_email.py -q` -> `8 passed`.
+
+## 2026-07-07 Stage 0.3 Topic-Rename Summary Lookup
+
+- Made academic, sentiment, and cross-synthesis summary lookup use stable `payload.topic_id` instead of mutable `SearchJob.query` topic names.
+- Kept stale or malformed job payloads non-fatal by skipping jobs whose `topic_id` cannot be parsed.
+
+### Verification
+
+- Red tests first: academic, sentiment, and cross-synthesis summaries disappeared after topic rename.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_academic_view_keeps_summary_after_topic_rename tests/test_sentiment_layer.py::test_sentiment_view_keeps_summary_and_errors_after_topic_rename tests/test_cross_synthesis.py::test_gather_voices_keeps_academic_and_sentiment_after_topic_rename -q` -> `3 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py tests/test_sentiment_layer.py tests/test_cross_synthesis.py -q` -> `40 passed, 5 warnings`.
+
+## 2026-07-07 Stage 0.2 Blank Search Query Guard
+
+- Rejected whitespace-only search queries at the `SearchRequest` schema boundary.
+- Trimmed accepted search queries before they enter search/topic creation flows.
+
+### Verification
+
+- Red test first: `SearchRequest(query="   ")` initially did not raise a validation error.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_discovery.py::test_search_request_rejects_blank_query tests/test_discovery.py::test_run_search_caps_expansion_and_never_expands_analogues tests/test_discovery.py::test_run_search_decompose_off_no_extra_queries -q` -> `3 passed`.
+
+## 2026-07-07 Stage 0.1 API Integer Guard
+
+- Hardened API integer parsing at user-controlled boundaries:
+  - invalid topic `project_id` values now return HTTP 422 instead of bubbling `ValueError`;
+  - `project_id: null` on topic update now unlinks the topic from its project;
+  - invalid `article_ids` in country comparison now return HTTP 422 instead of a server error.
+
+### Verification
+
+- Red tests first: the new regression tests failed on `project_id: null`, invalid `project_id`, and invalid `article_ids`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_project_topic_management.py tests/test_country_compare.py -q` -> `13 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `254 passed, 5 warnings`.
+
+## 2026-07-07 Cognition Calibration Backend V1
+
+- Started Claude's approved track B for the cognition calibration loop.
+- Added backend support for storing a discovery seed `domain` on `CognitionMark`.
+- Added conservative seed-domain to profile-domain mapping for mark-driven calibration:
+  - `tech -> ai_infra`;
+  - `finance -> finance`;
+  - `geopolitics -> geopolitics`;
+  - `science -> biotech`;
+  - `society -> social_structure`;
+  - unmapped values such as `other` are stored on the mark but do not update profile confidence.
+- Added mark-driven profile lessons:
+  - `known` increases confidence by 5;
+  - `doubtful` records a lesson without confidence gain;
+  - `unfamiliar` decreases confidence by 5;
+  - repeated identical seed marks do not recalibrate again.
+- Kept the backend boundary explicit: calibration records user behavior only and does not add any "high confidence means recommend less" logic.
+
+### Verification
+
+- Red tests first: seed marks initially failed with missing `domain` in response payload; repeated-mark recalibration test failed before the upsert guard.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `12 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `250 passed, 5 warnings`.
+- `git diff --check` -> pass, LF/CRLF warnings only.
+- `node .gitnexus/run.cjs detect-changes -r message-platform --scope all` -> risk `critical`, `7 files`, `24 symbols`, `25` affected processes. The critical risk is expected because `backend/app/db.py` migration plumbing is central and the working tree still contains pre-existing `AGENTS.md`/`CLAUDE.md` local guide changes.
+
+## 2026-07-06 GPT Backend Roadmap P1 + Value Lens
+
+- Continued `spec/gpt-roadmap-4h-2026-07-06.md` on `feature/academic-reading-signals`.
+- Verified the existing P1 backend fixes in the current worktree:
+  - OpenAlex now supports anonymous search and academic payloads expose source errors/status instead of silently pretending all sources contributed.
+  - Local term matching uses a shared word-boundary helper for ASCII terms while preserving substring matching for CJK and hyphenated terms.
+  - Framing evidence IDs are scoped per stance while public stance-evolution article IDs remain period-wide.
+  - Sentiment persistence keeps stable `external_id` values so comments survive DB reloads and duplicate empty-URL posts are deduped by `(platform, external_id)`.
+- Added backend `value_lens` production:
+  - new pure local module `backend/app/pipeline/value_lens.py`;
+  - article payloads now include `info_value_labels`;
+  - discovery seeds now include `info_value_labels` for the daily report/front page path;
+  - narrative convergence signals now include `suspected_herding` hints for the local-events/evidence-package path;
+  - supported codes are `suspected_hype`, `availability_high`, `suspected_herding`, and `small_sample`, with `severity="hint"`.
+
+### Verification
+
+- Red test first: targeted value-lens run failed with `ImportError: cannot import name 'value_lens' from 'app.pipeline'`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_value_lens.py tests/test_api_helpers.py::test_article_payload_includes_info_value_labels tests/test_discovery.py::test_collect_seeds_structured -q` -> `6 passed, 4 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_openalex_collector.py tests/test_academic_layer.py tests/test_term_matching.py tests/test_local_analyze.py tests/test_local_analyze_golden.py tests/test_prefilter.py tests/test_sentiment_layer.py tests/test_narrative_signals.py tests/test_value_lens.py tests/test_api_helpers.py::test_article_payload_includes_info_value_labels tests/test_discovery.py::test_collect_seeds_structured -q` -> `64 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `246 passed, 5 warnings`.
+- `git diff --check` -> pass, existing LF/CRLF warnings only.
+- `node .gitnexus/run.cjs detect-changes -r message-platform --scope all` -> risk `critical`, `23 files`, `57 symbols`, `32` affected processes. This is expected to require review because the current dirty tree includes central DB migration, academic, sentiment, local-analysis, and discovery payload changes plus pre-existing AGENTS/CLAUDE/frontend dirty files.
+
+## 2026-07-04
+
+### 2026-07-05 Fable 5 Bug Audit Record
+
+- Added `spec/bug-audit-2026-07-05.md` to preserve the Fable 5 whole-project bug audit supplied by the user and Claude's follow-up spot-check.
+- Recorded five P0 findings, with the auto-refresh data-damage chain marked as the immediate stop-the-line priority:
+  - `backend/app/pipeline/narrative_signals.py:29` mixed `datetime`/`str` sort key;
+  - `backend/app/topic_ops.py:494` destructive local-analysis persistence;
+  - `backend/app/services/auto_refresh.py:167` missing `min_rel`;
+  - `frontend/src/components/DiscoveryPanel.vue:388` cognition-mark error branch interrupting report rendering;
+  - `frontend/src/composables/useJobRunner.ts:240` event-search concurrency race.
+- Linked the audit from `spec/README.md` and raised the P0 stop-the-line warning in `spec/current-state.md`.
+- No production code was changed in this record-only update.
+
+### Verification
+
+- Source spot-checks with `rg` / file reads confirmed the P0 coordinates listed above exist in the current workspace.
+- `git diff --check` must be rerun after this documentation update before any commit or completion claim.
+
+### 2026-07-05 Residual-Delta Patch
+
+- Implemented the next residual-delta patch on top of the staged 14-point baseline instead of declaring final closure:
+  - added `.agents/` to `.gitignore` and removed the tracked empty `.gitigmore`;
+  - unified media trend semantics around conservative first-period vs last-period comparison, with distribution-only behavior for small or weak-shift samples;
+  - extended OpenCLI diagnostics with optional structured `start_error` so command-not-found, cannot-start, and startup-timeout cases are distinct from platform login/API failures;
+  - expanded Stage 0B source classification in `backend/config/feeds.json` with fresh public RSS from U.S. State Department, European Commission, France 24 Spanish, Folha Mundo, France 24 Arabic, and Meduza;
+  - kept OECD/World Bank/IMF/Reuters disabled with honest `zombie`, `proxy_only`, or `api_license` reasons;
+  - recorded RT Russian, TASS, and RIA Novosti as disabled `state_media=true` narrative samples rather than neutral authority sources;
+  - added a source-registry guard so `coverage in {zombie, proxy_only}` or `access in {paywalled, api_license}` is not collected even if accidentally enabled.
+- Updated current-state, remaining-decisions, acceptance, and human-review docs so the branch is described as a staged audited baseline that remains open for targeted optimization.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `223 passed, 5 warnings in 31.06s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 410ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `90 passed (2.6m)`.
+- `git diff --check` -> pass, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> no output.
+- `git check-ignore -v backend/.env backend/dossier.db .agent-bridge .agents` -> all four paths are ignored by `.gitignore`.
+- `node .gitnexus/run.cjs status` -> index up-to-date at commit `e6e277f`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `18 files`, `40 symbols`, `0` affected processes.
+
+### 2026-07-05 Claude Final Review Acceptance
+
+- Recorded Claude's final review from `.agent-bridge/TO_CODEX.md`:
+  - #3 accepted as `V1 Done with known limitation` for the first classified fresh-source batch;
+  - #10 accepted as `Done` for OpenAlex + Crossref V1 academic source breadth;
+  - #11 accepted as `V1 Done with known limitation` for the sample-internal readable literature network;
+  - #13 accepted as `V1 Done with known limitation` for source-ingestion leads without video transcription.
+- Updated the acceptance matrix, remaining-decisions packet, current-state reset, and human-review packet so they no longer describe #3/#10/#11/#13 as pending Claude review.
+- Kept the final completion gate open: backend pytest, frontend build/e2e, `git diff --check`, secret/local-file status, and GitNexus `detect-changes` must be rerun after these status updates before any completion claim.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 31.31s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 565ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.5m)`.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully at current commit `0a9a97b`; FTS unavailable warning only.
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `0a9a97b`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `19 files`, `41 symbols`, `0` affected processes.
+
+### 2026-07-05 #3 Source Expansion State Alignment
+
+- Verified the current `backend/config/feeds.json` source-expansion state:
+  - 25 curated feeds total;
+  - 8 feeds classified as `coverage=fresh_rss` and `access=public`: UN News, NPR World, The Conversation, CNBC World, The White House, Federal Reserve, European Central Bank, and WTO News;
+  - 5 official sources in the fresh batch: UN News, The White House, Federal Reserve, European Central Bank, and WTO News.
+- Updated the acceptance matrix, current-state reset, remaining-decisions packet, and bridge board so #3 no longer reads as "classified expansion unimplemented".
+- Kept the sprint open: #3 still needs Claude/human V1 acceptance because WSJ/AFP/Xinhua/paywalled-wire/API-only/multilingual/G20 coverage is not proven.
+
+### Verification
+
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/feed_registry.py" --direction upstream --include-tests` -> risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py -q` -> `11 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_topic_ops.py tests/test_api_helpers.py -q` -> `13 passed, 4 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 36.44s`.
+
+### 2026-07-05 Full Pre-Final Gate Refresh
+
+- Reran the backend, frontend, and repo hygiene checks after the #3 source-expansion state alignment.
+- Backend pytest, frontend build, and full frontend e2e are green.
+- Added `spec/14-point-human-review-2026-07-05.md` as the short human final-review packet for #3/#10/#11/#13 decisions, GitNexus risk, and commit strategy.
+- `git diff --check` remains clean except for existing LF/CRLF warnings.
+- Secret/database status check remains clean: `backend/.env` and `backend/dossier.db` are not listed; only local `.agents/` is untracked.
+- GitNexus `detect-changes` reports `critical` because this broad integration tree touches central DB/source-registry symbols that fan out into many job flows. Treat this as a required review warning, not as a reason to claim completion.
+- The sprint remains open for #3 V1 source-expansion acceptance, Claude #10/#11 review, #13 acceptance, human final review, and final commit decision.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 24.34s`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 451ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `88 passed (2.6m)`.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `27 files`, `101 symbols`, `54` affected processes.
+
+### Academic Crossref Backend Second Source
+
+- Added and verified the #10 backend second-source academic path:
+  - `backend/app/collectors/crossref.py` collects Crossref works via `query.bibliographic`;
+  - `backend/app/pipeline/academic.py` merges OpenAlex + Crossref by normalized DOI, with title/first-author/year fallback;
+  - paper payloads preserve `sources`, `source_count`, and `source_links`;
+  - Crossref collector failures fail soft so OpenAlex-only results still persist.
+- Hardened the Crossref collector:
+  - encoded DOI path slashes in Crossref work URLs;
+  - removed the placeholder `mailto:research@example.com` from the User-Agent;
+  - added collector-level tests for normalization, request params, User-Agent, 429 retry, and rows capping.
+- This means the academic backend is no longer OpenAlex-only at V1 source-breadth level. The sprint still requires Claude review of Crossref merge semantics and academic-summary citation discipline before #10/#11 can final-green.
+- Updated the academic-summary prompt and `sort_strategy` so they describe the sample as OpenAlex + Crossref. They no longer tell the LLM or UI that the academic sample is OpenAlex-only or OpenAlex top-N only.
+
+### Verification
+
+- GitNexus impact:
+  - `crossref_work_url` -> risk `LOW`;
+  - `File:backend/app/collectors/crossref.py` -> risk `LOW`;
+  - `search_works` was ambiguous across OpenAlex/Crossref, but both candidates reported max risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_crossref_collector.py -q` -> red first for unencoded DOI path and placeholder User-Agent email, then `4 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_run_academic_analysis_keeps_openalex_when_crossref_fails -q` -> `1 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_synthesize_academic_consensus_describes_multi_source_sample -q` -> red first for the stale OpenAlex-only prompt, then `1 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py::test_run_academic_analysis_uses_crossref_when_openalex_has_no_results -q` -> red first for the stale OpenAlex-only `sort_strategy`, then `1 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_crossref_collector.py tests/test_openalex_collector.py -q` -> `8 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py -q` -> `16 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `218 passed, 5 warnings in 29.11s`.
+
+### Acceptance Ledger Status Alignment
+
+- Updated the 14-point acceptance ledger and current-state reset note so they no longer list outdated Claude-review blockers for #2 and #6/#7/#8:
+  - #2 is now recorded as waiting for human final review and the final sprint gate, after Claude's `ready for human final review = YES` reply.
+  - #6/#7/#8 are now recorded as Claude semantic-review PASS, with V1 limitation wording preserved for human final review.
+- Kept #3 and #10 open: classified mainstream-source expansion and the second academic source remain Claude-owned implementation work before the sprint can close.
+
+### Disabled Source Collection Boundary
+
+- Fixed a #3 source-registry boundary: if the registry has rows but all of them are disabled/limited, collection no longer falls back to the raw curated `feeds.json` list.
+- The curated-feed fallback is now only a bootstrap path when the registry is empty.
+- This keeps paywalled/stale/API-only/limited sources visible in the Source Manager without silently collecting them as if they were fresh enabled feeds.
+- This does not implement the actual mainstream source expansion; it only protects the visible-but-not-collected invariant that Claude's source classification work needs.
+
+### Verification
+
+- GitNexus impact:
+  - `collect_topic` -> risk `LOW`.
+  - `File:backend/app/topic_ops.py` -> risk `LOW`.
+  - `File:backend/app/feed_registry.py` -> risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py::test_collect_topic_does_not_fallback_to_curated_feeds_when_registry_sources_are_disabled -q` -> red first because collection fell back to all curated feeds, then `1 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py -q` -> `11 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_topic_ops.py tests/test_api_helpers.py -q` -> `13 passed, 4 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `210 passed, 5 warnings in 18.98s`.
+
+### Source Registry Classified Metadata Persistence
+
+- Added backend persistence and API payload support for classified source metadata:
+  - `SourceRegistry.coverage`
+  - `SourceRegistry.access`
+  - `SourceRegistry.coverage_reason`
+  - `SourceRegistry.last_tested`
+  - `SourceRegistry.state_media`
+- Extended the lightweight SQLite migration and curated-feed seeding so future `feeds.json` entries can carry these fields.
+- Extended source create/import/update/list payloads so the frontend Source Manager can display limited/paywalled/stale/API-only/state-media status from real API data.
+- This closes the schema/payload gap for #3 but does not add the actual mainstream source batch or perform feed freshness testing; Claude still owns classified source expansion.
+
+### Verification
+
+- GitNexus impact:
+  - `SourceRegistry` / `File:backend/app/db.py` -> risk `CRITICAL` because the central DB model is imported broadly; change is additive fields plus migration.
+  - `source_payload` -> risk `LOW`.
+  - `File:backend/app/services/source_registry.py` -> risk `LOW`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py::test_sources_api_preserves_classified_coverage_metadata -q` -> red first for missing `coverage`, then `1 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_source_registry.py -q` -> `10 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_api_helpers.py tests/test_topic_ops.py tests/test_deep_analysis.py -q` -> `26 passed, 5 warnings`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `209 passed, 5 warnings in 41.60s`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `7 passed`.
+- `cd frontend; npm run build` -> passed.
+- `git diff --check -- backend/app/db.py backend/app/services/source_registry.py backend/tests/test_source_registry.py frontend/src/App.vue frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-registry.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Academic Multi-Source Provenance Display
+
+- Added frontend support for future OpenAlex + Crossref academic provenance without touching the then-unfinished backend academic collector work:
+  - optional `sources`, `source_count`, and `source_links` fields on `AcademicPaper`;
+  - Academic panel sample scope now derives and displays sources from the current paper sample, e.g. `OpenAlex + Crossref`;
+  - paper cards show `来源 N`, source labels, and source links such as Crossref.
+- At the time, this prepared #10/#11 UI while keeping the source limitation explicit. That backend limitation is superseded by the later "Academic Crossref Backend Second Source" entry above.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/AcademicPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`, direct import dependents only; fields are optional and backwards-compatible.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/academic-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop academic-panel.spec.ts -g "source provenance"` -> red first for fixed `当前学界样本：OpenAlex`, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `3 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts academic-panel.spec.ts` -> `10 passed`.
+- `cd frontend; npm run build` -> passed.
+- `git diff --check -- frontend/src/components/AcademicPanel.vue frontend/src/types/dossier.ts frontend/tests/e2e/academic-panel.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Source Manager Classified Coverage Display
+
+- Added frontend support for classified source-coverage metadata without touching Claude-owned backend source expansion:
+  - optional `coverage`, `access`, `last_tested`, `coverage_reason`, and `state_media` fields on `SourceRegistry`;
+  - source manager summary now counts limited sources separately from enabled and failed sources;
+  - each source row can show coverage/access labels, tested date, state-media warning, and a human-readable limitation reason.
+- This prepares the UI for #3 classified mainstream-source expansion so WSJ/AFP/Xinhua-style limited sources can remain visible instead of silently disappearing or being misrepresented as fresh full-coverage feeds.
+- The backend still needs Claude's actual source expansion/classification; this slice only proves the frontend can present those fields once the API returns them.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`, direct import dependents only; fields are optional and backwards-compatible.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/source-registry.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts -g "classified source coverage"` -> red first for missing `摘要源`, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `7 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts --workers=1` -> `15 passed`.
+- `cd frontend; npm run build` -> passed.
+- `git diff --check -- frontend/src/App.vue frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-registry.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Backend And GitNexus Baseline Refresh
+
+- Reran backend full pytest after the latest #2/#6-#12 coordination updates.
+- Reindexed GitNexus because the index was stale at `d028496` while the current commit is `5ed0022`.
+- The latest detect-changes result is now low risk with no affected processes.
+- Reran full `git diff --check` after reviewing Claude's #3/#10 plan; no whitespace errors were reported, only existing LF/CRLF warnings.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 52.41s`.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully at current commit `5ed0022`; FTS unavailable warning only.
+- `node .gitnexus/run.cjs status` -> up-to-date at current commit `5ed0022`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `low`, `13 files`, `13 symbols`, `0` affected processes.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+
+### #3/#10 Source-Layer Plan Review
+
+- Reviewed Claude's combined #3 mainstream-source expansion and #10 academic second-source plan.
+- Accepted the classified expansion direction and Crossref as the preferred lightweight second academic source.
+- Recommended a small schema refinement: keep `coverage` for freshness/content path, add `access` or at least `coverage_reason` for user-visible limitations.
+- Recommended that RT/TASS-style state-media sources may be included only with explicit state-media/stance warning and never as neutral authority ranking.
+
+### Codex-Owned Frontend Retest
+
+- Reran the high-risk Codex-owned frontend slice after reading the latest `TO_CODEX.md`.
+- The retest covers parent-context drilldown, selected-event fallback drilldown, stale refresh context, auto-refresh status/run UI, media stance trend, small-sample downgrade, event network semantics, selected-node inline detail, LLM-refresh reuse, sentiment timeline/OpenCLI diagnostics, and cognition cards.
+- This is frontend evidence only; it does not close Claude-owned #3 mainstream source expansion, #10 academic second source, or semantic/source review.
+
+### Verification
+
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `27 passed (50.8s)`.
+- `cd frontend; npm run build` -> passed (`vue-tsc -b && vite build`; built in 428ms).
+- `cd frontend; npm run test:e2e -- --workers=1` -> `84 passed (2.5m)`.
+
+### Cognition Card Importance Label
+
+- Renamed the boundary-card motivation label from `推荐原因` to `为什么现在重要`.
+- This keeps the existing recommendation logic but makes the card answer the user's stated question directly: why this seed is worth reading now.
+- The card still shows summary, report connection, deep-dive reason, suggested path, profile evidence, and analysis workflow.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/DiscoveryPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/discovery-cognition.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop discovery-cognition.spec.ts -g "seed summary"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop discovery-cognition.spec.ts` -> `6 passed`.
+- `cd frontend; npm run build` -> passed.
+
+### Sentiment Timeline Evidence Label
+
+- Added an explicit `代表样本` label before representative post links in the sentiment timeline.
+- This makes each platform/time/frame bucket easier to audit: the timeline now visibly ties platform, time, sample count, confidence, and representative posts together.
+- Kept the product boundary unchanged: this is still sample-level sentiment evidence, not whole-network public opinion.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/SentimentPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/sentiment-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop sentiment-panel.spec.ts -g "sentiment change timeline"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop sentiment-panel.spec.ts` -> `3 passed`.
+- `cd frontend; npm run build` -> passed.
+
+### Event-Detail Drilldown Fallback
+
+- Added an inline fallback drilldown in selected event details:
+  - when backend subtopic/analogue suggestions are absent, the event detail still shows `围绕此事件`;
+  - clicking the fallback searches with parent topic context, e.g. `俄乌战争 前线态势更新`, instead of a naked event phrase;
+  - existing suggested subtopic chips keep their current behavior.
+- This tightens #2/#9 without touching backend/source/academic files.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/components/MediaPanel.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/composables/useJobRunner.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/contextual-drilldown.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts -g "event-title drilldown"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts` -> `3 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "selected event detail|event structure tree|local evidence edges"` -> `3 passed` after rerunning serially; an earlier parallel run failed from dev-server port refusal.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `15 passed`.
+- `cd frontend; npm run build` -> passed.
+
+### Acceptance Ledger Status Cleanup
+
+- Cleaned stale #2 wording in the acceptance ledger and current-state handoff:
+  - backend-running auto-refresh is now recorded as implemented and verified in the latest gate;
+  - the remaining #2 action is Claude's explicit `ready for human final review: yes/no` plus human final review;
+  - #3 mainstream source expansion and #10 academic second-source breadth remain open.
+- No business code changed.
+
+### Verification
+
+```powershell
+rg -n "still needs to implement|implementation remain|can become `Done` after implementation|backend auto-refresh work|backend auto-refresh,|final-green|#2 backend auto-refresh" spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/14-point-remaining-decisions-2026-07-04.md .agent-bridge/BOARD.md
+git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/CHANGELOG.md
+```
+
+### Full Gate After Auto-Refresh Frontend Wiring
+
+- Reran the main acceptance gate after the auto-refresh frontend status UI and e2e were added.
+- Reindexed GitNexus because `status` initially reported a stale index at `8731f0e` while the current commit was `d028496`.
+- The refreshed `detect-changes` result is now risk `medium`, not the earlier stale-index result; it reports one affected execution flow and no high/critical warning.
+- Kept the sprint open: source expansion (#3), academic second source (#10), and Claude semantic/source reviews (#6/#7/#8/#11/#13) remain unresolved despite the green gate.
+
+### Verification
+
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings in 39.31s`.
+- `cd frontend; npm run build` -> passed.
+- `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+- `git diff --check` -> pass with existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`.
+- `node .gitnexus/run.cjs analyze` -> repository indexed successfully; FTS extension unavailable warning only.
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `d028496`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `medium`, `16 files`, `45 symbols`, `1` affected execution flow (`RunCrossSynthesis -> FetchCrossSynthesis`).
+
+### Auto-Refresh Frontend Status
+
+- Wired the frontend to the backend auto-refresh status API:
+  - `GET /api/auto-refresh/status` is shown in the topic summary area;
+  - `POST /api/auto-refresh/run` can be triggered from the same status strip;
+  - status shows enabled/running state, last finish time, news refresh count, frontier refresh, skipped active jobs, and per-topic errors;
+  - failures are displayed inline without breaking topic reading.
+- Kept the existing stale-topic manual collection fallback. The auto-refresh run button does not rewrite the search box, switch topics, or drop the current topic context.
+- Kept the sprint open: #2 still needs Claude line-1 backend final verification and a full sprint gate before final-green; #3/#10/#11/#13 remain unresolved.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/api/dossierApi.ts" --direction upstream --include-tests` -> risk `MEDIUM`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/src/types/dossier.ts" --direction upstream --include-tests` -> risk `MEDIUM`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "auto-refresh status"` -> red first, then `1 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `15 passed`.
+- `cd frontend; npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `26 passed`.
+- `cd frontend; npm run build` -> passed.
+- `cd frontend; npm run test:e2e -- --workers=1` -> `82 passed (2.8m)`.
+- `git diff --check -- frontend/src/App.vue frontend/src/api/dossierApi.ts frontend/src/types/dossier.ts frontend/src/style.css frontend/tests/e2e/source-matrix.spec.ts` -> pass with existing LF/CRLF warnings only.
+
+### Auto-Refresh Backend Review
+
+- Reviewed the backend-running auto-refresh implementation that is now present in the working tree:
+  - `backend/app/services/auto_refresh.py`
+  - `backend/app/config.py`
+  - `backend/app/api.py`
+  - `backend/tests/test_auto_refresh.py`
+- Verified the core behavior:
+  - stale active topics are refreshed with `collect_topic(... use_curated_feeds=True)` followed by local `analyze_topic(... persist=True)`;
+  - empty/fresh/archived topics are skipped;
+  - active jobs cause topic skip;
+  - frontier refresh uses `run_and_save(annotate=False)`;
+  - no LLM/OpenCLI/academic/sentiment/cross-synthesis auto-run path is exercised in tests.
+- Sent review notes to `.agent-bridge/TO_CLAUDE.md` instead of editing Claude-owned backend files:
+  - topic-level auto-refresh failures are isolated but not yet exposed in status;
+  - synchronous `refresh_once()` can return a snapshot with `running=True`.
+- Claude later fixed both review findings:
+  - topic-level failures now surface through `news_errors`;
+  - synchronous `refresh_once()` returns after `running=False`.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/services/auto_refresh.py" --direction upstream --include-tests` -> target not indexed yet, risk `UNKNOWN`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/api.py" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `node .gitnexus/run.cjs impact -r message-platform "File:backend/app/config.py" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_auto_refresh.py -q` -> `8 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest tests/test_api_helpers.py tests/test_discovery.py tests/test_source_registry.py -q` -> `56 passed`.
+- `cd backend; ..\venv\Scripts\python.exe -m pytest -q` -> `208 passed, 5 warnings`.
+- `git diff --check -- backend/app/config.py backend/app/api.py backend/app/services/auto_refresh.py backend/tests/test_auto_refresh.py` -> pass with existing LF/CRLF warning only.
+
+### 14-Point Sprint Decision Update
+
+- Updated the 14-point acceptance and remaining-decision documents after the latest Claude inbox:
+  - #2 now records the human decision to implement option B, backend-running auto refresh for news/frontier;
+  - #3 no longer closes as an accepted V1 limitation, because the human requested broader mainstream source expansion;
+  - #3 now requires classified source expansion that distinguishes fresh public RSS from paywalled, API/license-only, stale-RSS, summary-only, or Google-News-proxy-only sources.
+- Wrote the updated split plan to `.agent-bridge/TO_CLAUDE.md` and synced `.agent-bridge/BOARD.md`.
+- No business code changed in this coordination update.
+
+### Verification
+
+- Read latest `.agent-bridge/TO_CODEX.md`, `.agent-bridge/BOARD.md`, `spec/14-point-acceptance-2026-07-04.md`, and `spec/14-point-remaining-decisions-2026-07-04.md`.
+- Ran quick source availability checks for WSJ/Guardian/AFP/Xinhua-style feeds to inform the classification plan; results are recorded in `spec/14-point-remaining-decisions-2026-07-04.md`.
+
+### Academic Source Scope Boundary
+
+- Added a visible academic source-scope note to the Academic panel:
+  - current academic sample is OpenAlex;
+  - academic review citations must keep author, year, venue, DOI or source link;
+  - literature network only shows sample-internal citations and does not represent the full academic lineage.
+- Kept #10 strict: this does not add Crossref/Semantic Scholar/arXiv and does not make OpenAlex-only final-green.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/AcademicPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/academic-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop academic-panel.spec.ts -g "priority-reading"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `2 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Source Manager Coverage Mix
+
+- Added a visible source mix summary to the source manager:
+  - quality-tier mix, ordered by source quality tier such as `wire`, `professional`, `mainstream`, `newsletter`, `research`, and `user`;
+  - source-type mix such as `rss`.
+- This strengthens #3's user-facing explanation for "why did media resources become fewer" by making the current source composition inspectable beside total/enabled/failed counts and latest success time.
+- Kept the limitation explicit: this is source-status transparency, not full crawler coverage or same-event G20 reporting.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts -g "coverage mix"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `6 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Source-Ingestion Guide V1
+
+- Added a visible source-ingestion guide to the source manager:
+  - RSS / Newsletter / Google Alerts feed URLs enter the source registry and local pre-analysis path;
+  - B站视频 / webpage links are treated as V1 leads or platform samples, not full video-transcript ingestion;
+  - failed-source causes remain visible in the source status table.
+- Kept the boundary explicit for #13: this improves the user-facing ingestion path, but does not implement Bilibili transcript review, Filo Mail integration, or a general web crawler.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, impactedCount `0`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/source-registry.spec.ts" --direction upstream --include-tests` -> target not found in index; treated as e2e-only verification target.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts -g "source-ingestion path"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `5 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Codex High-Risk Frontend Retest After Latest Inbox Read
+
+- Reread the latest `TO_CODEX.md`, acceptance matrix, remaining-decision packet, and current-state snapshot.
+- Confirmed there was no new Claude decision after the #5/#2 freshness letter.
+- Rechecked the Codex-owned high-risk frontend paths without touching backend/source/academic files:
+  - parent-context drilldown and selected-event drilldown;
+  - stale refresh context;
+  - media stance trend and small-sample downgrade;
+  - event network semantics and selected-node inline detail;
+  - LLM-refresh reuse;
+  - sentiment timeline/OpenCLI diagnostics;
+  - cognition cards.
+- Kept the sprint open because the remaining blockers are still #2 backend auto-refresh, #3/#13 source scope, #6/#7/#8 semantic acceptance, and #10/#11 academic source breadth.
+
+### Verification
+
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `25 passed (49.2s)`.
+
+### Stage 5 Full Gate Refresh
+
+- Reran the stage-5 verification gate for the current 14-point integration tree.
+- Updated `spec/14-point-acceptance-2026-07-04.md` and `spec/current-state.md` with fresh pass counts.
+- Updated `spec/14-point-remaining-decisions-2026-07-04.md` to use the same fresh pass counts.
+- Added a `Final Status Projection` table to both the acceptance matrix and remaining-decision packet so reviewers can see which items are decision-bound rather than test-bound.
+- Kept the sprint open because the remaining blockers are still product-scope decisions/reviews:
+  - #2 backend auto-refresh A/B/C;
+  - #3/#13 source-ingestion V1 scope;
+  - #6/#7/#8 Claude semantic review;
+  - #10/#11 second academic source versus OpenAlex-only V1 limitation.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings in 13.40s`.
+- `cd frontend && npm run build` -> passed (`vue-tsc -b && vite build`; built in 396ms).
+- `cd frontend && npm run test:e2e -- --workers=1` -> `76 passed (2.3m)`.
+- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
+- `node .gitnexus/run.cjs status` -> index up-to-date at current commit `8731f0e`.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes; broad cumulative 14-point integration tree.
+
+### Codex Frontend Focused Retest After Bridge Plan
+
+- Rechecked the Codex-owned high-risk frontend paths after reading the latest Claude inbox and writing the auto-refresh split plan back to `TO_CLAUDE.md`.
+- Coverage included parent-context drilldown, selected-event drilldown, stale refresh context, media stance trend and small-sample downgrade, event network semantics, selected-node inline detail, LLM-refresh reuse, sentiment timeline/OpenCLI diagnostics, and cognition cards.
+- Updated `spec/14-point-acceptance-2026-07-04.md` and `spec/current-state.md` with the fresh evidence.
+- Kept the sprint open: #2 backend auto-refresh, #10 academic second source/OpenAlex-only decision, and #3/#13 source scope still require human/Claude decisions.
+- Added a short `Human Decision Brief` to `spec/14-point-remaining-decisions-2026-07-04.md` so the remaining choices can be answered without rereading the full packet.
+- Synced `.agent-bridge/BOARD.md` with the latest 14-point sprint truth so Claude/Codex do not continue from the older 2026-07-03 goals.
+
+### Verification
+
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `25 passed (49.3s)`.
+- `git diff --check -- spec/14-point-remaining-decisions-2026-07-04.md spec/CHANGELOG.md` -> exit 0.
+- `git diff --check -- spec/current-state.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Source And Academic Read-Only Evidence Audit
+
+- Extended `spec/14-point-remaining-decisions-2026-07-04.md` with Codex's read-only evidence audit for #3/#10/#11/#13.
+- Evidence reviewed:
+  - source registry service, feed registry, curated feeds, source registry backend tests, and source-registry e2e;
+  - academic pipeline, academic backend tests, academic UI, and academic e2e.
+- Conclusions:
+  - #3 has enough evidence for `V1 Done with known limitation` if full crawler/paywalled exclusives/G20 same-event coverage are deferred;
+  - #10 metadata/prompt/UI is V1-ready, but source breadth remains OpenAlex-only;
+  - #11 UI readability is V1-ready but inherits #10's source limitation;
+  - #13 RSS/newsletter/Google Alerts import is V1-ready if video ingestion is deferred.
+- GitNexus MCP resource read failed with MCP startup handshake failure in this session; this was a read-only audit using current files/tests instead.
+
+### Verification
+
+- `git diff --check -- spec/14-point-remaining-decisions-2026-07-04.md spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/CHANGELOG.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Remaining Decision Packet
+
+- Added `spec/14-point-remaining-decisions-2026-07-04.md` as the decision packet for the open 14-point sprint blockers.
+- The packet turns the remaining #2/#3/#6/#7/#8/#10/#11/#13 blockers into explicit options, recommended decisions, known limitations, final status mapping, and ownership boundaries.
+- Linked the packet from `spec/README.md`, `spec/current-state.md`, and `spec/14-point-acceptance-2026-07-04.md`.
+
+### Verification
+
+- `git diff --check -- spec/14-point-remaining-decisions-2026-07-04.md spec/README.md spec/current-state.md spec/14-point-acceptance-2026-07-04.md spec/CHANGELOG.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Codex Semantic Self-Audit
+
+- Ran a focused semantic scan over Codex-owned media, event-network, sentiment, and cognition UI copy/tests.
+- Confirmed the current UI boundaries for #6/#7/#8:
+  - media stance timeline is framed as `报道样本` and explicitly says it does not represent public opinion;
+  - small media samples downgrade to distribution-only with `当前样本只能显示立场分布`;
+  - sentiment timeline is labeled `样本趋势，非事实时间线`, with `小样本线索` for tiny buckets;
+  - event network is labeled `本地证据边，不显示 LLM 因果假设`;
+  - narrative convergence remains `不代表事实真假或操控判定`.
+- Kept Claude semantic review open; this is Codex self-audit evidence, not independent acceptance.
+
+### Verification
+
+- `rg -n "导致|证明|根因|因果" frontend/src/components frontend/tests/e2e spec/14-point-acceptance-2026-07-04.md spec/current-state.md` -> matches only negative/boundary wording for `因果`.
+- `rg -n "不代表|非事实|样本趋势|小样本|本地证据边|不显示 LLM 因果假设|当前样本只能|占比" frontend/src/components/MediaPanel.vue frontend/src/components/SentimentPanel.vue frontend/tests/e2e/source-matrix.spec.ts frontend/tests/e2e/sentiment-panel.spec.ts` -> found the expected boundary copy and test assertions.
+
+### Completion Audit Clarification
+
+- Added a `Completion Audit - Still Open` section to `spec/14-point-acceptance-2026-07-04.md`.
+- Clarified that the fresh full gate is green, but sprint completion remains open because of decision/review items rather than missing Codex-owned frontend evidence:
+  - #2 backend auto-refresh option;
+  - #3 news/source quality scope;
+  - #6/#7/#8 pseudo-trend and pseudo-causality review;
+  - #10 second academic source or human-accepted OpenAlex-only V1 limitation;
+  - #11 literature-network source hygiene;
+  - #13 source-ingestion scope.
+- Updated `spec/current-state.md` with the same completion boundary so future agents do not loop on already-passing tests.
+
+### Verification
+
+- `git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/current-state.md spec/CHANGELOG.md .agent-bridge/TO_CLAUDE.md` -> exit 0.
+
+### Fresh Full Gate Rerun
+
+- Reran the sprint-level acceptance gate after the latest Codex frontend retest.
+- The gate strengthens the evidence for the integrated 14-point repair tree, but it does not close remaining product decisions:
+  - #2 backend auto-refresh still needs the human A/B/C decision;
+  - #3/#10/#11/#13 still need Claude review or implementation for source/academic/source-ingestion scope.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings in 22.21s`.
+- `cd frontend && npm run build` -> passed.
+- `cd frontend && npm run test:e2e -- --workers=1` -> `76 passed (2.3m)`.
+- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db .agent-bridge .agents` -> only `?? .agents/`; no `.env`, DB, or bridge file was staged/tracked.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes; expected for the broad cumulative 14-point repair integration tree.
+
+### Codex Frontend Retest
+
+- Reran the Codex-owned frontend acceptance slice for the 14-point sprint:
+  - project/topic CRUD;
+  - contextual drilldown with parent topic context;
+  - stale refresh using the current topic context;
+  - media stance trend evidence and small-sample downgrade;
+  - event network and selected-node inline detail;
+  - LLM analysis retained after single-panel refresh;
+  - sentiment timeline/OpenCLI diagnostics UI;
+  - cognition cards, report connection, and deeper path.
+- This refresh strengthens the evidence for #1/#2/#4/#6/#7/#8/#9/#12, but it does not close backend/source/academic decisions.
+
+### Verification
+
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `31 passed` in 49.8s.
+
+### Acceptance Ledger Status Cleanup
+
+- Updated `spec/14-point-acceptance-2026-07-04.md` after the fresh recorded full-gate evidence:
+  - #1, #4, and #9 now use plain `Done` instead of `Done, pending final full gate`;
+  - #12 now uses `V1 Done with known limitation`, with long-term profile calibration kept as future work;
+  - #5 now explicitly separates the completed Windows OpenCLI runner/diagnostics fix from platform-login/session failures that may remain `Blocked by external account/API`.
+- Refreshed the dirty worktree snapshot in `spec/current-state.md` so the newly added acceptance ledger is visible in the frozen state.
+- Kept the sprint open: #2 backend auto-refresh still requires the human A/B/C decision, and #3/#10/#11/#13 still require Claude review or implementation.
+
+### Verification
+
+- `git diff --check -- spec/14-point-acceptance-2026-07-04.md spec/CHANGELOG.md spec/current-state.md` -> exit 0.
+- `rg -n "pending final full gate|Needs final full gate" spec/14-point-acceptance-2026-07-04.md` -> no matches.
+
+### Academic UI Verification Boundary
+
+- Reverified the Codex-owned frontend side of #10/#11 without changing backend collectors:
+  - academic paper cards expose authors/citation text, year, venue, DOI link, and OpenAlex link;
+  - priority-reading signals remain neutral (`高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`);
+  - literature network renders readable nodes and explicit `引用` edges instead of an unreadable citation-chip graph.
+- At the time, kept the source limitation explicit: the academic collector was still OpenAlex-only. That limitation is superseded by the later "Academic Crossref Backend Second Source" entry above.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/AcademicPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/academic-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop academic-panel.spec.ts` -> `2 passed`.
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_academic_layer.py -q` -> `12 passed, 3 warnings`.
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `200 passed, 3 warnings`.
+- `cd frontend && npm run test:e2e -- --workers=1` -> `76 passed`.
+- `cd frontend && npm run build` -> passed.
+- `git diff --check` -> exit 0, existing LF/CRLF warnings only.
+- `git status --short -- backend/.env backend/dossier.db` -> no output.
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `281 symbols`, `75` affected processes; expected for the broad cumulative 14-point repair integration tree.
+
+### Media Stance Share Trend
+
+- Strengthened the media stance timeline for the 14-point sprint:
+  - each major trend now shows article-count change and sample-share change, for example `占比 0% → 56%`;
+  - the trend card still shows turning period, driving sources, and representative reports;
+  - tiny samples downgrade to distribution-only instead of presenting a false trend;
+  - wording remains limited to media-report samples, not full public opinion.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/MediaPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "summarizes media stance"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "degrades media stance"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `14 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Sentiment Timeline Small-Sample Marker
+
+- Strengthened the community sentiment timeline for #6:
+  - timeline buckets with fewer than 3 samples now show `小样本线索`;
+  - the timeline still keeps platform, time bucket, sample count, confidence, dominant frame, sentiment label, and representative posts visible;
+  - this keeps partial community signals inspectable without pretending they are broad public-opinion trends.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/components/SentimentPanel.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `App.vue`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/sentiment-panel.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop sentiment-panel.spec.ts -g "sentiment change timeline"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop sentiment-panel.spec.ts` -> `3 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts source-registry.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `35 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Freshness Stale-State Warning
+
+- Added a frontend stale-state warning for old topic data:
+  - labels `latest_published_at` as the local last collected time when it is older than the freshness threshold;
+  - explicitly says this does not mean the outside world has no newer reports;
+  - provides a manual `刷新采集` fallback that reuses the existing search/collection action.
+- Fixed the manual fallback to use the current topic query/name explicitly, so a residual value in the search box cannot refresh the wrong topic.
+- This does not implement backend auto-refresh. The backend scheduling direction still requires the human A/B/C decision from the 14-point sprint plan.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/tests/e2e/source-matrix.spec.ts" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "explains stale"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts -g "refreshes stale"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-matrix.spec.ts` -> `13 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Source Manager Status Summary
+
+- Added a frontend source-manager summary for the active 14-point sprint:
+  - total registered sources;
+  - enabled source count;
+  - failed source count;
+  - latest successful fetch time;
+  - up to three failed-source reasons.
+- Kept this as a UI explainability slice only. It does not claim that news-source quality, same-event G20 coverage, or crawler expansion is final; those remain under Claude review for #3.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact --repo message-platform "File:frontend/src/App.vue" --direction upstream --include-tests` -> risk `LOW`, direct upstream `0`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts -g "summarizes source coverage"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop source-registry.spec.ts` -> `4 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts project-management.spec.ts source-registry.spec.ts cross-synthesis-reuse.spec.ts job-topic-race.spec.ts source-matrix.spec.ts sentiment-panel.spec.ts discovery-cognition.spec.ts` -> `32 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### 14-Point Sprint Acceptance Ledger
+
+- Added `spec/14-point-acceptance-2026-07-04.md` as the active acceptance ledger for the 14-point feedback repair sprint.
+- Updated `spec/current-state.md` and `spec/README.md` to point future agents to the ledger before relying on older audit summaries.
+- The ledger explicitly keeps freshness/automatic update as pending human decision and source/academic items as pending Claude review, so the sprint is not accidentally declared complete from targeted frontend evidence.
+- Tightened #10 after code inspection: the academic layer still calls OpenAlex as the only paper collector, so the user's "OpenAlex 是否单薄" concern remains pending Claude implementation/review unless the human accepts it as a known limitation.
+- Added event-detail contextual drilldown: the selected event inline detail now shows `继续下钻` / `历史相似` chips and reuses the existing parent-context search behavior.
+
+### Verification
+
+- `git diff --check -- spec/14-point-acceptance-2026-07-04.md` -> exit 0.
+- `rg -n "Crossref|Semantic Scholar|arXiv|OpenAlex" backend frontend/src spec backend/config -S` and source inspection confirmed arXiv is used for discovery/frontier, not as a second academic-layer collector.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts -g "selected event detail"` -> red first, then `1 passed`.
+- `cd frontend && npm run test:e2e -- --project=desktop contextual-drilldown.spec.ts source-matrix.spec.ts` -> `13 passed`.
+- `cd frontend && npm run build` -> passed.
+
+### Independent Follow-Up Audit
+
+- Addressed Claude's independent audit findings on the 14-point repair tree:
+  - fixed async topic switching races for academic, sentiment, and cross-synthesis jobs;
+  - fixed discovery timeline tree item selection so branches over the display limit keep the latest report run;
+  - changed event-network shared evidence edges from directional arrows to symmetric links.
+- Added regression coverage:
+  - `frontend/tests/e2e/job-topic-race.spec.ts`
+  - `backend/tests/test_discovery.py::test_timeline_tree_items_prefer_latest_runs_when_branch_exceeds_limit`
+  - stronger event-network edge assertions in `frontend/tests/e2e/source-matrix.spec.ts`
+- Updated audit reports to replace the earlier "no new bug found" conclusion with the independent follow-up result.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `198 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- --workers=1` -> `62 passed`
+- `git diff --check` -> exit 0, with existing LF-to-CRLF warnings only
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `47 files`, `261 symbols`, `75` affected processes; still explained as cumulative 14-point repair scope plus follow-up fixes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+## 2026-07-03
+
+### Audit
+
+- Added whole-repository self-audit deliverables:
+  - `spec/self-audit-2026-07-03.md`
+  - `spec/debug-audit-2026-07-03.md`
+  - `spec/redundancy-audit-2026-07-03.md`
+  - `spec/regression-audit-2026-07-03.md`
+  - `spec/final-audit-2026-07-03.md`
+- Confirmed the 14 feedback items have code, UI, and test evidence or documented V1 residual risk.
+- Ran a systematic debug pass over search/local analysis, deep analysis/evidence package, academic/OpenAlex, sentiment/OpenCLI/HN/Reddit, cross-synthesis reuse, and project/topic CRUD.
+- Chose not to apply business-code refactors during Phase 3 because the current repair diff is already large and core search impact is GitNexus CRITICAL.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `197 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- --workers=1` -> `56 passed`
+- `git diff --check` -> exit 0, with existing LF-to-CRLF warnings only
+- `node .gitnexus/run.cjs status` -> index up-to-date at `8731f0e`
+- `node .gitnexus/run.cjs detect-changes --repo message-platform --scope all` -> risk `critical`, `45 files`, `253 symbols`, `68` affected processes; explained as cumulative 14-point repair scope
+- `git check-ignore -v backend/.env backend/dossier.db` -> both ignored
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Documentation
+
+- Added `spec/current-state.md` as the context reset point for future agents:
+  - records the current product positioning;
+  - separates implemented, partially implemented, deferred, and current working-tree items;
+  - captures the latest verification baseline without treating it as future proof;
+  - names the next iteration candidates.
+- Updated `spec/README.md` so `spec/current-state.md` is read immediately after `AGENTS.md`.
+- Updated `spec/project.md` to reflect the shift from an event-intelligence desk toward a cognition-expansion workbench.
+- Updated `spec/roadmap.md` to point to the context reset document and to preserve the narrative-calibration positioning.
+
+### Verification
+
+- `git diff --check` -> exit 0, with existing LF-to-CRLF warnings only.
+- `git status --short` -> confirmed this cleanup only added/changed `spec/` docs on top of the existing uncommitted implementation files.
+
+### Added
+
+- Implemented cognition-profile calibration V1:
+  - expanded local cognition profile fields with `depth`, `interest`, `confidence`, `evidence`, and `recommended_seed_style`;
+  - added a broader default domain universe covering AI infrastructure, finance, macro finance, open source, energy/electricity, biotech, crypto, geopolitics, industrial policy, law/regulation, social structure, engineering infrastructure, and media literacy;
+  - kept `level` and `note` compatible with existing profile rows;
+  - added lightweight SQLite column migration and per-domain backfill for legacy profile rows.
+- Strengthened the discovery boundary queue:
+  - ranks seeds with local profile fields instead of only fixed keyword order;
+  - shows profile evidence and confidence on each boundary card;
+  - adds local workflow prompts such as mechanism tracing, financial-model checks, macro liquidity framing, risk checks, paper checks, project evaluation, and rhetoric-pressure checks.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `7 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `177 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `10 passed`
+- `cd frontend && npm run test:e2e` -> `30 passed`
+
+### Planning
+
+- Added the next cognition direction to `spec/roadmap.md`:
+  - cognition-profile calibration should be repeated and lightweight, not a single long questionnaire;
+  - each profile item should track `depth`, `interest`, `confidence`, `evidence`, and `recommended_seed_style`;
+  - the profile must be calibrated by later behavior such as `我懂了`, `存疑`, `深入`, skipped domains, and repeated interests;
+  - future calibration should use a domain universe instead of only the current AI/finance/geopolitics core.
+- Defined a layered domain-universe planning target:
+  - intelligence core: AI infrastructure, open-source ecosystems, finance/accounting, macro finance, energy/electricity, geopolitics/industrial policy, media literacy;
+  - expansion layer: law/regulation, social structure/demographics, science foundations, biotech/health, cybersecurity/defense, culture/media, organization/management;
+  - naturalist layer: geography/resources, history/institutions, philosophy/thought history, anthropology/social psychology, engineering/infrastructure.
+- Kept the calibration target non-diagnostic:
+  - no scores;
+  - no personality labels;
+  - no claim that a short test fully maps the user;
+  - use the result as editable recommendation evidence only.
+
+### Added
+
+- Implemented discovery report archive V1:
+  - added read-only backend archive APIs for report list, report detail, and local timeline tree;
+  - kept `/api/discovery/latest` unchanged while reusing the same safe report reader;
+  - frontend now shows a compact archive selector in the intelligence desk;
+  - selecting an older report loads archived markdown/seeds without starting a new discovery job.
+- Implemented local cognition timeline tree V1:
+  - groups archived discovery seeds across reports by local domain evidence;
+  - only emits branches with evidence from at least two report run IDs;
+  - caps visible branch items and keeps at least two run IDs visible when a branch qualifies;
+  - labels the panel as local similarity, not a causal chain.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_discovery.py -q` -> `38 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `175 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `8 passed`
+
+### Planning
+
+- Strengthened the next product direction around a **local-first intelligence desk**:
+  - historical `认知前沿日报` should be browsable instead of only showing the latest report;
+  - `认知时间树` should connect seeds/events across days with local evidence before any LLM explanation;
+  - no-LLM mode should support useful classification, collection, archive browsing, query/search, and evidence retrieval.
+- Updated `spec/roadmap.md`:
+  - current priority now names the local-first intelligence desk foundation;
+  - near-term work includes discovery archive V1, local cognition timeline tree V1, and local query/search direction;
+  - local capability boundary is treated as a product target, not only a warning label.
+- Updated `spec/discovery-archive-cognition-timeline-design.md`:
+  - added `Local-First Operating Mode`;
+  - added local-mode acceptance criteria;
+  - clarified that local branches use evidence such as domain, domain label, source/domain, URL reuse, keyword overlap, and repeated signals.
+- Updated `spec/local-capability-boundary.md`:
+  - reframed no-LLM mode as a usable local intelligence workbench;
+  - added local archive, classification, cross-day connection, query/filter, and partial-result preservation goals.
+
+### Verification
+
+- Documentation-only change.
+- `git diff --check` -> exit 0.
+
+## 2026-07-02
+
+### Fixed
+
+- Clarified the Media-tab event structure tree semantics:
+  - renamed the misleading `触发/行动` node to `入选/归类依据`;
+  - keeps the node tied to event classification / selection basis, not causal triggers;
+  - adds an always-visible caveat that the node does not represent the event trigger cause;
+  - adds panel-level copy that nodes are parallel reading slices, not a timeline or causal chain;
+  - makes source-matrix branch details include the actual branch label.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/MediaPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/tests/e2e/source-matrix.spec.ts" -d upstream --include-tests` -> risk LOW, no upstream dependents
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED after test update, missing new boundary copy
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED after first implementation, node caveat only existed on fallback path
+- `cd frontend && npm run test:e2e -- source-matrix` -> `14 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `24 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk LOW, 5 files, 7 symbols, 0 affected processes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Planning
+
+- Added `spec/discovery-archive-cognition-timeline-design.md`:
+  - records the user request that `认知前沿日报` should expose older dates, not only the latest report;
+  - records the next design direction for a local-first `认知时间树` that links today's seeds/events with previous daily reports;
+  - keeps V1 read-only and archive-first, with optional LLM explanations deferred until local links are useful;
+  - requires every cross-day link to show evidence and avoid causal language.
+- Updated `spec/README.md` to link the new design note.
+- Updated `spec/roadmap.md`:
+  - added discovery archive V1 as a near-term candidate;
+  - added cross-day cognition timeline tree as design-first work;
+  - clarified that the immediate code candidate before new features is the event-structure semantic fix.
+
+### Verification
+
+- `git diff --check` -> exit 0
+- `git status --short` -> only `spec/` documents changed
+
+### Added
+
+- Implemented Media-tab event structure tree V1:
+  - added a default-collapsed `事件结构树` panel derived only from existing frontend payload data;
+  - groups the selected event into current node, trigger/action, source-matrix branches, narrative similarity, key objects, and stance changes when data exists;
+  - keeps a boundary note that the structure is a reading aid, not a causal judgement;
+  - no backend/API/DTO/LLM changes.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/MediaPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED before implementation, missing `事件结构树`
+- `cd frontend && npm run test:e2e -- source-matrix` -> `14 passed`
+
+### Planning
+
+- Updated `spec/roadmap.md` so the next implementation candidate is academic reading-map V1, while event tree V1 moves into observation/tuning.
+
+### Planning
+
+- Added `spec/event-tree-literature-graph-design.md`:
+  - separates event tree, academic literature graph, and cognition map;
+  - defines text-first V1 shapes before any visual graph work;
+  - lists existing data sources for media event structure and academic reading maps;
+  - keeps V1 no-LLM, no new backend/API, and no graph library by default.
+- Updated `spec/README.md` to link the new design note.
+- Updated `spec/roadmap.md` so the next direction is design-first event tree / academic literature graph planning.
+
+### Verification
+
+- `git diff --check` -> exit 0
+- `git status --short` -> only `spec/` documents changed after the narrative-convergence commit
+
+### Committed
+
+- Committed `4e25c38` (`feat(media): clarify narrative convergence signals`):
+  - media narrative-convergence signals now render as compact evidence cards;
+  - the panel uses neutral `相似说法` wording and keeps a boundary note that these are similarity signals, not truth or manipulation judgements;
+  - no backend/API/LLM changes.
+
+### Verification
+
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- source-matrix` -> `12 passed`
+- `cd frontend && npm run test:e2e` -> `22 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk LOW, 4 files, 2 symbols, 0 affected processes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Added
+
+- Clarified the Media tab narrative-convergence signals:
+  - changed each topic-local signal into a compact evidence card with neutral `相似说法` labeling;
+  - shows source count, article count, time span, source chips, and representative titles from existing payload fields;
+  - keeps an explicit boundary note that convergence is a same-topic similarity signal, not a truth or manipulation judgement;
+  - no backend/API/LLM changes.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/MediaPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- source-matrix` -> RED before implementation, missing `相似说法`
+- `cd frontend && npm run test:e2e -- source-matrix` -> `12 passed`
+
+### Added
+
+- Added platform coverage status to the Sentiment tab:
+  - shows attempted community platforms as compact chips: `有样本`, `暂不可用`, or `已尝试无样本`;
+  - labels Hacker News as public API and Chinese OpenCLI platforms as requiring Chrome login state;
+  - keeps community samples framed as sentiment signals, not facts, with no backend/API changes.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/SentimentPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- sentiment-panel` -> RED before implementation, missing `.sentiment-platform-coverage`
+- `cd frontend && npm run test:e2e -- sentiment-panel` -> `2 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `20 passed`
+
+### Added
+
+- Documented the no-LLM local capability boundary:
+  - added `spec/local-capability-boundary.md`;
+  - linked it from `spec/README.md`;
+  - added a compact local capability note to the LLM tab when no LLM analysis exists.
+- Updated `spec/roadmap.md` so the next planned candidate is community readability / sentiment evidence cards.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/LlmPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- llm-panel` -> RED before implementation, missing `.local-capability-note`
+- `cd frontend && npm run test:e2e -- llm-panel` -> `2 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `20 passed`
+
+### Added
+
+- Implemented academic priority-reading signals in the Academic tab:
+  - added a compact `优先阅读信号` summary for high-citation, recent, sample-foundational, and low-information paper counts;
+  - added neutral paper badges: `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`;
+  - kept the logic frontend-derived from existing OpenAlex payload fields, with no backend/API/LLM changes and no paper hiding or ranking claims.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/components/AcademicPanel.vue" -d upstream --include-tests` -> risk LOW, direct upstream `App.vue`
+- `node .gitnexus/run.cjs impact -u "File:frontend/src/style.css" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run test:e2e -- academic-panel` -> `2 passed`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `18 passed`
+
+### Planning
+
+- Added `spec/academic-filtering-design.md`:
+  - frames academic filtering as neutral priority-reading signals, not formal journal ranking;
+  - uses existing OpenAlex fields (`venue`, `year`, `cited_by_count`, concepts, internal citations);
+  - defines V1 labels: `高引用`, `新近`, `样本内奠基`, `venue明确`, `低信息`;
+  - keeps V1 frontend-derived and avoids backend/API changes unless later reuse needs them.
+- Updated `spec/roadmap.md` so academic filtering is the next planned implementation candidate.
+- Linked the design from `spec/README.md`.
+
+### Verification
+
+- `git diff --check` -> exit 0
+- `git status --short` -> only `spec/` documents changed before commit
+
+### Added
+
+- Enhanced the cognition-boundary queue cards in the intelligence desk:
+  - each boundary seed now shows `推荐原因`, `挑战点`, and `下一步`;
+  - the boundary card reuses existing seed/profile data and does not change backend APIs;
+  - the boundary card now includes a visible `深入` action that reuses the existing seed analysis flow.
+
+### Verification
+
+- `node .gitnexus/run.cjs impact boundaryReason -d upstream --include-tests` -> risk LOW
+- `node .gitnexus/run.cjs impact -u "Function:frontend/src/components/DiscoveryPanel.vue:boundaryQueue" -d upstream --include-tests` -> risk LOW
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `4 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk MEDIUM, 2 files, 2 symbols, 1 expected boundary queue flow
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Planning
+
+- Added `spec/roadmap.md` to record the next iteration direction:
+  - near-term priority is cognition-boundary card enhancement in the intelligence desk;
+  - #5 event tree / academic literature graph is now captured as design-first work;
+  - #7 no-LLM local capability note is now captured as near-term documentation work;
+  - sentence-level perspective remains deferred unless upgraded into fulltext reading assistance or anti-manipulation annotation.
+- Linked `spec/roadmap.md` from `spec/README.md`.
+
+### Frontend收口
+
+- Committed `be5afaf` (`refactor(discovery): calm rest seed browsing`):
+  - rest seeds are default-collapsed;
+  - rest seeds exclude cognition-boundary queue items and already-known seeds;
+  - social-feed style emoji clutter was removed;
+  - e2e coverage now checks collapsed rest seeds and no duplicate boundary seeds.
+
+### Verification
+
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- discovery-cognition` -> `4 passed`
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk LOW, 2 files, 3 symbols, 0 affected processes
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+
+### Added
+
+- Reliability + discovery-layer round (human-approved "A" plan, Claude impl / GPT review):
+  - **#9 academic LLM-synthesis timeout no longer strands the job.** `run_academic_analysis`
+    wraps `synthesize_academic` in try/except: on timeout/failure the summary degrades to ""
+    and the synthesize step reports `warning`, while `persist` still runs so fetched papers +
+    citation graph are not lost. `run_academic_analysis_job` uses `mark_running_steps_done()`
+    (not `mark_all_steps_done()`) so the `warning` is not masked as `done`. `fail_job` untouched
+    (avoids its CRITICAL blast radius).
+  - **#2/#3 discovery layer stops reading like a social feed.** Removed the `🔥 signal` heat
+    badge from seeds (signal still drives ranking, just not shown). The cognition-boundary queue
+    now has a one-click `我懂了` (marks `known`, reuses existing seed mark) that filters the item
+    out of the queue — a visible closure — plus an auxiliary `存疑`. Removed the four-way
+    classification buttons and the free-text "reason" editor from the seed stream (the friction
+    the user flagged). Empty queue shows "今天都过了一遍 👍".
+  - **#6 deep-analysis now includes cross-synthesis without double-running voices.** The
+    cross-synthesis job gained a `refresh_voices: bool = True` flag. The standalone 三方对照 button
+    keeps the full-refresh 6-step path (re-runs media/academic/sentiment then synthesizes). The
+    LLM bundle calls it with `refresh_voices=false` — a lite 3-step path (gather/synthesize/persist)
+    that reuses the just-persisted voices instead of re-running all three. `cross_synthesis_steps`,
+    payload and args all split on the flag so the UI never shows 6 steps for a 3-step run. Missing
+    voices still synthesize (handled by `gather_voices`).
+
+### Two cross-synthesis semantics (by design)
+
+- Standalone 「三方对照」button = full refresh (re-runs all three voices, then synthesizes).
+- 「深度分析（LLM · 媒体+学界+民间+三方对照）」= reuses the voices just persisted by the bundle
+  (`refresh_voices=false`), so nothing runs twice.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `164 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `14 passed` (run twice, stable)
+- `git diff --check` -> exit 0
+- `node .gitnexus/run.cjs impact run_cross_synthesis_job -d upstream` -> risk LOW
+- `node .gitnexus/run.cjs impact run_academic_analysis -d upstream` -> risk LOW
+
+## 2026-06-30
+
+### Added
+
+- Added a fulltext-assisted emotion-manipulation badge to the media article feed,
+  rendered next to the substance-density badge (`6281282`):
+  - `fulltext.extract_url_proxied` reuses the proven httpx + SOCKS5/trust_env path
+    from `rss.py` to fetch HTML, then feeds `extract_from_html` — bypassing
+    trafilatura's proxy-less downloader;
+  - `enrich_topic_articles` concurrently fetches article bodies before each LLM
+    batch (8s timeout, falls back to title+snippet on failure, never blocks);
+  - the enrich LLM call emits two extra fields `emotion_score` / `emotion_note`
+    in the same pass (zero extra calls);
+  - pending re-enrichment includes `emotion_score < 0` only when fulltext is on,
+    so disabling fulltext does not re-run the LLM for un-scorable emotion;
+  - frontend shows `情绪 N` only when `emotion_score >= 0` (red=high manipulation).
+- Config `FULLTEXT_FETCH_TIMEOUT=8`, `ENRICH_FETCH_FULLTEXT=1` (off → title+snippet only).
+
+### Fixed
+
+- Forced `emotion_score=-1` at the code level when no fulltext was fetched,
+  ignoring whatever the LLM returns (`803b7d1`). Real-data validation showed the
+  LLM ignores the prompt's "return -1 without body" instruction and scores
+  emotion from title+snippet alone — a pseudo-judgement leak. The red line is now
+  enforced in code, not by trusting the prompt. `substance_score` is left
+  unchanged (title/snippet conservative estimate is acceptable; evidence bar differs).
+
+### Reason
+
+Emotion manipulation is a whole-article rhetorical pattern, so it must be judged
+from body text, not the opening hook in a snippet. Fulltext is an *assist*, not a
+dependency: when extraction fails, substance scoring continues and the emotion
+badge simply does not show — never a fabricated judgement.
+
+### Known limitation
+
+- The emotion badge (and any fulltext-dependent feature) is only effective for
+  sources whose body can be extracted (direct links / native RSS). The primary
+  source — Google News RSS — yields `news.google.com/rss/articles/CBMi...` redirect
+  URLs that trafilatura cannot extract, so those articles keep `emotion_score=-1`
+  and show no badge. Resolving Google News redirect/encoded URLs is intentionally
+  out of scope this round (redirect-following and `CBMi` base64 decoding are both
+  fragile, and the resolved target may still block scraping). Fulltext-class
+  features need a direct-link / better source to be broadly useful.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `162 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `14 passed`
+- `git diff --check` -> exit 0
+- `git check-ignore backend/.env backend/dossier.db` -> both ignored
+- `node .gitnexus/run.cjs impact enrich_topic_articles -d upstream` -> risk LOW
+- Real-data run (topic 1, enrich_limit=10): `fulltext_hits=0` (confirms the Google
+  News limitation); 4 pseudo emotion scores leaked pre-hotfix were reset to -1 in
+  the live DB with human approval (dry-run → UPDATE → recount 0).
+
+## 2026-06-29
+
+### Added
+
+- Moved cognition marking from the media article feed to today's intelligence desk:
+  - added a local cognition profile initialized from the user's 10 boundary-test answers;
+  - added seed-level cognition marks with stable `target_key` URLs and optional notes;
+  - added a small cognition-boundary queue in `DiscoveryPanel`;
+  - removed article-level cognition sorting from the original article feed while keeping substance-score visibility;
+  - allowed `PUT` in local CORS so browser saves can pass preflight.
+
+### Reason
+
+The cognition labels are useful for new frontier items, not for forcing the user to classify 100+ raw reports. V1 now collects low-friction judgement data from a small queue before any larger cognition map exists.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `5 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `153 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `14 passed`
+- `git diff --check` -> exit 0
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+- `git check-ignore -v backend/.env backend/dossier.db` -> both ignored by `.gitignore`
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk medium, affected processes 3
+
+### Added
+
+- Implemented the readable-cognition roadmap in five small commits:
+  - surfaced article substance-score coverage in the media feed;
+  - rendered community sentiment as compact readable sample cards;
+  - added on-demand article perspective for summary/fulltext sentence inspection;
+  - added topic-local narrative convergence signals;
+  - added one-click cognition marks and a lightweight cognition accumulation panel.
+
+### Reason
+
+Prioritize reading experience before larger cognition-map work: make substance, signals, and personal judgement markers visible without making LLM or heavy infrastructure part of the core path.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest tests/test_cognition_marks.py -q` -> `2 passed, 3 warnings`
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `150 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e -- tests/e2e/source-matrix.spec.ts -g "groups original articles"` -> `2 passed`
+- `cd frontend && npm run test:e2e` -> `10 passed`
+- `git diff --check` -> exit 0
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+- `git check-ignore -v backend/.env backend/dossier.db` -> both ignored by `.gitignore`
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk medium, affected processes 5
+
+### Added
+
+- Created the spec harness:
+  - `spec/README.md`
+  - `spec/project.md`
+  - `spec/development.md`
+  - `spec/acceptance.md`
+- Extended `AGENTS.md` with project map, one-sentence goal, project structure, non-negotiable constraints, verification commands, and spec links.
+- Added this changelog and linked it from `AGENTS.md` and `spec/README.md`.
+
+### Reason
+
+Give future agents a stable project map and reproducible acceptance standard before they edit code or claim work is complete.
+
+### Verification
+
+- `cd backend && ..\venv\Scripts\python.exe -m pytest -q` -> `140 passed, 3 warnings`
+- `cd frontend && npm run build` -> build passed
+- `cd frontend && npm run test:e2e` -> `8 passed`
+- `git diff --check` -> exit 0
+- `git status --short -- backend/.env backend/dossier.db` -> no output
+- `git check-ignore -v backend/.env backend/dossier.db` -> both ignored by `.gitignore`
+- `node .gitnexus/run.cjs detect-changes --scope all` -> risk low, affected processes 0
+
+## 2026-07-05 过夜 · Claude 前端线（分工：Claude frontend / GPT backend）
+
+按 spec/overnight-plan-2026-07-05.md，Claude 独占 frontend/。四项完成，均门禁通过：
+
+- **阶段 4.1 设计 token**：style.css 引入 :root token（色阶/间距/字号/圆角），配色沿用项目 teal+灰、比例借 Open Props。核心选择器切 var()，视觉零差。
+- **阶段 4.2 可读性重排**：边界卡 .boundary-card-notes 从 7 字段等权 3 列 → 主信息(摘要/为什么现在重要)全宽可读 + 次要元信息紧凑两列；.stream-row 去掉标题 nowrap 一行截断，默认可读、note 两行 clamp。
+- **阶段 4.3 今日头版补追踪动态**：新增 trackedUpdates computed（追踪话题 14 天内有新报道的置顶，纯前端派生自 latest_published_at，无后端新端点）+ 头版 .frontpage-updates 卡带。
+- **阶段 3.3 价值透镜 chip**：类型加 InfoValueLabel + info_value_labels?（文章+种子，可选）；DiscoveryPanel 头版/边界卡 + MediaPanel 文章行渲染 chip（提示样式非警告，用 span 不污染 li 计数）；加 e2e 断言。交接契约：消费 GPT 在 article_payload/collect_seeds 加的 info_value_labels:[{code,label,note,severity}]。
+
+门禁：`npm run build` 过；`npm run test:e2e --workers=1` → **100 passed (2.8m)**（含新增 chip 测试）。只碰 frontend/ + spec/CHANGELOG，未碰 backend/AGENTS/CLAUDE/.env/真实库。GPT 后端线已交接至 .agent-bridge/TO_CODEX.md，待其从阶段 1 起手。
+
+## 2026-07-09 — spec/ 与 .agent-bridge/ 整理
+
+- **changed files**: spec/ 18 个历史文件移入 spec/archive/（12 tracked 用 git mv，6 untracked 移动）；新建 spec/archive/README.md 索引；更新 spec/README.md 必读顺序（移除已完结 14 点 Sprint 指向，改指事件图 V1）；更新 spec/roadmap.md 当前优先级（校准 V1 → 事件图 V1 + 资讯vs理解战略判据）。.agent-bridge/TO_CLAUDE.md 401KB 日志滚存至 TO_CLAUDE.archive-2026-07-09.md，头文件精简至当前状态。BOARD.md Current Goal 更新为事件图 V1。
+- **reason**: 文件过多（spec/ 31 个、TO_CLAUDE 8975 行）导致 Claude 与 GPT 读取困难、目标误判（GPT 因 BOARD/README 未更新而误以为当前目标仍是数据线）。历史全部归档保留，不删除。
+- **verification**: spec/ 根目录 31→13 个活文档；TO_CLAUDE.md 401KB→965B（完整历史存档一字不丢）；git mv 保留跟踪历史。前端 build + 32 e2e 在 F1 提交 729ed05 时已全绿。

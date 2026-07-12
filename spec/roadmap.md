@@ -1,16 +1,22 @@
 # Roadmap
 
+> 路线图编号：`RM-000`（当前方向索引）。路线图状态总账见 `spec/roadmap-ledger.md`；当前唯一产品主线是 `RM-050`。
+
 This roadmap records the current product direction after the July 2026 readability and cognition rounds. It is intentionally small: use it to choose the next iteration, not to turn the project into a backlog warehouse. For a complete context reset, read `spec/current-state.md` first.
 
 ## Current Priority
 
-事件关系图 V1（2026-07-09 起）。完整方案见 `spec/roadmap-event-graph-2026-07-09.md`。
+双模式入口 · 理解层并轨收官(2026-07-09 晚起)。完整方案见 `spec/roadmap-dual-mode-2026-07-09.md`。
 
-主线：**用可核查的证据边把事件连成图，让用户"看见结构"而非"被喂叙事"**。V1 主题内证据边图（时间锚定 SVG），V2 跨主题（本轮只铺路）。因果/根源类推断单独分层、明确标"假设"，绝不与证据边混。
+当前进度（2026-07-12）：M1 已完成；M2 的 U1 后端已完成、前端“相似先例”消费尚未收口；当前先通过后端审计修复稳定化关口，M3/M4 尚未完成。
 
-分工：Claude 前端（F1 SVG 已提交 729ed05 / F2 切后端源 / F3 假设层占位），GPT 后端（B1 事件+实体落库 / B2 EventRelation 边表 + event-graph API / B3 V2 铺路）。契约与任务在 `.agent-bridge/BOARD.md` 与 `TO_CODEX.md` 末尾。
+主线:**手机负责标记好奇心,电脑负责消化好奇心;省力早报喂事实,硬核台增理解——两模式不互相污染。** 事件图 V1 与理解层透镜2(多源对照)已前后端闭环;本轮先让已建成的理解层被日常够得着(深挖队列 + 头版深挖入口 + deep-link),GPT 并行做 U1 类比后端与政军外交官方源扩展。
 
-战略判据（2026-07-09 人类读书洞察）：区分**获取资讯 vs 增进理解**。扩源/数据线属资讯层，有天花板；事件图的边能否回答"为什么/像什么/差在哪"才是理解层，是护城河。新功能优先级先问"这是堆资讯还是增进理解"，后者优先。
+分工:Claude 前端(双模式入口 V1a → U1 类比卡带 → F3 假设层占位),GPT 后端(U1 analogues API → dig_later 落库 → 源扩展批次 → 早报升级后端半)。契约与任务在 `.agent-bridge/BOARD.md` 与 `TO_CODEX.md` 顶部。
+
+战略判据(2026-07-09 人类读书洞察,不变):区分**获取资讯 vs 增进理解**。新功能优先级先问"这是堆资讯还是增进理解",后者优先。新增红线:早报喂事实不喂结论;两模式不互相污染。
+
+已归档的上一轮:事件关系图 V1(`spec/archive/roadmaps/roadmap-event-graph-2026-07-09.md`,F1/F2/B1-B3 全提交)与理解层透镜2(`spec/archive/roadmaps/roadmap-understanding-layer-2026-07-09.md`,U2 前后端闭环)。
 
 Reference notes: `spec/event-tree-literature-graph-design.md` for the design boundary, `spec/local-capability-boundary.md` for no-LLM limits, `spec/academic-filtering-design.md` for academic priority-reading signals, and `spec/discovery-archive-cognition-timeline-design.md` for discovery history / cross-day cognition-tree planning.
 
