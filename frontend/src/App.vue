@@ -6,6 +6,7 @@ import {
   fetchCognitionMarks,
   fetchCognitionProfile,
   fetchCountryCompare,
+  fetchCoverage,
   fetchEventContrast,
   fetchEventAnalogues,
   fetchSources,
@@ -16,6 +17,7 @@ import {
   updateSource,
 } from './api/dossierApi'
 import AcademicPanel from './components/AcademicPanel.vue'
+import CoveragePanel from './components/CoveragePanel.vue'
 import CrossPanel from './components/CrossPanel.vue'
 import DiscoveryPanel from './components/DiscoveryPanel.vue'
 import LlmPanel from './components/LlmPanel.vue'
@@ -37,6 +39,7 @@ import type {
   CognitionProfileItem,
   CountryCompare,
   CountryCompareCountry,
+  CoverageSnapshot,
   DiscoverySeed,
   EventContrastPayload,
   EventAnaloguesPayload,
@@ -60,6 +63,13 @@ const eventAnaloguesLoading = ref(false)
 const eventAnalogues = ref<EventAnaloguesPayload | null>(null)
 const eventAnaloguesError = ref('')
 const eventAnaloguesEventKey = ref('')
+// RM-055 Phase 2 覆盖仪表：话题级覆盖快照（本次分析基于什么样本）。
+// 契约来自 GPT Phase 1（GET /api/topics/{id}/coverage），当前在隔离分支未合入本分支，
+// 故本分支上此接口会 404 —— 组件按 degraded 诚实降级，合入后自然亮真数据。
+const coverageLoading = ref(false)
+const coverage = ref<CoverageSnapshot | null>(null)
+const coverageError = ref('')
+const coverageTopicId = ref<number | null>(null)
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
@@ -712,6 +722,7 @@ watch(selectedTopicId, async (id) => {
     resetCountryCompare()
     resetEventContrast()
     resetEventAnalogues()
+    resetCoverage()
     resetCrossSynthesisState()
     resetAcademicState()
     resetSentimentState()
@@ -730,7 +741,10 @@ watch(selectedTopicId, async (id) => {
       loadSentimentLayer(id),
     ])
     // 事件图已到位：若有待消化目标（来自队列/头版深挖/邮件深链），此刻按 eventId 定位。
+    // 覆盖快照必须在此之后、且不进入上面的 Promise.all——它是话题级增强，与事件定位无关，
+    // 绝不能因它的加载延迟或失败阻塞深链/深挖消化（证据定位是时序敏感路径）。
     if (pendingDigest.value) await resolvePendingDigest()
+    void loadCoverageForTopic()
   }
 })
 
@@ -818,6 +832,39 @@ function resetEventAnalogues() {
   eventAnaloguesError.value = ''
   eventAnaloguesEventKey.value = ''
 }
+
+// RM-055 Phase 2 覆盖仪表：话题级"本次分析基于什么"。按 topicId 取数，
+// await 期间用户切走则丢弃迟到响应（不把 A 话题的覆盖贴到 B 话题）。
+// 后端 /coverage 契约在 GPT 隔离分支，本分支未合并前会 404——按缺口诚实降级，不崩。
+async function loadCoverageForTopic() {
+  const topicId = selectedTopicId.value
+  if (!topicId || coverageLoading.value) return
+  coverageLoading.value = true
+  coverageError.value = ''
+  try {
+    const payload = await fetchCoverage(topicId)
+    // 迟到响应：已切到别的话题则丢弃。
+    if (selectedTopicId.value !== topicId) return
+    coverage.value = payload
+    coverageTopicId.value = topicId
+  } catch (err) {
+    if (selectedTopicId.value !== topicId) return
+    coverageError.value = readableError(err)
+  } finally {
+    coverageLoading.value = false
+  }
+}
+
+function resetCoverage() {
+  coverage.value = null
+  coverageError.value = ''
+  coverageTopicId.value = null
+}
+
+// 只在覆盖数据属于当前选中话题时才显示，切话题后旧覆盖不串台。
+const visibleCoverage = computed<CoverageSnapshot | null>(() =>
+  coverage.value && coverageTopicId.value === selectedTopicId.value ? coverage.value : null,
+)
 
 // 只在类比数据属于当前选中事件时才显示，切换事件后旧类比不串台。
 const visibleEventAnalogues = computed<EventAnaloguesPayload | null>(() =>
@@ -1800,20 +1847,28 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :sentiment-comments-for-post="sentimentCommentsForPost"
           @run-sentiment-analysis="runSentimentAnalysis"
         />
-        <LlmPanel
-          v-else-if="activeWorkspaceTab === 'llm'"
-          :has-llm-analysis="hasLlmAnalysis"
-          :deep-analyzing="deepAnalyzing"
-          :academic-analyzing="academicAnalyzing"
-          :sentiment-analyzing="sentimentAnalyzing"
-          :active-deep-job-id="activeDeepJobId"
-          :deep-message="deepMessage"
-          :deep-steps="deepSteps"
-          :safe-analysis-html="safeAnalysisHtml"
-          :display-analysis-text="displayAnalysisText"
-          :step-status-text="stepStatusText"
-          @run-deep-analysis="runLlmAnalysisBundle"
-        />
+        <template v-else-if="activeWorkspaceTab === 'llm'">
+          <LlmPanel
+            :has-llm-analysis="hasLlmAnalysis"
+            :deep-analyzing="deepAnalyzing"
+            :academic-analyzing="academicAnalyzing"
+            :sentiment-analyzing="sentimentAnalyzing"
+            :active-deep-job-id="activeDeepJobId"
+            :deep-message="deepMessage"
+            :deep-steps="deepSteps"
+            :safe-analysis-html="safeAnalysisHtml"
+            :display-analysis-text="displayAnalysisText"
+            :step-status-text="stepStatusText"
+            @run-deep-analysis="runLlmAnalysisBundle"
+          />
+          <CoveragePanel
+            :payload="visibleCoverage"
+            :loading="coverageLoading"
+            :error="coverageError"
+            :analysis-meta="detail?.analysis_meta ?? null"
+            :articles="articles"
+          />
+        </template>
       </section>
     </template>
     </template>

@@ -8,6 +8,7 @@ import type {
   CognitionMark,
   CognitionProfileItem,
   CountryCompare,
+  CoverageSnapshot,
   CrossSynthesis,
   DiscoveryReport,
   DiscoveryReportMeta,
@@ -187,6 +188,14 @@ export async function fetchEventAnalogues(topicId: number, eventId: number) {
   const res = await axios.get<EventAnaloguesPayload>(
     `${API_BASE}/api/topics/${topicId}/events/${eventId}/analogues`,
   )
+  return res.data
+}
+
+// RM-055 Phase 1 契约（GPT 交付，纯 SQL 无 LLM）。event_id 可选：给了就按事件证据子集聚合。
+export async function fetchCoverage(topicId: number, eventId?: number | null) {
+  const res = await axios.get<CoverageSnapshot>(`${API_BASE}/api/topics/${topicId}/coverage`, {
+    params: eventId != null ? { event_id: eventId } : undefined,
+  })
   return res.data
 }
 

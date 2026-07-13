@@ -65,6 +65,7 @@ export type TopicDetail = TopicSummary & {
   timeline: TimelineEvent[]
   framing: SourceFraming[]
   analysis: Analysis | null
+  analysis_meta?: AnalysisMeta | null // 分析新鲜度（后端 P1 契约；无分析时 null）
 }
 
 export type CountryRef = {
@@ -646,6 +647,61 @@ export type EventAnaloguesPayload = {
   degraded: boolean
   degraded_reason: string
   note: string
+}
+
+// 覆盖快照（消费 /api/topics/{id}/coverage）。纯 SQL 聚合，无 LLM。
+// 红线：每个计数带 article_ids 可点回；算不出的正文指标返回 unknown；"未采集到"≠"未报道"。
+export type CoverageBucket = {
+  key: string // 采集器/语言/国家/来源类型/分层名；空值后端归一化为 'unknown'
+  count: number
+  article_ids: number[] // 证据点回
+}
+
+export type CoverageDecoding = {
+  eligible_count: number // gnews 采集的文章数（只有它需要解码原始链接）
+  decoded_count: number
+  rate: number | null // eligible 为 0 时 null，不伪造 0
+  decoded_article_ids: number[]
+  not_decoded_article_ids: number[]
+}
+
+export type CoverageRegistry = {
+  type_distribution: CoverageBucket[] // 来源类型（join SourceRegistry）
+  tier_distribution: CoverageBucket[] // 质量分层
+  unclassified_article_ids: number[] // 未登记来源→诚实标"未分层"，不猜
+}
+
+export type CoverageSnapshot = {
+  topic_id: number
+  event_id: number | null
+  sample: {
+    basis: string // persisted_topic_articles / persisted_event_articles
+    article_count: number
+    article_ids: number[]
+    note: string // "缺席不证明来源未报道"——后端英文原文，前端不改写其语义
+  }
+  independent_source_count: number
+  collector_distribution: CoverageBucket[]
+  language_distribution: CoverageBucket[]
+  country_distribution: CoverageBucket[]
+  url_decoding: CoverageDecoding
+  source_registry: CoverageRegistry
+  fulltext: {
+    status: string // 'unknown'——正文当前不落库，V1 算不了
+    reason: string
+  }
+}
+
+// 分析新鲜度（GET /api/topics/{id} 的 analysis_meta）。null=无分析；sample_* null=旧行无快照→诚实"未知"。
+export type AnalysisMeta = {
+  source: 'llm' | 'local'
+  generated_at: string | null
+  sample_article_count: number | null // 分析当时的样本量（旧行为 null）
+  sample_latest_published_at: string | null
+  current_article_count: number // 当前话题实际文章数
+  current_latest_published_at: string | null
+  evidence_newer: boolean | null // 当前样本是否比分析当时更新；null=无法判断
+  sample_changed: boolean | null // 样本是否变过；null=无法判断
 }
 
 export type SearchResponse = LocalEventsPayload & {
