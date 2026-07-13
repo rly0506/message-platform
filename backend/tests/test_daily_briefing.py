@@ -197,6 +197,8 @@ def test_briefing_rejects_non_http_app_base_urls_and_query_fragments():
         '/workbench',
         'https://desk.example/workbench?mode=mail',
         'https://desk.example/workbench#briefing',
+        'https://desk.example:bad/workbench',
+        'https://[broken',
     ):
         assert daily_briefing._absolute_deep_link(invalid_base, path) is None
 

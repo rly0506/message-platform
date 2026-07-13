@@ -228,10 +228,15 @@ def _absolute_deep_link(base_url: str, path: str) -> str | None:
     base = str(base_url or '').strip()
     if not base:
         return None
-    parsed = urlsplit(base)
+    try:
+        parsed = urlsplit(base)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError:
+        return None
     if (
         parsed.scheme.casefold() not in {'http', 'https'}
-        or not parsed.netloc
+        or not hostname
         or parsed.query
         or parsed.fragment
     ):

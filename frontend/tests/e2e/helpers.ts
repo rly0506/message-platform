@@ -13,8 +13,8 @@ export async function openWorkbench(page: Page) {
 export async function switchToWorkbench(page: Page) {
   await page.getByRole('button', { name: '事件分析台' }).click()
   await expect(page.locator('h1')).toHaveText('事件搜索与发展时间轴')
-  // 工作台默认不预选专题(空状态)，测试需显式从下拉选第一个已有专题，
-  // 模拟真实用户流程，也让各面板拿到专题数据。无专题时跳过。
+  // 工作台默认不预选专题，调用本 helper 的用例必须提供至少一个专题；
+  // 空状态测试应直接导航，不应调用这个自动选题 helper。
   await selectFirstTopic(page)
 }
 
