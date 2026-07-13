@@ -16,6 +16,7 @@ from app.db import (
     Article,
     CognitionMark,
     CognitionProfile,
+    DigQueueItem,
     Project,
     SentimentPost,
     SourceFraming,
@@ -27,7 +28,7 @@ from app.db import (
     init_db,
 )
 from app.pipeline import local_analyze, narrative_signals
-from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
+from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DigQueueItemRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
 from app.services import article_perspective, auto_refresh, country_compare, coverage_snapshot, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.services.topic_locks import claim_topic
 from app.pipeline import academic, cross_synthesis, sentiment
@@ -751,6 +752,46 @@ def distill_discovery_seed(payload: DiscoveryDistillRequest) -> dict[str, Any]:
     return discovery_annotate.distill_topic(payload.title, payload.domain or "")
 
 
+@app.put("/api/dig-queue")
+def upsert_dig_queue_item(payload: DigQueueItemRequest) -> dict[str, Any]:
+    item_key = dig_queue_item_key(payload.topic_id, payload.event_id)
+    with Session(engine) as session:
+        item = session.exec(
+            select(DigQueueItem).where(DigQueueItem.item_key == item_key)
+        ).first()
+        if not item:
+            item = DigQueueItem(item_key=item_key, topic_id=payload.topic_id)
+        item.topic_name = payload.topic_name.strip()
+        item.event_id = payload.event_id
+        item.event_title = payload.event_title.strip()
+        item.view = payload.view
+        item.added_at = payload.added_at
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+        return dig_queue_item_payload(item)
+
+
+@app.get("/api/dig-queue")
+def list_dig_queue_items() -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        items = session.exec(select(DigQueueItem).order_by(DigQueueItem.added_at.desc())).all()
+        return [dig_queue_item_payload(item) for item in items]
+
+
+@app.delete("/api/dig-queue/{item_key}")
+def delete_dig_queue_item(item_key: str) -> dict[str, Any]:
+    with Session(engine) as session:
+        item = session.exec(
+            select(DigQueueItem).where(DigQueueItem.item_key == item_key)
+        ).first()
+        if not item:
+            return {"deleted": False, "item_key": item_key}
+        session.delete(item)
+        session.commit()
+        return {"deleted": True, "item_key": item_key}
+
+
 @app.put("/api/cognition/marks")
 def upsert_cognition_mark(payload: CognitionMarkRequest) -> dict[str, Any]:
     if payload.target_type == "seed" and not payload.target_key:
@@ -940,6 +981,23 @@ def cognition_mark_payload(mark: CognitionMark) -> dict[str, Any]:
         "label": mark.label,
         "note": mark.note,
         "updated_at": payloads.iso(mark.updated_at),
+    }
+
+
+def dig_queue_item_key(topic_id: int, event_id: int | None) -> str:
+    return f"t:{topic_id}" if event_id is None else f"t:{topic_id}:e:{event_id}"
+
+
+def dig_queue_item_payload(item: DigQueueItem) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "item_key": item.item_key,
+        "topic_id": item.topic_id,
+        "topic_name": item.topic_name,
+        "event_id": item.event_id,
+        "event_title": item.event_title,
+        "view": item.view,
+        "added_at": payloads.iso(item.added_at),
     }
 
 

@@ -368,6 +368,17 @@ export type CognitionProfileItem = {
   updated_at: string | null
 }
 
+export type DigQueueRecord = {
+  id: number
+  item_key: string
+  topic_id: number
+  topic_name: string
+  event_id: number | null
+  event_title: string
+  view: 'contrast' | 'analogue'
+  added_at: string
+}
+
 export type TimelineEvent = {
   id: number
   date: string | null

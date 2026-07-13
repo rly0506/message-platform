@@ -188,6 +188,19 @@ class CognitionProfile(SQLModel, table=True):
     recommended_seed_style: str = "mechanism"
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
+
+class DigQueueItem(SQLModel, table=True):
+    """Cross-device curiosity queue, deliberately separate from cognition calibration."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    item_key: str = Field(unique=True, index=True)
+    topic_id: int = Field(index=True)
+    topic_name: str = ""
+    event_id: Optional[int] = Field(default=None, index=True)
+    event_title: str = ""
+    view: str = "contrast"
+    added_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 # --- 本地规则事件图表: 无 LLM，边只表示可核查证据关系 ---
 
 class Event(SQLModel, table=True):

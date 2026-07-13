@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -53,6 +54,15 @@ class CognitionMarkRequest(BaseModel):
     label: Literal["known", "unexpected", "doubtful", "unfamiliar"]
     topic_id: int | None = Field(default=None, ge=1)
     note: str = Field(default="", max_length=300)
+
+
+class DigQueueItemRequest(BaseModel):
+    topic_id: int = Field(ge=1)
+    topic_name: str = Field(min_length=1, max_length=200)
+    event_id: int | None = Field(default=None, ge=1)
+    event_title: str = Field(min_length=1, max_length=300)
+    view: Literal["contrast", "analogue"] = "contrast"
+    added_at: datetime
 
 
 class SearchStep(BaseModel):

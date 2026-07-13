@@ -240,6 +240,25 @@ async function mockApi(page: Page) {
   startedJobs = []
   searchPayloads = []
   autoRefreshRuns = 0
+  let digQueueItems: Array<Record<string, unknown>> = []
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: digQueueItems })
+      return
+    }
+    const body = route.request().postDataJSON()
+    const itemKey = body.event_id == null
+      ? `t:${body.topic_id}`
+      : `t:${body.topic_id}:e:${body.event_id}`
+    const record = { id: 1, item_key: itemKey, ...body }
+    digQueueItems = [record, ...digQueueItems.filter((item) => item.item_key !== itemKey)]
+    await route.fulfill({ json: record })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    const itemKey = decodeURIComponent(route.request().url().split('/').pop() || '')
+    digQueueItems = digQueueItems.filter((item) => item.item_key !== itemKey)
+    await route.fulfill({ json: { deleted: true, item_key: itemKey } })
+  })
   await page.route('**/api/topics', async (route) => {
     await route.fulfill({ json: [topic] })
   })
@@ -1100,6 +1119,64 @@ test('digests a queued curiosity from the dig-queue band into the contrast lens'
   // 移出队列 → 卡带消失（digCount 归零）。
   await band.locator('.dig-queue-remove').click()
   await expect(page.locator('.dig-queue-band')).toHaveCount(0)
+})
+
+test('restores the dig queue from the backend on a fresh device and deletes remotely', async ({ page }) => {
+  const deletedKeys: string[] = []
+  await page.route('**/api/dig-queue', async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 91,
+          item_key: 't:101',
+          topic_id: 101,
+          topic_name: '美伊战争',
+          event_id: null,
+          event_title: '美伊战争',
+          view: 'contrast',
+          added_at: '2026-07-13T08:00:00',
+        },
+      ],
+    })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    deletedKeys.push(decodeURIComponent(route.request().url().split('/').pop() || ''))
+    await route.fulfill({ json: { deleted: true, item_key: deletedKeys.at(-1) } })
+  })
+
+  await openWorkbench(page)
+
+  const band = page.locator('.dig-queue-band')
+  await expect(band).toContainText('待深挖 1 件')
+  await expect(band.locator('.dig-queue-topic')).toContainText('美伊战争')
+  await band.locator('.dig-queue-remove').click()
+  await expect.poll(() => deletedKeys).toEqual(['t:101'])
+})
+
+test('keeps the local dig queue and reports degraded sync when the backend is unavailable', async ({ page }) => {
+  await page.route('**/api/dig-queue**', async (route) => route.abort('connectionfailed'))
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'message-platform:dig-queue:v1',
+      JSON.stringify([
+        {
+          id: 't:101',
+          topicId: 101,
+          topicName: '美伊战争',
+          eventId: null,
+          eventTitle: '美伊战争',
+          view: 'contrast',
+          addedAt: '2026-07-13T08:30:00.000Z',
+        },
+      ]),
+    )
+  })
+
+  await openWorkbench(page)
+
+  await expect(page.locator('.dig-queue-band')).toContainText('待深挖 1 件')
+  await expect(page.locator('.dig-queue-sync-notice')).toContainText('跨设备同步暂不可用')
+  await expect(page.locator('.dig-queue-sync-notice')).toContainText('本机队列已保留')
 })
 
 test('does not attach a slow contrast response to the event selected after the switch', async ({ page }) => {

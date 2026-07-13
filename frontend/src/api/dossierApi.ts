@@ -13,6 +13,7 @@ import type {
   DiscoveryReport,
   DiscoveryReportMeta,
   DiscoveryTimelineTree,
+  DigQueueRecord,
   EventContrastPayload,
   EventGraphPayload,
   EventAnaloguesPayload,
@@ -164,6 +165,30 @@ export async function fetchCognitionMarks(topicId?: number | null, targetType = 
 
 export async function fetchCognitionProfile() {
   const res = await axios.get<CognitionProfileItem[]>(`${API_BASE}/api/cognition/profile`)
+  return res.data
+}
+
+export async function fetchDigQueue() {
+  const res = await axios.get<DigQueueRecord[]>(`${API_BASE}/api/dig-queue`)
+  return res.data
+}
+
+export async function saveDigQueueItem(payload: {
+  topic_id: number
+  topic_name: string
+  event_id: number | null
+  event_title: string
+  view: 'contrast' | 'analogue'
+  added_at: string
+}) {
+  const res = await axios.put<DigQueueRecord>(`${API_BASE}/api/dig-queue`, payload)
+  return res.data
+}
+
+export async function deleteDigQueueItem(itemKey: string) {
+  const res = await axios.delete<{ deleted: boolean; item_key: string }>(
+    `${API_BASE}/api/dig-queue/${encodeURIComponent(itemKey)}`,
+  )
   return res.data
 }
 

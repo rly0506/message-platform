@@ -620,6 +620,8 @@ const {
 })
 
 onMounted(async () => {
+  // 跨设备队列是增量增强：独立同步，绝不门控专题加载或 deep-link 解析。
+  void syncDigQueue()
   await Promise.all([
     loadTopics(),
     loadAutoRefreshStatus(),
@@ -912,7 +914,14 @@ const visibleEventContrast = computed<EventContrastPayload | null>(() =>
 // 队列条目、头版深挖入口(A)、邮件深链共用同一台「按 eventId 定位并展开对照」解析机。
 // 切 topic 会触发 watch(selectedTopicId) 异步加载事件图；图到位前先把目标记进 pendingDigest，
 // 图加载完在 watch 尾解析，避免竞态。
-const { digItems, digCount, addToDigQueue, removeFromDigQueue } = useDigQueue()
+const {
+  digItems,
+  digCount,
+  digQueueSyncError,
+  addToDigQueue,
+  removeFromDigQueue,
+  syncDigQueue,
+} = useDigQueue()
 
 // topicId 必存：审计 #3——只凭 eventId 会被任意话题加载抢先消费。解析前校验目标话题==当前话题。
 type PendingDigest = { topicId: number; eventId: number | null; view: string }
@@ -1697,6 +1706,11 @@ function countryCoverageNote(country: CountryCompareCountry) {
 
       <!-- 深链/队列消化落空时的诚实提示（审计 #8：意图不静默丢） -->
       <p v-if="digestNotice" class="dig-queue-notice" role="status">{{ digestNotice }}</p>
+      <p
+        v-if="digQueueSyncError"
+        class="dig-queue-notice dig-queue-sync-notice"
+        role="status"
+      >{{ digQueueSyncError }}</p>
 
       <!-- 深挖队列消化卡带（双模式桥梁 V1a）：手机标记的好奇心在电脑上排队等消化 -->
       <section v-if="digCount" class="dig-queue-band" aria-label="待深挖队列">
