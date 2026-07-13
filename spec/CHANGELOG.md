@@ -2,6 +2,16 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-13 RM-055 M3' Cross-Device Curiosity Queue
+
+- Added a dedicated `DigQueueItem` SQLite model and idempotent save/list/delete API.
+- Kept curiosity data structurally separate from `CognitionMark` and `CognitionProfile`; regression tests compare the full profile and mark dataset before/after queue mutations.
+- Upgraded the frontend queue from localStorage-only to local cache plus a persisted mutation outbox and server reconciliation.
+- Restored queue items on a fresh device, preserved offline add/delete intent, displayed honest degraded sync state, and kept sync off the deep-link/topic-loading critical path.
+- Added backend and desktop/mobile E2E coverage for persistence, idempotence, remote restoration, deletion, and network failure.
+- Recorded a HOLD on source expansion: the coverage instrument has not yet produced the two weeks of longitudinal gap evidence required to choose a defensible first feed batch.
+- Verification for implementation commit `98efa59`: backend `315 passed, 1 warning`; frontend build passed with 98 modules; full E2E `146 passed`; staged GitNexus risk `medium` across 9 files / 46 symbols / 5 flows.
+
 ## 2026-07-12 Feedback And Ideas Library
 
 - Added `spec/feedback-and-ideas/` as the stable home for user feedback, reflections, developer observations, and external project references.

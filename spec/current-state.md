@@ -1,47 +1,38 @@
 # Current State
 
-Last updated: 2026-07-12.
+Last updated: 2026-07-13.
 
 This is the compact context reset point for future agents. It records current product truth, not the full work log. The previous 410-line snapshot is preserved verbatim at `spec/archive/current-state/current-state-through-2026-07-12.md`.
 
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- Baseline HEAD before the current uncommitted batches: `3327008`.
-- Current product roadmap: `RM-050`, defined in `spec/roadmap-dual-mode-2026-07-09.md` and indexed by `spec/roadmap-ledger.md`.
-- Current engineering gate: an uncommitted backend P1 stabilization batch has passed code review and produced `308 passed, 1 warning` twice. It still requires exact-file staging and staged GitNexus `detect-changes` before human final review.
-- Documentation governance is being closed as a separate batch. Do not mix it with backend P1.
-- Do not merge to `master`, push, or claim RM-050 complete without explicit human approval.
+- Current implementation HEAD: `98efa59` (`dig_later` cross-device persistence).
+- Current product roadmap: `RM-055`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
+- Coverage API, the coverage instrument, event analogue consumer, and cross-device curiosity queue are integrated on this branch.
+- Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
+- Next executable product stage: RM-055 M4' fact-first briefing, coverage labels, deep links, and one-domain-today.
+- Do not merge to `master` or push without explicit human approval.
 
-## RM-050 Progress
+## RM-055 Progress
 
 | Milestone | Status | Current truth |
 |---|---|---|
-| M1: dual-mode entry V1a | Done | Deep-dive queue, local marks, homepage/event deep links, and evidence positioning are in baseline commit `3327008`. |
-| M2: analogy consumption | Partial | U1 backend analogue generation landed in `7922021`; the user-facing similar-precedents strip and full consumption loop remain incomplete. |
-| M3: cross-device queue and sources | Not done | `dig_later` persistence and another verified official-source batch remain pending. |
-| M4: briefing loop | Not done | Fact-first briefing summaries, email deep links, and one-domain-today are not a complete workflow. |
+| M1': optional data-line validation + analogue consumer | Done | Phase 0 report is recorded; U1 analogue UI and audit fixes are in `69ca3aa` / `29f9cf8`. |
+| M2': auditable coverage | Done | Coverage API, evidence-linked distributions, honest unknowns, and the frontend instrument are live in `dfdb9c1` / `4532d02` / `29f9cf8`. |
+| M3': cross-device queue | Done | Dedicated queue persistence, offline outbox, fresh-device restore, and strict cognition isolation landed in `98efa59`. |
+| M3': source expansion | Evidence gate | No batch is justified yet; collect two weeks of recurring gap evidence before selecting at most three feeds. |
+| M4': briefing loop | Next | Fact-first summaries, coverage micro-labels, deep links, and one-domain-today remain to implement. |
 
-The project is in **RM-050 M2 plus a backend stabilization gate**, not at RM-050 closure.
+The project is at the **RM-055 M4' start point**, with source-gap observation running in parallel.
 
-## Backend P1 Active Gate
+## Latest Delivered Gate
 
-The accepted working-tree batch addresses:
-
-1. preserving explicit user values in cognition profiles;
-2. rejecting invalid job types in `/rerun`;
-3. adding auto-refresh mutual exclusion and transactional rollback;
-4. preferring fresh events in analogue candidates;
-5. preventing local rule analysis from overwriting existing LLM deep analysis.
-
-Current evidence:
-
-- Claude completed line-by-line review and accepted the implementation.
-- The same backend code and command produced `308 passed, 1 warning` twice.
-- Claude withdrew the earlier claim that this batch introduced test contamination; the initial failures could not be reproduced.
-- The remaining gate is exact-file staging followed by staged GitNexus `detect-changes` and human review of the reported symbols and processes.
-
-Keep this batch separate from documentation and unrelated local changes. Its file list is recorded in `.agent-bridge/BOARD.md` and the current mailbox exchange.
+- `DigQueueItem` is a separate SQLite dataset and API; it never enters cognition summary or calibration code.
+- Frontend localStorage remains the offline cache. A persisted outbox replays add/delete operations, then reconciles with the server snapshot.
+- Network failure leaves the queue usable and displays a truthful degraded state; queue sync does not gate topic loading or deep links.
+- Fresh verification: backend `315 passed, 1 warning`; frontend build passed (98 modules); full desktop/mobile E2E `146 passed`.
+- Staged GitNexus: 9 files, 46 symbols, 5 conservatively mapped cognition-adjacent flows, risk `medium`; exact scope reviewed before commit `98efa59`.
 
 ## Implemented Product Capabilities
 
@@ -58,21 +49,19 @@ Keep this batch separate from documentation and unrelated local changes. Its fil
 
 - The frontend provides a workbench for topics, reports, source matrices, sentiment/community signals, academic evidence, event networks, and cognition marks.
 - Deep links can open a topic, event, and contrast view.
-- A local deep-dive queue connects low-friction reading to later analysis.
+- A cross-device deep-dive queue connects low-friction reading to later analysis and retains offline mutations locally.
 - Event contrasts can link differences back to supporting articles.
 - Sentiment and community layers are presented as signals rather than facts.
 
 ### Event and academic layers
 
 - Event graph V1 and selected-event detail are implemented.
-- Event analogue generation exists in the backend with explicit similarity basis and difference warnings.
+- Event analogues have a frontend consumer with explicit similarity basis, mandatory difference warnings, stable event identity, and evidence links.
 - Academic discovery uses OpenAlex plus Crossref fallback/merge and records provenance and links.
 - Cross-topic synthesis and discovery/cognition archive workflows exist with async job handling.
 
 ## Partial Or Missing Capabilities
 
-- The analogue backend does not yet have a complete frontend consumption loop.
-- `dig_later` is not yet persisted across devices.
 - The event graph is driven by local analysis results; LLM deep-analysis output does not currently update `Event` or `EventRelation`.
 - Morning briefing output is not yet a fact-first, email-linked daily loop.
 - One-domain-today remains a product direction, not a finished feature.
@@ -84,26 +73,25 @@ Keep this batch separate from documentation and unrelated local changes. Its fil
 
 1. Test database cleanup is session-scoped and may swallow `OSError`; improve isolation or fail visibly in a separate batch.
 2. Define the source of truth between local event extraction and optional LLM deep analysis before synchronizing graph rows.
-3. Tighten analogue evidence granularity together with the future frontend consumer.
-4. Keep source freshness and disabled/limited-source semantics explicit; never silently fall back to unavailable sources.
-5. Keep hypotheses and inferred relations separate from observed evidence relations.
+3. Keep source freshness and disabled/limited-source semantics explicit; never silently fall back to unavailable sources.
+4. Keep hypotheses and inferred relations separate from observed evidence relations.
 
-These debts are real but are not regressions introduced by the current backend P1 batch.
+These debts are real but are not regressions introduced by the cross-device queue batch.
 
 ## External Architecture Inputs
 
 User feedback, reflections, developer observations, and external project references are indexed under `spec/feedback-and-ideas/`. The 2026-07-12 publishing and reasoning review is preserved at `spec/feedback-and-ideas/references/knowledge-publishing-and-reasoning-reference-2026-07-12.md`.
 
 - Astro/Pagefind knowledge-base pattern: useful for a future public or read-only archive through content/display separation, repository dispatch with scheduled fallback, build-time publication whitelists, and static full-text search. It must not replace the operational FastAPI workbench.
-- OpenSPG/KAG: useful as a design reference for schema-constrained evidence graphs, source-to-knowledge mutual indexing, explicit query plans, and inspectable multi-hop evidence paths. Do not adopt KAG/OpenSPG during the current RM-050 gate; direct integration would add Docker, graph-platform, and LLM complexity.
+- OpenSPG/KAG: useful as a design reference for schema-constrained evidence graphs, source-to-knowledge mutual indexing, explicit query plans, and inspectable multi-hop evidence paths. Do not insert KAG/OpenSPG into RM-055 without a separate evidence-backed decision; direct integration would add Docker, graph-platform, and LLM complexity.
 
 Neither reference changes the no-LLM core-path constraint or creates a current roadmap item.
 
 ## Ownership And Safety Boundaries
 
 - Human: final authority for direction, commits, merges, and releases.
-- Codex: backend line and documentation governance for the current batch.
-- Claude: frontend line and independent review.
+- Codex: cross-layer implementation and documentation governance while Claude is offline, by explicit human authorization.
+- Claude: independent review and frontend collaboration when available; handoff is maintained in `TO_CLAUDE.md`.
 - Avoid concurrent edits to the same files.
 - Before editing code symbols, run GitNexus impact analysis and report high/critical risk.
 - Before committing, run GitNexus `detect-changes` and verify the affected scope.
@@ -113,12 +101,19 @@ Neither reference changes the no-LLM core-path constraint or creates a current r
 
 ## Verification State
 
-The latest accepted backend evidence is:
+The latest accepted release-quality evidence is:
 
 ```text
 cd backend
 ..\venv\Scripts\python.exe -m pytest -q
-308 passed, 1 warning
+315 passed, 1 warning
+
+cd ..\frontend
+npm run build
+# 98 modules transformed
+
+playwright test
+# 146 passed (desktop + mobile)
 ```
 
 This is recorded context, not permission to skip fresh verification after new code changes. Documentation-only work should at minimum pass link checks, UTF-8 validation, `git diff --check`, and staged GitNexus scope review.

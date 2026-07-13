@@ -1,18 +1,18 @@
 # Roadmap
 
-> 路线图编号：`RM-000`（当前方向索引）。路线图状态总账见 `spec/roadmap-ledger.md`；当前唯一产品主线是 `RM-050`。
+> 路线图编号：`RM-000`（当前方向索引）。路线图状态总账见 `spec/roadmap-ledger.md`；当前唯一产品主线是 `RM-055`。
 
 This roadmap records the current product direction after the July 2026 readability and cognition rounds. It is intentionally small: use it to choose the next iteration, not to turn the project into a backlog warehouse. For a complete context reset, read `spec/current-state.md` first.
 
 ## Current Priority
 
-双模式入口 · 理解层并轨收官(2026-07-09 晚起)。完整方案见 `spec/roadmap-dual-mode-2026-07-09.md`。
+可审计信息供应链 · C 先行。完整方案见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
-当前进度（2026-07-12）：M1 已完成；M2 的 U1 后端已完成、前端“相似先例”消费尚未收口；当前先通过后端审计修复稳定化关口，M3/M4 尚未完成。
+当前进度（2026-07-13）：Phase 0 真实验收、Phase 1 Coverage API、Phase 2 覆盖仪表与 Phase A 类比卡带均已闭环；`dig_later` 跨设备队列已由 `98efa59` 落地。源扩展因尚无两周纵向缺口数据进入证据闸，不伪造首批；下一可执行产品阶段是 M4' 事实优先早报升级。
 
-主线:**手机负责标记好奇心,电脑负责消化好奇心;省力早报喂事实,硬核台增理解——两模式不互相污染。** 事件图 V1 与理解层透镜2(多源对照)已前后端闭环;本轮先让已建成的理解层被日常够得着(深挖队列 + 头版深挖入口 + deep-link),GPT 并行做 U1 类比后端与政军外交官方源扩展。
+主线：**先让用户看见 AI 读了什么、漏了什么、有没有反证，再用真实缺口数据决定补哪些源、落哪些正文。** 手机标记好奇心、电脑消化好奇心；省力早报喂事实、硬核台增理解，两模式与认知画像不互相污染。
 
-分工:Claude 前端(双模式入口 V1a → U1 类比卡带 → F3 假设层占位),GPT 后端(U1 analogues API → dig_later 落库 → 源扩展批次 → 早报升级后端半)。契约与任务在 `.agent-bridge/BOARD.md` 与 `TO_CODEX.md` 顶部。
+当前执行：Claude 离线期间由 Codex 按人类授权接管跨层实现；交接仍写入 `.agent-bridge/BOARD.md` 与 `TO_CLAUDE.md`。不 push、不合并 `master`，人类保留最终发布权。
 
 战略判据(2026-07-09 人类读书洞察,不变):区分**获取资讯 vs 增进理解**。新功能优先级先问"这是堆资讯还是增进理解",后者优先。新增红线:早报喂事实不喂结论;两模式不互相污染。
 
@@ -34,6 +34,8 @@ Implementation default:
 
 ## Near-Term
 
+- RM-055 M4'：事实优先早报、覆盖微标签、可核查深链与“今日一个领域”，先做方案和契约，再小步实现。
+- Source expansion observation gate：截至 2026-07-27 收集两周 Coverage 缺口数据；闸门见 `docs/operations/rm055-source-expansion-gate-2026-07-13.md`。
 - Context cleanup: implemented in `spec/current-state.md`; keep it updated when a major iteration lands.
 - Cognition-profile calibration V1: implemented. Next step is to observe real recommendations and decide whether to add a small editable calibration UI.
 - Domain universe V1: implemented as default local profile fields. Tune labels and seed styles only after real use.
