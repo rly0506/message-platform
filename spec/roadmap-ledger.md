@@ -24,9 +24,10 @@
 3. RM-055 `M2'` 已完成：U1 后端契约 `7922021`、前端类比卡带 `69ca3aa`，并由 `29f9cf8` 修正事件身份、异步串台和证据回链。
 4. RM-055 主线 C 的 Phase 0/1/2 已完成：Phase 0 量化报告、Coverage API `dfdb9c1`、前端覆盖仪表 `4532d02`，跨层审计收口为 `29f9cf8`。
 5. RM-055 `M3'` 的 `dig_later` 跨设备落库由 `98efa59` 完成，`4723b0b` 进一步加入 revision/tombstone、原子并发写、逐操作 outbox、跨标签页与崩溃恢复加固；完整测试继续证明不改变任何 CognitionProfile/CognitionMark。源扩展首批因两周纵向 Coverage 数据尚未形成，进入 `docs/operations/rm055-source-expansion-gate-2026-07-13.md` 的证据闸；不得为完成里程碑而伪造扩源理由。
-6. RM-055 下一可执行产品阶段是 `M4'`（事实优先早报 + 覆盖标签 + 深链 + 今日一个领域）；源扩展观察可并行运行。
+6. RM-055 `M4'` 已完成：事实优先早报、覆盖标签、原始证据/工作台深链与只读“今日一个领域”由 `2fd9155` 落地，`8cb9f9b` / `ff85f65` 关闭事实来源、未知来源、未来时间与坏链接回退问题；独立复审最终 `APPROVE`。
+7. RM-055 下一可执行产品阶段是 Phase 3（默认关闭的假设层 UI 占位）；源扩展观察继续并行运行，最早 2026-07-27 进入人类决策关口。
 
-因此，项目目前处在 **RM-055 M4' 开工点**：可审计覆盖闭环与跨设备好奇心队列已经落地，源扩展在数据闸中并行观察。
+因此，项目目前处在 **RM-055 Phase 3 开工点**：可审计覆盖、跨设备好奇心队列与事实早报闭环已经落地，源扩展仍在数据闸中并行观察。
 
 ## 路线图编号
 
@@ -44,7 +45,7 @@
 | RM-030 | `spec/archive/roadmaps/roadmap-event-graph-2026-07-09.md` | COMPLETED | 事件图 V1 的 F1、B1-B3、F2 已提交；事件图仍有架构债务，但 V1 已收官。 |
 | RM-040 | `spec/archive/roadmaps/roadmap-understanding-layer-2026-07-09.md` | SUPERSEDED | U2 多源对照完成、U1 后端完成；未完成的前端消费和 U3 假设层已并入 RM-050 或继续延期。 |
 | RM-050 | `spec/archive/roadmaps/roadmap-dual-mode-2026-07-09.md` | SUPERSEDED | 双模式入口 M1 已完成（`3327008`）；未完成的 M2/M3/M4 由 RM-055 完整承接。指向接替者 RM-055。 |
-| RM-055 | `spec/roadmap-supply-chain-2026-07-12.md` | CURRENT | 当前主线。可审计信息供应链 · C 先行；接替 RM-050 并承接其 M2/M3/M4。 |
+| RM-055 | `spec/roadmap-supply-chain-2026-07-12.md` | CURRENT | 当前主线。M1'-M4' 产品闭环已完成；Phase 3 占位与 2026-07-27 来源/正文决策关口仍在执行。 |
 | RM-060 | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` | CANDIDATE | AI 可控性与博客/播客/视频/授权私域资料方向，只记录问题和边界，尚未立项。 |
 
 ## 非路线图但必须保留的历史轨道

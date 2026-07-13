@@ -2,6 +2,25 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-14 RM-055 M4' Fact-First Briefing
+
+- Added one read-only persisted-data briefing contract shared by
+  `GET /api/briefing/latest`, the discovery front page, and scheduled email.
+- Selected at most one recent relevant article per active topic, attached event
+  or topic coverage, retained original evidence and contrast deep links, and
+  rotated one deterministic domain-question scaffold without profile writes.
+- Kept source, language, and fulltext unknowns explicit; facts use original
+  title/snippet fields rather than LLM-enriched translations, and malformed app
+  base URLs fall back to relative workbench paths.
+- Kept briefing requests independent from discovery reports and deep-link
+  parsing; email falls back to the archived discovery report if briefing build
+  fails.
+- Independent review drove two repair rounds and ended `APPROVE`. Commits:
+  `2fd9155`, `8cb9f9b`, and `ff85f65`.
+- Final verification: backend `327 passed, 1 warning`; frontend build 98 modules;
+  desktop/mobile E2E `180 passed`; initial staged GitNexus scope was `high`
+  across 13 files / 35 symbols / 8 expected discovery/email flows.
+
 ## 2026-07-14 Historical Roadmap Consolidation
 
 - Consolidated all completed, superseded, and reference roadmaps under

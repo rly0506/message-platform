@@ -4,7 +4,7 @@
 > test-driven-development task by task. Keep this checklist current as each RED,
 > GREEN, review, and closeout gate completes.
 
-Status: **IN PROGRESS**
+Status: **COMPLETE**
 
 Branch: `feature/academic-reading-signals`
 
@@ -51,10 +51,11 @@ Playwright. No new package or database table.
         "scope": "event",
         "article_count": 4,
         "independent_source_count": 3,
+        "unknown_source_article_count": 1,
         "known_language_count": 2,
         "unknown_language_article_count": 1,
         "article_ids": [3, 4, 5, 6],
-        "label": "事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）",
+        "label": "事件样本 4 篇 · 3 源（1 篇来源未知） · 2 语种（1 篇语种未知）",
         "note": "Counts describe persisted articles; absence is not proof of no reporting."
       }
     }
@@ -80,8 +81,8 @@ Contract rules:
 - A fact summary uses one persisted article title/snippet. Coverage describes
   the surrounding event/topic sample and must not be worded as if all sources
   support the sentence.
-- Unknown language and fulltext data remain explicit; zero is never substituted
-  for unknown.
+- Unknown source, language, and fulltext data remain explicit; zero is never
+  substituted for unknown.
 - Deep-link paths always use the existing `topic/event/view=contrast` contract.
   Email gets an absolute URL only when `DAILY_DIGEST_APP_URL` is configured.
 - No recent persisted article means an empty item list, not stale filler.
@@ -102,13 +103,13 @@ Contract rules:
 - [x] Run upstream impact analysis for existing symbols. Results:
   `build_daily_digest_body` LOW (2 direct callers / 2 processes),
   `daily_email_cmd` LOW (0), and `useDiscovery` LOW (App.vue only).
-- [ ] Write service and endpoint tests for event-scoped facts, topic fallback,
+- [x] Write service and endpoint tests for event-scoped facts, topic fallback,
   honest unknowns, freshness filtering, deep links, and deterministic profile
   rotation.
-- [ ] Run `pytest tests/test_daily_briefing.py -q` and record the expected RED
+- [x] Run `pytest tests/test_daily_briefing.py -q` and record the expected RED
   caused by the missing service/route.
-- [ ] Implement the smallest read-only service and `/api/briefing/latest` route.
-- [ ] Run the focused backend tests to GREEN.
+- [x] Implement the smallest read-only service and `/api/briefing/latest` route.
+- [x] Run the focused backend tests to GREEN.
 
 ## Task 2: Scheduled Email Consumer
 
@@ -119,15 +120,15 @@ Contract rules:
 - Modify: `backend/tests/test_daily_email.py`
 - Modify: `docs/operations.md`
 
-- [ ] Write tests showing fact items precede frontier seeds, coverage/fulltext
+- [x] Write tests showing fact items precede frontier seeds, coverage/fulltext
   boundaries are visible, configured absolute deep links render, and the domain
   card contains questions rather than conclusions.
-- [ ] Write a CLI test proving preview/send paths attach the shared briefing
+- [x] Write a CLI test proving preview/send paths attach the shared briefing
   payload without making an SMTP connection.
-- [ ] Run focused tests and record RED for missing briefing rendering/attachment.
-- [ ] Implement minimal rendering and `DAILY_DIGEST_APP_URL` integration while
+- [x] Run focused tests and record RED for missing briefing rendering/attachment.
+- [x] Implement minimal rendering and `DAILY_DIGEST_APP_URL` integration while
   preserving the old report-only fallback.
-- [ ] Run `pytest tests/test_daily_email.py tests/test_daily_briefing.py -q` to
+- [x] Run `pytest tests/test_daily_email.py tests/test_daily_briefing.py -q` to
   GREEN.
 
 ## Task 3: Front-Page Consumer
@@ -141,41 +142,76 @@ Contract rules:
 - Modify: `frontend/src/components/DiscoveryPanel.vue`
 - Modify: `frontend/tests/e2e/discovery-cognition.spec.ts`
 
-- [ ] Add desktop and mobile E2E assertions for fact-first order, coverage label,
+- [x] Add desktop and mobile E2E assertions for fact-first order, coverage label,
   original evidence link, workbench deep link, honest fulltext boundary, and the
   one-domain question scaffold.
-- [ ] Run the focused Playwright file and record RED for the missing UI/API
+- [x] Run the focused Playwright file and record RED for the missing UI/API
   consumer.
-- [ ] Add typed API loading as an independent enhancement that never gates the
+- [x] Add typed API loading as an independent enhancement that never gates the
   discovery report or deep-link parsing.
-- [ ] Render an unframed fact-first section with repeated evidence items and a
+- [x] Render an unframed fact-first section with repeated evidence items and a
   sibling domain scaffold; do not nest cards.
-- [ ] Run frontend build and focused desktop/mobile E2E to GREEN.
+- [x] Run frontend build and focused desktop/mobile E2E to GREEN.
 
 ## Task 4: Full Gate And Review
 
-- [ ] Run the full backend suite.
-- [ ] Run the frontend production build.
-- [ ] Run the full desktop/mobile Playwright suite.
-- [ ] Run `git diff --check` and verify secret/database status.
-- [ ] Refresh GitNexus if stale; stage only M4' files and run staged
+- [x] Run the full backend suite.
+- [x] Run the frontend production build.
+- [x] Run the full desktop/mobile Playwright suite.
+- [x] Run `git diff --check` and verify secret/database status.
+- [x] Refresh GitNexus if stale; stage only M4' files and run staged
   detect-changes with explicit repo/branch.
-- [ ] Obtain independent code review; fix every Critical/Important finding and
+- [x] Obtain independent code review; fix every Critical/Important finding and
   assess Minor findings with evidence.
-- [ ] Commit implementation separately from roadmap/report closeout.
+- [x] Commit implementation separately from roadmap/report closeout.
 
 ## Task 5: Closeout And Handoff
 
-- [ ] Update this report with RED/GREEN evidence, exact commands, commit IDs,
+- [x] Update this report with RED/GREEN evidence, exact commands, commit IDs,
   residual risks, and any human decisions deferred to the end.
-- [ ] Update `spec/current-state.md`, `spec/roadmap.md`,
+- [x] Update `spec/current-state.md`, `spec/roadmap.md`,
   `spec/roadmap-ledger.md`, and `spec/CHANGELOG.md` only after product acceptance.
-- [ ] Update local `.agent-bridge/BOARD.md` and `TO_CLAUDE.md` with the current
+- [x] Update local `.agent-bridge/BOARD.md` and `TO_CLAUDE.md` with the current
   truth; preserve history and never commit `.agent-bridge/`.
-- [ ] Run the documentation gate and commit closeout separately.
+- [x] Run the documentation gate and commit closeout separately.
+
+## Final Evidence And Review
+
+- Implementation: `2fd9155 feat: add fact-first daily briefing`.
+- Review repairs: `8cb9f9b fix: harden fact-first briefing review gaps` and
+  `ff85f65 fix: reject malformed briefing app URLs`.
+- Initial staged GitNexus scope: 13 files, 35 symbols, 8 flows, `high`; all
+  mapped flows were expected discovery/email paths. Repair scopes were
+  `medium` (8 files / 14 symbols / 5 flows, then 3 files / 4 symbols / 2 flows).
+- Independent review first found three Important issues: LLM-enriched Chinese
+  fields presented as source text, hidden unknown-source articles, and future
+  timestamps displacing current facts. It also found malformed app-base URL
+  fallback gaps. TDD regressions failed for each issue before the fixes.
+- The final reviewer result is `APPROVE` with no Critical, Important, or Minor
+  findings. Briefing facts now use original title/snippet fields only; mixed
+  unknown sources are counted; future timestamps are excluded; malformed,
+  non-HTTP, query, fragment, authority, and port values retain relative links.
+- Final backend gate: `..\venv\Scripts\python.exe -m pytest -q` ->
+  `327 passed, 1 warning`.
+- Final frontend gate: `npm run build` -> 98 modules; `npm run test:e2e` ->
+  `180 passed` across desktop and mobile.
+- Two earlier full E2E attempts exposed pre-existing harness races rather than
+  product regressions: a stale live locator after project rename and a helper
+  that silently skipped topic selection after five seconds. Both failures were
+  reproduced from snapshots, fixed at the harness root, repeated in isolation,
+  and covered by the final 180-test pass. No assertion was weakened.
+- `git diff --check` passed. Real `.env`, `dossier.db`, and `discovery.db` were
+  not staged or modified; all local/ghost files remain outside commits.
+
+Residual product boundaries remain explicit: article bodies are not persisted,
+so fulltext metrics stay `unknown`; source expansion remains behind the
+2026-07-27 evidence gate; no real SMTP send was attempted without user-owned
+credentials and destination.
 
 ## Human Decisions Deferred To The End
 
 None discovered yet. `DAILY_DIGEST_APP_URL` is configuration, not a product
 direction decision; sends remain backward compatible when it is absent and state
-that the absolute workbench link is unavailable.
+that the absolute workbench link is unavailable. Source expansion and fulltext
+persistence remain the already-recorded 2026-07-27 human decision gate, not an
+M4' completion blocker.

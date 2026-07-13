@@ -7,11 +7,11 @@ This is the compact context reset point for future agents. It records current pr
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- Current implementation HEAD: `4723b0b` (`dig_later` concurrency hardening).
+- Current implementation HEAD: `ff85f65` (M4' fact-first briefing plus review repairs).
 - Current product roadmap: `RM-055`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
-- Coverage API, the coverage instrument, event analogue consumer, and cross-device curiosity queue are integrated on this branch.
+- Coverage API/instrument, event analogue consumer, cross-device curiosity queue, and fact-first briefing loop are integrated on this branch.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
-- Next executable product stage: RM-055 M4' fact-first briefing, coverage labels, deep links, and one-domain-today.
+- Next executable product stage: RM-055 Phase 3, a default-off hypothesis-layer UI placeholder that keeps evidence and inference visually separate.
 - Do not merge to `master` or push without explicit human approval.
 
 ## RM-055 Progress
@@ -22,17 +22,18 @@ This is the compact context reset point for future agents. It records current pr
 | M2': auditable coverage | Done | Coverage API, evidence-linked distributions, honest unknowns, and the frontend instrument are live in `dfdb9c1` / `4532d02` / `29f9cf8`. |
 | M3': cross-device queue | Done | Dedicated persistence landed in `98efa59`; revision/tombstone concurrency, causal outbox recovery, and cross-tab hardening landed in `4723b0b`. |
 | M3': source expansion | Evidence gate | No batch is justified yet; collect two weeks of recurring gap evidence before selecting at most three feeds. |
-| M4': briefing loop | Next | Fact-first summaries, coverage micro-labels, deep links, and one-domain-today remain to implement. |
+| M4': briefing loop | Done | Original persisted title/snippet facts, honest coverage labels, evidence/workbench links, scheduled-email fallback, and read-only one-domain questions landed in `2fd9155`, `8cb9f9b`, and `ff85f65`. |
 
-The project is at the **RM-055 M4' start point**, with source-gap observation running in parallel.
+The project is at the **RM-055 Phase 3 start point**, with source-gap observation running in parallel and no source batch justified before 2026-07-27.
 
 ## Latest Delivered Gate
 
-- `DigQueueItem` is a separate SQLite dataset and API; it never enters cognition summary or calibration code.
-- Frontend localStorage remains the offline cache. A per-operation outbox records causal successors, rejects stale snapshots, and reconciles against revisioned server tombstones.
-- Network failure leaves the queue usable and displays a truthful degraded state; queue sync does not gate topic loading or deep links.
-- Fresh verification: backend `319 passed, 1 warning`; frontend build passed (98 modules); full desktop/mobile E2E `174 passed`.
-- Hardening staged GitNexus: 9 files, 67 symbols, 27 conservatively mapped flows, risk `critical`; expansion is through shared `_migrate`, and exact staged scope was reviewed before commit `4723b0b`.
+- `GET /api/briefing/latest`, the discovery front page, and scheduled email share one read-only persisted-data briefing contract; no LLM key is required.
+- Facts use original article title/snippet fields, never LLM-enriched translations. Unknown source/language/fulltext data and “未采集到 ≠ 未报道” remain visible.
+- Briefing loading or failure does not gate discovery reports, topic loading, or email/workbench deep links. Invalid app-base configuration falls back to relative links.
+- “今日一个领域” rotates deterministic questions from CognitionProfile without changing profile or mark rows.
+- Independent review ended `APPROVE` after two repair commits. Fresh verification: backend `327 passed, 1 warning`; frontend build passed (98 modules); full desktop/mobile E2E `180 passed`.
+- Initial staged GitNexus was 13 files / 35 symbols / 8 flows / `high`; reviewed repair scopes were `medium` and stayed inside briefing/test flows.
 
 ## Implemented Product Capabilities
 
@@ -50,6 +51,7 @@ The project is at the **RM-055 M4' start point**, with source-gap observation ru
 - The frontend provides a workbench for topics, reports, source matrices, sentiment/community signals, academic evidence, event networks, and cognition marks.
 - Deep links can open a topic, event, and contrast view.
 - A cross-device deep-dive queue connects low-friction reading to later analysis and retains offline mutations locally.
+- A fact-first daily briefing exposes source snippets, coverage micro-labels, original evidence, and auditable contrast deep links in UI and email.
 - Event contrasts can link differences back to supporting articles.
 - Sentiment and community layers are presented as signals rather than facts.
 
@@ -63,8 +65,7 @@ The project is at the **RM-055 M4' start point**, with source-gap observation ru
 ## Partial Or Missing Capabilities
 
 - The event graph is driven by local analysis results; LLM deep-analysis output does not currently update `Event` or `EventRelation`.
-- Morning briefing output is not yet a fact-first, email-linked daily loop.
-- One-domain-today remains a product direction, not a finished feature.
+- The Phase 3 hypothesis-layer placeholder remains unimplemented; evidence and inference must stay separate and the future hypothesis layer must default off.
 - Additional official and multilingual sources still require freshness testing and honest availability labels.
 - Static public publishing and zero-backend archive search are not current product capabilities.
 - Logical-form-guided graph reasoning and inspectable multi-hop answer paths are not current product capabilities.
@@ -106,14 +107,14 @@ The latest accepted release-quality evidence is:
 ```text
 cd backend
 ..\venv\Scripts\python.exe -m pytest -q
-319 passed, 1 warning
+327 passed, 1 warning
 
 cd ..\frontend
 npm run build
 # 98 modules transformed
 
 playwright test
-# 174 passed (desktop + mobile)
+# 180 passed (desktop + mobile)
 ```
 
 This is recorded context, not permission to skip fresh verification after new code changes. Documentation-only work should at minimum pass link checks, UTF-8 validation, `git diff --check`, and staged GitNexus scope review.

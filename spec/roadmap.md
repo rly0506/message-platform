@@ -8,7 +8,7 @@ This roadmap records the current product direction after the July 2026 readabili
 
 可审计信息供应链 · C 先行。完整方案见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
-当前进度（2026-07-14）：Phase 0 真实验收、Phase 1 Coverage API、Phase 2 覆盖仪表与 Phase A 类比卡带均已闭环；`dig_later` 跨设备队列由 `98efa59` 落地，并由 `4723b0b` 完成 revision/tombstone、跨标签页与在途操作加固。源扩展因尚无两周纵向缺口数据进入证据闸，不伪造首批；下一可执行产品阶段是 M4' 事实优先早报升级。
+当前进度（2026-07-14）：Phase 0/1/2、Phase A、`dig_later` 跨设备队列与 M4' 事实优先早报均已闭环。M4' 由 `2fd9155` 落地，并经 `8cb9f9b`、`ff85f65` 修正事实来源、未知来源、未来时间和坏链接回退，独立复审最终 `APPROVE`。源扩展因尚无两周纵向缺口数据继续处于证据闸；下一可执行阶段是 Phase 3 假设层 UI 占位。
 
 主线：**先让用户看见 AI 读了什么、漏了什么、有没有反证，再用真实缺口数据决定补哪些源、落哪些正文。** 手机标记好奇心、电脑消化好奇心；省力早报喂事实、硬核台增理解，两模式与认知画像不互相污染。
 
@@ -34,7 +34,8 @@ Implementation default:
 
 ## Near-Term
 
-- RM-055 M4'：事实优先早报、覆盖微标签、可核查深链与“今日一个领域”，先做方案和契约，再小步实现。
+- RM-055 Phase 3：事件图“假设层”UI 占位，默认关闭，以灰/虚线/“假设”角标定死证据与推断的视觉边界；V1 不接生成数据。
+- RM-055 M4'：已完成。事实优先早报、覆盖微标签、可核查深链与“今日一个领域”见 `2fd9155` / `8cb9f9b` / `ff85f65`。
 - Source expansion observation gate：截至 2026-07-27 收集两周 Coverage 缺口数据；闸门见 `docs/operations/rm055-source-expansion-gate-2026-07-13.md`。
 - Context cleanup: implemented in `spec/current-state.md`; keep it updated when a major iteration lands.
 - Cognition-profile calibration V1: implemented. Next step is to observe real recommendations and decide whether to add a small editable calibration UI.
