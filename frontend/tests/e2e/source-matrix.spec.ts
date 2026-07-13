@@ -1022,7 +1022,17 @@ test('disables the contrast trigger when no stable backend event id is available
 })
 
 // 邮件深链（省力早报 → 硬核台的桥）：?topic=&event=&view=contrast 直接落到对照台。
-test('opens the deep-linked event contrast straight from a URL query', async ({ page }) => {
+test('opens the deep-linked event contrast while the briefing response is pending', async ({ page }) => {
+  let briefingRequested = false
+  let releaseBriefing = () => {}
+  const heldBriefing = new Promise<void>((resolve) => {
+    releaseBriefing = resolve
+  })
+  await page.route('**/api/briefing/latest', async (route) => {
+    briefingRequested = true
+    await heldBriefing
+    await route.fulfill({ status: 503, json: { detail: 'briefing delayed for test' } })
+  })
   await page.route('**/api/topics/101/event-graph', async (route) => {
     await route.fulfill({
       json: {
@@ -1070,12 +1080,17 @@ test('opens the deep-linked event contrast straight from a URL query', async ({ 
 
   // 直接带 deep-link 参数进入：onMounted 解析 → 切 topic → 图加载 → 定位事件 → 拉对照。
   await page.goto('/?topic=101&event=51&view=contrast')
+  await expect.poll(() => briefingRequested).toBe(true)
 
   // 无需人工点「事件分析台」或选专题：深链应自动把用户送到对照台并展开对照。
-  const contrast = page.locator('.event-contrast')
-  await expect(contrast.locator('.contrast-col')).toHaveCount(2)
-  await expect(contrast.locator('.contrast-col-head', { hasText: 'Reuters' })).toBeVisible()
-  await expect(contrast.locator('.contrast-col-head', { hasText: 'BBC' })).toBeVisible()
+  try {
+    const contrast = page.locator('.event-contrast')
+    await expect(contrast.locator('.contrast-col')).toHaveCount(2)
+    await expect(contrast.locator('.contrast-col-head', { hasText: 'Reuters' })).toBeVisible()
+    await expect(contrast.locator('.contrast-col-head', { hasText: 'BBC' })).toBeVisible()
+  } finally {
+    releaseBriefing()
+  }
 })
 
 // 深挖队列（双模式桥）：localStorage 里排队的好奇心 → 卡带渲染 → 点击消化 → 移除。

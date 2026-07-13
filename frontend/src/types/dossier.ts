@@ -806,6 +806,7 @@ export type DailyBriefingCoverage = {
   scope: 'event' | 'topic'
   article_count: number
   independent_source_count: number
+  unknown_source_article_count: number
   known_language_count: number
   unknown_language_article_count: number
   article_ids: number[]

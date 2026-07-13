@@ -67,10 +67,11 @@ def _briefing_payload():
                     "scope": "event",
                     "article_count": 4,
                     "independent_source_count": 3,
+                    "unknown_source_article_count": 1,
                     "known_language_count": 2,
                     "unknown_language_article_count": 1,
                     "article_ids": [55, 56, 57, 58],
-                    "label": "事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）",
+                    "label": "事件样本 4 篇 · 3 源（1 篇来源未知） · 2 语种（1 篇语种未知）",
                     "note": "Counts describe persisted articles; absence is not proof that a source did not report.",
                 },
             },
@@ -127,7 +128,7 @@ def test_build_daily_digest_body_puts_facts_and_domain_questions_before_frontier
     assert "## 今日事实" in body
     assert "Inspection window confirmed" in body
     assert "Officials confirmed the next inspection window." in body
-    assert "事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）" in body
+    assert "事件样本 4 篇 · 3 源（1 篇来源未知） · 2 语种（1 篇语种未知）" in body
     assert "摘要依据: 单篇持久化标题与站点摘要；正文未落库" in body
     assert "https://example.com/inspection" in body
     assert "https://desk.example/?topic=21&event=34&view=contrast" in body

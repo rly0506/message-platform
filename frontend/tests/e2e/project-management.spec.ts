@@ -240,10 +240,10 @@ test('edits archives and deletes existing projects and topics', async ({ page })
     description: '长期追踪俄乌战争与欧洲安全。',
   })
 
-  await projectCard.getByRole('button', { name: '归档项目' }).click()
+  const updatedProjectCard = panel.locator('.project-row').filter({ hasText: '俄乌战争档案' })
+  await updatedProjectCard.getByRole('button', { name: '归档项目' }).click()
   await expect.poll(() => api.updatedProjectPayload()).toEqual({ status: 'archived' })
 
-  const updatedProjectCard = panel.locator('.project-row').filter({ hasText: '俄乌战争档案' })
   const updatedTopicRow = updatedProjectCard.locator('li').filter({ hasText: '俄乌战争' })
 
   await updatedTopicRow.getByRole('button', { name: '编辑专题' }).click()

@@ -43,9 +43,11 @@ def test_briefing_uses_latest_persisted_fact_and_event_coverage():
             Article(
                 url='https://brief.example/afp',
                 title='Latest inspection window confirmed',
+                title_zh='LLM generated title that must not be presented as source text',
                 source='AFP',
                 source_lang='fr',
                 snippet='<p>Officials confirmed the next inspection window.</p>',
+                snippet_zh='LLM generated claim that is not present in the source snippet.',
                 published_at=now - timedelta(hours=1),
                 collector='rss',
             ),
@@ -105,10 +107,13 @@ def test_briefing_uses_latest_persisted_fact_and_event_coverage():
     assert item['coverage']['scope'] == 'event'
     assert item['coverage']['article_count'] == 3
     assert item['coverage']['independent_source_count'] == 2
+    assert item['coverage']['unknown_source_article_count'] == 1
     assert item['coverage']['known_language_count'] == 2
     assert item['coverage']['unknown_language_article_count'] == 1
     assert item['coverage']['article_ids'] == sorted(article_ids)
-    assert item['coverage']['label'] == '事件样本 3 篇 · 2 源 · 2 语种（1 篇语种未知）'
+    assert item['coverage']['label'] == (
+        '事件样本 3 篇 · 2 源（1 篇来源未知） · 2 语种（1 篇语种未知）'
+    )
     assert 'absence is not proof' in item['coverage']['note']
 
 
@@ -117,11 +122,14 @@ def test_briefing_keeps_topic_fallback_and_unknowns_honest_and_excludes_stale_it
     with _isolated_session() as session:
         fresh = Topic(name='Fresh metadata only', queries=['fresh'])
         stale = Topic(name='Stale topic', queries=['stale'])
+        future = Topic(name='Future timestamp topic', queries=['future'])
         session.add(fresh)
         session.add(stale)
+        session.add(future)
         session.commit()
         session.refresh(fresh)
         session.refresh(stale)
+        session.refresh(future)
 
         fresh_article = Article(
             url='https://brief.example/title-only',
@@ -139,19 +147,35 @@ def test_briefing_keeps_topic_fallback_and_unknowns_honest_and_excludes_stale_it
             snippet='Old summary.',
             published_at=now - timedelta(days=20),
         )
+        future_article = Article(
+            url='https://brief.example/future',
+            title='Bad future timestamp',
+            source='Future Wire',
+            source_lang='en',
+            snippet='This timestamp should not displace a current article.',
+            published_at=now + timedelta(days=365),
+        )
         session.add(fresh_article)
         session.add(stale_article)
+        session.add(future_article)
         session.commit()
         session.refresh(fresh_article)
         session.refresh(stale_article)
+        session.refresh(future_article)
         session.add(TopicArticle(topic_id=fresh.id, article_id=fresh_article.id, relevant=True))
         session.add(TopicArticle(topic_id=stale.id, article_id=stale_article.id, relevant=True))
+        session.add(TopicArticle(topic_id=future.id, article_id=future_article.id, relevant=True))
         session.commit()
 
-        payload = daily_briefing.build_daily_briefing(session, now=now)
+        payload = daily_briefing.build_daily_briefing(
+            session,
+            app_base_url='desk.example',
+            now=now,
+        )
 
     assert [item['topic_id'] for item in payload['items']] == [fresh.id]
     item = payload['items'][0]
+    assert item['article_id'] == fresh_article.id
     assert item['event_id'] is None
     assert item['summary_basis'] == 'persisted_title_only'
     assert item['fact_summary'] == '该条持久化记录目前只有标题；正文未落库。'
@@ -160,8 +184,21 @@ def test_briefing_keeps_topic_fallback_and_unknowns_honest_and_excludes_stale_it
     assert item['deep_link_url'] is None
     assert item['coverage']['scope'] == 'topic'
     assert item['coverage']['label'] == '专题样本 1 篇 · 来源未知 · 语种未知'
+    assert item['coverage']['unknown_source_article_count'] == 1
     assert item['coverage']['known_language_count'] == 0
     assert item['coverage']['unknown_language_article_count'] == 1
+
+
+def test_briefing_rejects_non_http_app_base_urls_and_query_fragments():
+    path = '/?topic=12&view=contrast'
+
+    for invalid_base in (
+        'desk.example',
+        '/workbench',
+        'https://desk.example/workbench?mode=mail',
+        'https://desk.example/workbench#briefing',
+    ):
+        assert daily_briefing._absolute_deep_link(invalid_base, path) is None
 
 
 def test_domain_today_rotates_profile_questions_without_mutating_profile_rows():

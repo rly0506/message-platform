@@ -1,7 +1,12 @@
 import { expect, type Page } from '@playwright/test'
 
 export async function openWorkbench(page: Page) {
+  const topicsResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return response.request().method() === 'GET' && url.pathname === '/api/topics'
+  })
   await page.goto('/')
+  await topicsResponse
   await switchToWorkbench(page)
 }
 
@@ -17,9 +22,7 @@ export async function selectFirstTopic(page: Page) {
   const select = page.locator('select.topic-select')
   // 专题列表是 onMounted 异步加载的，先等第一个非禁用选项出现（占位项 disabled，真专题在其后）。
   const firstTopic = select.locator('option:not([disabled])').first()
-  await firstTopic.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {})
-  if ((await select.locator('option:not([disabled])').count()) > 0) {
-    // index 0 = 禁用占位「选择已有专题…」，index 1 = 第一个专题；按 index 选，Vue 回读数字 value。
-    await select.selectOption({ index: 1 })
-  }
+  await firstTopic.waitFor({ state: 'attached', timeout: 10_000 })
+  // index 0 = 禁用占位「选择已有专题…」，index 1 = 第一个专题；按 index 选，Vue 回读数字 value。
+  await select.selectOption({ index: 1 })
 }

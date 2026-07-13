@@ -72,10 +72,11 @@ const factBriefing = {
         scope: 'event',
         article_count: 4,
         independent_source_count: 3,
+        unknown_source_article_count: 1,
         known_language_count: 2,
         unknown_language_article_count: 1,
         article_ids: [55, 56, 57, 58],
-        label: '事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）',
+        label: '事件样本 4 篇 · 3 源（1 篇来源未知） · 2 语种（1 篇语种未知）',
         note: 'Counts describe persisted articles; absence is not proof that a source did not report.',
       },
     },
@@ -276,7 +277,7 @@ test('shows fact-first briefing with auditable coverage, deep link, and domain q
   await expect(item).toContainText('Inspection window confirmed')
   await expect(item).toContainText('Officials confirmed the next inspection window.')
   await expect(item).toContainText('AFP')
-  await expect(item).toContainText('事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）')
+  await expect(item).toContainText('事件样本 4 篇 · 3 源（1 篇来源未知） · 2 语种（1 篇语种未知）')
   await expect(item).toContainText('正文未落库')
   await expect(item.getByRole('link', { name: '原始证据' })).toHaveAttribute(
     'href',

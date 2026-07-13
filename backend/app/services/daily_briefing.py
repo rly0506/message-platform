@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from sqlmodel import Session, select
 
@@ -72,7 +72,8 @@ def _briefing_items(
         recent = [
             article
             for _, article in rows
-            if article.published_at and _naive_utc(article.published_at) >= cutoff
+            if article.published_at
+            and cutoff <= _naive_utc(article.published_at) <= now
         ]
         if not recent:
             continue
@@ -100,13 +101,13 @@ def _briefing_item(
     event_id = event.id if event else None
     snapshot = coverage_snapshot.build_coverage_snapshot(session, topic.id, event_id)
     deep_link_path = _deep_link_path(topic.id, event_id)
-    snippet = payloads.clean_snippet(article.snippet_zh or article.snippet)
+    snippet = payloads.clean_snippet(article.snippet)
     return {
         'topic_id': topic.id,
         'topic_name': topic.name,
         'event_id': event_id,
         'article_id': article.id,
-        'title': (article.title_zh or article.title or '未命名报道').strip(),
+        'title': (article.title or '未命名报道').strip(),
         'fact_summary': snippet or '该条持久化记录目前只有标题；正文未落库。',
         'summary_basis': 'persisted_title_and_snippet' if snippet else 'persisted_title_only',
         'source': article.source.strip() or '来源未知',
@@ -141,6 +142,7 @@ def _event_for_article(
 
 
 def _coverage_micro_label(snapshot: dict[str, Any], event_scope: bool) -> dict[str, Any]:
+    source_buckets = snapshot.get('source_distribution') or []
     language_buckets = snapshot.get('language_distribution') or []
     known_languages = [
         bucket
@@ -152,11 +154,18 @@ def _coverage_micro_label(snapshot: dict[str, Any], event_scope: bool) -> dict[s
         for bucket in language_buckets
         if str(bucket.get('key') or '').strip().casefold() == 'unknown'
     )
+    unknown_source_count = sum(
+        int(bucket.get('count') or 0)
+        for bucket in source_buckets
+        if str(bucket.get('key') or '').strip().casefold() == 'unknown'
+    )
     sample = snapshot['sample']
     source_count = int(snapshot.get('independent_source_count') or 0)
     known_language_count = len(known_languages)
     scope_label = '事件样本' if event_scope else '专题样本'
     source_label = f'{source_count} 源' if source_count else '来源未知'
+    if unknown_source_count and source_count:
+        source_label += f'（{unknown_source_count} 篇来源未知）'
     language_label = f'{known_language_count} 语种' if known_language_count else '语种未知'
     label = f"{scope_label} {sample['article_count']} 篇 · {source_label} · {language_label}"
     if unknown_language_count and known_language_count:
@@ -165,6 +174,7 @@ def _coverage_micro_label(snapshot: dict[str, Any], event_scope: bool) -> dict[s
         'scope': 'event' if event_scope else 'topic',
         'article_count': sample['article_count'],
         'independent_source_count': source_count,
+        'unknown_source_article_count': unknown_source_count,
         'known_language_count': known_language_count,
         'unknown_language_article_count': unknown_language_count,
         'article_ids': sample['article_ids'],
@@ -217,6 +227,14 @@ def _deep_link_path(topic_id: int | None, event_id: int | None) -> str:
 def _absolute_deep_link(base_url: str, path: str) -> str | None:
     base = str(base_url or '').strip()
     if not base:
+        return None
+    parsed = urlsplit(base)
+    if (
+        parsed.scheme.casefold() not in {'http', 'https'}
+        or not parsed.netloc
+        or parsed.query
+        or parsed.fragment
+    ):
         return None
     query = path.partition('?')[2]
     return f"{base.rstrip('/')}/?{query}"
