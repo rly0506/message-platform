@@ -4,6 +4,7 @@ import type {
   CognitionLabel,
   CognitionMark,
   CognitionProfileItem,
+  DailyBriefing,
   DiscoveryReport,
   DiscoveryReportMeta,
   DiscoverySeed,
@@ -111,6 +112,9 @@ const props = defineProps<{
   discoveryReports: DiscoveryReportMeta[]
   selectedDiscoveryRunId: string
   discoveryTimelineTree: DiscoveryTimelineTree
+  briefing: DailyBriefing | null
+  briefingLoading: boolean
+  briefingError: string
   safeReportHtml: string
   hasReport: boolean
   seeds: DiscoverySeed[]
@@ -375,6 +379,49 @@ function styleLabel(style: string | undefined) {
       <p v-if="loading" class="muted">正在读取最新日报...</p>
       <p v-else-if="error" class="country-compare-error">{{ error }}</p>
       <p v-if="cognitionMarkError" class="country-compare-error cognition-mark-error">{{ cognitionMarkError }}</p>
+
+      <section
+        v-if="briefingLoading || briefingError || briefing?.items.length || briefing?.domain_today"
+        class="fact-briefing"
+        aria-label="事实早报"
+      >
+        <div class="fact-briefing-head">
+          <div>
+            <p class="eyebrow">Evidence Brief</p>
+            <h3>今日事实</h3>
+          </div>
+          <span v-if="briefing?.items.length">{{ briefing.items.length }} 条</span>
+        </div>
+        <p v-if="briefingLoading" class="muted">正在读取事实早报...</p>
+        <p v-else-if="briefingError" class="fact-briefing-error">事实早报暂不可用，发现日报仍可阅读。</p>
+        <ol v-if="briefing?.items.length" class="fact-briefing-list">
+          <li v-for="item in briefing.items" :key="`fact-${item.topic_id}-${item.article_id}`" class="fact-briefing-item">
+            <div class="fact-briefing-meta">
+              <span>{{ item.coverage.label }}</span>
+              <em>{{ item.source }}</em>
+              <time>{{ fmtRunId(item.published_at || undefined) }}</time>
+            </div>
+            <h4>{{ item.title }}</h4>
+            <p>{{ item.fact_summary }}</p>
+            <small>摘要依据：单篇持久化标题与站点摘要；正文未落库，不估算全文成功率。</small>
+            <div class="fact-briefing-actions">
+              <a :href="item.evidence_url" target="_blank" rel="noopener">原始证据</a>
+              <a :href="item.deep_link_path">打开分析台</a>
+            </div>
+          </li>
+        </ol>
+
+        <section v-if="briefing?.domain_today" class="domain-today" aria-label="今日一个领域">
+          <div class="domain-today-head">
+            <p class="eyebrow">One Domain Today</p>
+            <h3>今日一个领域 · {{ briefing.domain_today.domain_label }}</h3>
+          </div>
+          <ol>
+            <li v-for="question in briefing.domain_today.questions" :key="question">{{ question }}</li>
+          </ol>
+          <p>{{ briefing.domain_today.note }}</p>
+        </section>
+      </section>
 
       <template v-if="!loading && !error && hasReport">
         <div v-if="report?.run_id" class="discovery-archive-bar">
@@ -734,6 +781,154 @@ function styleLabel(style: string | undefined) {
   background: #fff;
   color: #2c3a44;
   font: inherit;
+}
+
+.fact-briefing {
+  margin: 0 0 18px;
+  padding: 14px 0 18px;
+  border-top: 1px solid #cbd5db;
+  border-bottom: 1px solid #cbd5db;
+}
+
+.fact-briefing-head,
+.domain-today-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.fact-briefing-head .eyebrow,
+.fact-briefing-head h3,
+.domain-today-head .eyebrow,
+.domain-today-head h3 {
+  margin: 0;
+}
+
+.fact-briefing-head h3,
+.domain-today-head h3 {
+  color: #1c2329;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.fact-briefing-head > span {
+  color: #53636e;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fact-briefing-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact-briefing-item {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #cfdbe0;
+  border-left: 4px solid #1f766e;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.fact-briefing-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  color: #53636e;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.fact-briefing-meta span {
+  color: #155a52;
+}
+
+.fact-briefing-meta em {
+  color: #33444e;
+  font-style: normal;
+}
+
+.fact-briefing-item h4,
+.fact-briefing-item p,
+.fact-briefing-item small {
+  overflow-wrap: anywhere;
+}
+
+.fact-briefing-item h4 {
+  margin: 0 0 7px;
+  color: #1c2329;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.fact-briefing-item p {
+  margin: 0 0 8px;
+  color: #35434c;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.fact-briefing-item small {
+  display: block;
+  color: #687780;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.fact-briefing-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+}
+
+.fact-briefing-actions a {
+  color: #155a6e;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.fact-briefing-actions a:hover {
+  text-decoration: underline;
+}
+
+.fact-briefing-error {
+  margin: 0;
+  color: #7b4b16;
+  font-size: 0.8rem;
+}
+
+.domain-today {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px dashed #c8b47b;
+}
+
+.domain-today ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #35434c;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.domain-today > p {
+  margin: 9px 0 0;
+  color: #6b5a2f;
+  font-size: 0.74rem;
 }
 
 .headline-frontpage {

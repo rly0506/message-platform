@@ -97,6 +97,9 @@ const {
   reports: discoveryReports,
   selectedRunId: selectedDiscoveryRunId,
   timelineTree: discoveryTimelineTree,
+  briefing: dailyBriefing,
+  briefingLoading: dailyBriefingLoading,
+  briefingError: dailyBriefingError,
   safeReportHtml: discoverySafeHtml,
   hasReport: discoveryHasReport,
   seeds: discoverySeeds,
@@ -1468,6 +1471,9 @@ function countryCoverageNote(country: CountryCompareCountry) {
       :discovery-reports="discoveryReports"
       :selected-discovery-run-id="selectedDiscoveryRunId"
       :discovery-timeline-tree="discoveryTimelineTree"
+      :briefing="dailyBriefing"
+      :briefing-loading="dailyBriefingLoading"
+      :briefing-error="dailyBriefingError"
       :safe-report-html="discoverySafeHtml"
       :has-report="discoveryHasReport"
       :seeds="discoverySeeds"

@@ -31,7 +31,7 @@ from app.db import (
 )
 from app.pipeline import local_analyze, narrative_signals
 from app.schemas.search import AcademicAnalysisRequest, CognitionMarkRequest, CrossSynthesisRequest, DeepAnalysisRequest, DigQueueItemRequest, DiscoveryDistillRequest, SearchRequest, SentimentAnalysisRequest
-from app.services import article_perspective, auto_refresh, country_compare, coverage_snapshot, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
+from app.services import article_perspective, auto_refresh, country_compare, coverage_snapshot, daily_briefing, event_analogues, event_contrast, event_graph, evidence_package, opencli_diagnostics, payloads, search_service, source_registry
 from app.services.topic_locks import claim_topic
 from app.pipeline import academic, cross_synthesis, sentiment
 
@@ -690,6 +690,12 @@ def create_cross_synthesis_job(
 @app.post("/api/search/jobs/{job_id}/rerun")
 def rerun_search_job(job_id: str) -> dict[str, Any]:
     return search_service.rerun_search_job(job_id)
+
+
+@app.get("/api/briefing/latest")
+def get_latest_briefing() -> dict[str, Any]:
+    with Session(engine) as session:
+        return daily_briefing.build_daily_briefing(session)
 
 
 @app.get("/api/discovery/latest")

@@ -802,6 +802,56 @@ export type DiscoverySeed = {
   info_value_labels?: InfoValueLabel[]
 }
 
+export type DailyBriefingCoverage = {
+  scope: 'event' | 'topic'
+  article_count: number
+  independent_source_count: number
+  known_language_count: number
+  unknown_language_article_count: number
+  article_ids: number[]
+  label: string
+  note: string
+}
+
+export type DailyBriefingItem = {
+  topic_id: number
+  topic_name: string
+  event_id: number | null
+  article_id: number
+  title: string
+  fact_summary: string
+  summary_basis: 'persisted_title_and_snippet' | 'persisted_title_only'
+  source: string
+  published_at: string | null
+  evidence_url: string
+  deep_link_path: string
+  deep_link_url: string | null
+  fulltext: {
+    status: 'unknown'
+    reason: 'article_bodies_not_persisted'
+  }
+  coverage: DailyBriefingCoverage
+}
+
+export type DailyBriefingDomain = {
+  date: string
+  domain_key: string
+  domain_label: string
+  profile_level: string
+  profile_confidence: number
+  selection_basis: 'deterministic_local_profile_rotation'
+  questions: string[]
+  note: string
+}
+
+export type DailyBriefing = {
+  generated_at: string
+  basis: 'persisted_article_metadata'
+  note: string
+  items: DailyBriefingItem[]
+  domain_today: DailyBriefingDomain | null
+}
+
 export type DiscoveryResult = {
   kind: 'discovery'
   markdown: string

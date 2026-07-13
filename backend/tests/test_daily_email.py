@@ -2,6 +2,7 @@ import pytest
 from typer.testing import CliRunner
 
 from app.discovery import daily_email
+from app.services import daily_briefing as daily_briefing_service
 import cli as dossier_cli
 
 
@@ -39,6 +40,58 @@ def _report_payload():
     }
 
 
+def _briefing_payload():
+    return {
+        "generated_at": "2026-07-14T08:30:00Z",
+        "basis": "persisted_article_metadata",
+        "note": "Facts use persisted article titles and source snippets; article bodies are not stored.",
+        "items": [
+            {
+                "topic_id": 21,
+                "topic_name": "Ceasefire monitoring",
+                "event_id": 34,
+                "article_id": 55,
+                "title": "Inspection window confirmed",
+                "fact_summary": "Officials confirmed the next inspection window.",
+                "summary_basis": "persisted_title_and_snippet",
+                "source": "AFP",
+                "published_at": "2026-07-14T07:00:00",
+                "evidence_url": "https://example.com/inspection",
+                "deep_link_path": "/?topic=21&event=34&view=contrast",
+                "deep_link_url": "https://desk.example/?topic=21&event=34&view=contrast",
+                "fulltext": {
+                    "status": "unknown",
+                    "reason": "article_bodies_not_persisted",
+                },
+                "coverage": {
+                    "scope": "event",
+                    "article_count": 4,
+                    "independent_source_count": 3,
+                    "known_language_count": 2,
+                    "unknown_language_article_count": 1,
+                    "article_ids": [55, 56, 57, 58],
+                    "label": "事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）",
+                    "note": "Counts describe persisted articles; absence is not proof that a source did not report.",
+                },
+            },
+        ],
+        "domain_today": {
+            "date": "2026-07-14",
+            "domain_key": "energy",
+            "domain_label": "能源 / 核能 / 新能源",
+            "profile_level": "unfamiliar",
+            "profile_confidence": 55,
+            "selection_basis": "deterministic_local_profile_rotation",
+            "questions": [
+                "对照官方文件、行业媒体、研究资料与社区样本：各自突出什么、遗漏什么？",
+                "找一个历史先例：机制相似在哪里，技术、制度或市场条件差在哪里？",
+                "关键机制是什么，哪些物理、技术或制度约束会改变结果？",
+            ],
+            "note": "这是问题脚手架，不是结论；阅读本卡不会写入或修改认知画像。",
+        },
+    }
+
+
 def test_build_daily_digest_body_puts_top_seeds_before_full_report():
     body = daily_email.build_daily_digest_body(_report_payload())
 
@@ -63,6 +116,25 @@ def test_build_daily_digest_body_handles_report_without_seeds():
     assert "## 今日最值得看的 0 条" in body
     assert "今天没有结构化种子" in body
     assert "## Baseline only" in body
+
+
+def test_build_daily_digest_body_puts_facts_and_domain_questions_before_frontier_seeds():
+    report = _report_payload()
+    report["briefing"] = _briefing_payload()
+
+    body = daily_email.build_daily_digest_body(report)
+
+    assert "## 今日事实" in body
+    assert "Inspection window confirmed" in body
+    assert "Officials confirmed the next inspection window." in body
+    assert "事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）" in body
+    assert "摘要依据: 单篇持久化标题与站点摘要；正文未落库" in body
+    assert "https://example.com/inspection" in body
+    assert "https://desk.example/?topic=21&event=34&view=contrast" in body
+    assert "## 今日一个领域 · 能源 / 核能 / 新能源" in body
+    assert "找一个历史先例" in body
+    assert "不是结论" in body
+    assert body.index("## 今日事实") < body.index("## 今日最值得看的 2 条")
 
 
 def test_send_daily_digest_requires_recipient_before_cli_call():
@@ -240,3 +312,61 @@ def test_daily_email_cli_send_smtp_uses_smtp_path(monkeypatch):
     assert result.stdout.strip() == "smtp sent"
     assert captured["report"]["run_id"] == "20260705T090000Z"
     assert captured["to"] == "reader@example.com"
+
+
+def test_daily_email_cli_attaches_shared_briefing_with_configured_app_url(monkeypatch):
+    from app.discovery import run as discovery_run
+
+    captured = {}
+
+    def fake_build(_session, *, app_base_url=""):
+        captured["app_base_url"] = app_base_url
+        return _briefing_payload()
+
+    def fake_send_smtp(report, to=""):
+        captured["report"] = report
+        captured["to"] = to
+        return daily_email.SendResult(returncode=0, stdout="smtp sent", stderr="")
+
+    monkeypatch.setenv("DAILY_DIGEST_APP_URL", "https://desk.example")
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: _report_payload())
+    monkeypatch.setattr(daily_briefing_service, "build_daily_briefing", fake_build)
+    monkeypatch.setattr(daily_email, "send_daily_digest_smtp", fake_send_smtp)
+
+    result = CliRunner().invoke(
+        dossier_cli.app,
+        ["daily-email", "--send-smtp", "--to", "reader@example.com"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["app_base_url"] == "https://desk.example"
+    assert captured["report"]["briefing"]["items"][0]["topic_id"] == 21
+    assert captured["to"] == "reader@example.com"
+
+
+def test_daily_email_cli_keeps_archived_report_when_briefing_build_fails(monkeypatch):
+    from app.discovery import run as discovery_run
+
+    captured = {}
+
+    def fail_build(_session, *, app_base_url=""):
+        raise RuntimeError('briefing database unavailable')
+
+    def fake_send_smtp(report, to=""):
+        captured["report"] = report
+        return daily_email.SendResult(returncode=0, stdout="smtp sent", stderr="")
+
+    monkeypatch.setattr(discovery_run, "latest_report", lambda: _report_payload())
+    monkeypatch.setattr(daily_briefing_service, "build_daily_briefing", fail_build)
+    monkeypatch.setattr(daily_email, "send_daily_digest_smtp", fake_send_smtp)
+
+    result = CliRunner().invoke(
+        dossier_cli.app,
+        ["daily-email", "--send-smtp", "--to", "reader@example.com"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["report"]["run_id"] == "20260705T090000Z"
+    assert captured["report"]["briefing"] is None
+    assert captured["report"]["briefing_error"] == 'RuntimeError'
+    assert '事实早报暂不可用' in result.stderr

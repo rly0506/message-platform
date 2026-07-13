@@ -81,11 +81,28 @@ def daily_email_cmd(
     """把最新认知前沿日报整理成手机早报邮件。"""
     from app.discovery import daily_email as daily_email_mod
     from app.discovery import run as discovery_run
+    from app.services import daily_briefing as daily_briefing_service
 
     report = discovery_run.latest_report()
     if report is None:
         typer.echo("还没有认知前沿日报；请先运行 `python backend/cli.py discover --no-print`。")
         raise typer.Exit(1)
+
+    try:
+        init_db()
+        with Session(engine) as session:
+            briefing = daily_briefing_service.build_daily_briefing(
+                session,
+                app_base_url=os.getenv(daily_briefing_service.APP_BASE_URL_ENV, ""),
+            )
+        report = {**report, "briefing": briefing}
+    except Exception as exc:
+        report = {
+            **report,
+            "briefing": None,
+            "briefing_error": type(exc).__name__,
+        }
+        typer.echo("事实早报暂不可用，继续发送已归档的发现日报。", err=True)
 
     if preview or not (send or send_smtp):
         typer.echo(daily_email_mod.build_daily_digest_body(report))

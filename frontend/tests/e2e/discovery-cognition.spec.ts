@@ -49,6 +49,53 @@ const historicalSeeds = [
   },
 ]
 
+const factBriefing = {
+  generated_at: '2026-07-14T08:30:00Z',
+  basis: 'persisted_article_metadata',
+  note: 'Facts use persisted article titles and source snippets; article bodies are not stored.',
+  items: [
+    {
+      topic_id: 21,
+      topic_name: 'Ceasefire monitoring',
+      event_id: 34,
+      article_id: 55,
+      title: 'Inspection window confirmed',
+      fact_summary: 'Officials confirmed the next inspection window.',
+      summary_basis: 'persisted_title_and_snippet',
+      source: 'AFP',
+      published_at: '2026-07-14T07:00:00',
+      evidence_url: 'https://example.com/inspection',
+      deep_link_path: '/?topic=21&event=34&view=contrast',
+      deep_link_url: null,
+      fulltext: { status: 'unknown', reason: 'article_bodies_not_persisted' },
+      coverage: {
+        scope: 'event',
+        article_count: 4,
+        independent_source_count: 3,
+        known_language_count: 2,
+        unknown_language_article_count: 1,
+        article_ids: [55, 56, 57, 58],
+        label: '事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）',
+        note: 'Counts describe persisted articles; absence is not proof that a source did not report.',
+      },
+    },
+  ],
+  domain_today: {
+    date: '2026-07-14',
+    domain_key: 'energy',
+    domain_label: '能源 / 核能 / 新能源',
+    profile_level: 'unfamiliar',
+    profile_confidence: 55,
+    selection_basis: 'deterministic_local_profile_rotation',
+    questions: [
+      '对照官方文件、行业媒体、研究资料与社区样本：各自突出什么、遗漏什么？',
+      '找一个历史先例：机制相似在哪里，技术、制度或市场条件差在哪里？',
+      '关键机制是什么，哪些物理、技术或制度约束会改变结果？',
+    ],
+    note: '这是问题脚手架，不是结论；阅读本卡不会写入或修改认知画像。',
+  },
+}
+
 async function mockDiscoveryApi(page: Page) {
   savedMark = null
   startedDiscoveryJobs = 0
@@ -64,6 +111,9 @@ async function mockDiscoveryApi(page: Page) {
         seeds,
       },
     })
+  })
+  await page.route('**/api/briefing/latest', async (route) => {
+    await route.fulfill({ json: factBriefing })
   })
   await page.route('**/api/discovery/reports', async (route) => {
     await route.fulfill({
@@ -215,6 +265,61 @@ test('opens on the daily front page with headline cards loaded', async ({ page }
 
   await page.locator('.mode-switch button').first().click()
   await expect(page.locator('h1')).toHaveText('事件搜索与发展时间轴')
+})
+
+test('shows fact-first briefing with auditable coverage, deep link, and domain questions', async ({ page }) => {
+  await page.goto('/')
+
+  const briefing = page.locator('.fact-briefing')
+  await expect(briefing).toBeVisible()
+  const item = briefing.locator('.fact-briefing-item').first()
+  await expect(item).toContainText('Inspection window confirmed')
+  await expect(item).toContainText('Officials confirmed the next inspection window.')
+  await expect(item).toContainText('AFP')
+  await expect(item).toContainText('事件样本 4 篇 · 3 源 · 2 语种（1 篇语种未知）')
+  await expect(item).toContainText('正文未落库')
+  await expect(item.getByRole('link', { name: '原始证据' })).toHaveAttribute(
+    'href',
+    'https://example.com/inspection',
+  )
+  await expect(item.getByRole('link', { name: '打开分析台' })).toHaveAttribute(
+    'href',
+    '/?topic=21&event=34&view=contrast',
+  )
+
+  const domain = page.locator('.domain-today')
+  await expect(domain).toContainText('今日一个领域')
+  await expect(domain).toContainText('能源 / 核能 / 新能源')
+  await expect(domain).toContainText('找一个历史先例')
+  await expect(domain).toContainText('不是结论')
+
+  const briefingBox = await briefing.boundingBox()
+  const frontierBox = await page.locator('.headline-frontpage').boundingBox()
+  expect(briefingBox?.y).toBeLessThan(frontierBox?.y || 0)
+})
+
+test('keeps fact-first briefing within the mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  const briefing = page.locator('.fact-briefing')
+  await expect(briefing).toBeVisible()
+  const box = await briefing.boundingBox()
+  expect(box?.width).toBeLessThanOrEqual(390)
+  await expect(briefing.getByRole('link', { name: '打开分析台' })).toBeVisible()
+})
+
+test('shows fact briefing even when no discovery report has been archived', async ({ page }) => {
+  await page.unroute('**/api/discovery/latest')
+  await page.route('**/api/discovery/latest', async (route) => {
+    await route.fulfill({ status: 404, json: { detail: 'No discovery report yet' } })
+  })
+
+  await page.goto('/')
+
+  await expect(page.locator('.fact-briefing')).toBeVisible()
+  await expect(page.locator('.fact-briefing-item')).toContainText('Inspection window confirmed')
+  await expect(page.locator('.headline-frontpage')).toHaveCount(0)
 })
 
 test('surfaces only freshly-updated tracked topics on the front page updates strip', async ({ page }) => {

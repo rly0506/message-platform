@@ -142,6 +142,7 @@ gitnexus check --cycles --json
 - `GET /api/topics/{topic_id}`
 - `GET /api/topics/{topic_id}/articles`
 - `GET /api/topics/{topic_id}/local-events`
+- `GET /api/briefing/latest`
 
 ## Daily Digest Email
 
@@ -178,7 +179,14 @@ setx DAILY_DIGEST_SMTP_USER "sender@example.com"
 setx DAILY_DIGEST_SMTP_PASSWORD "your-smtp-app-password"
 setx DAILY_DIGEST_FROM "Personal Intelligence <sender@example.com>"
 setx DAILY_DIGEST_SMTP_TLS "1"
+setx DAILY_DIGEST_APP_URL "http://your-workbench-host:5173"
 ```
+
+`DAILY_DIGEST_APP_URL` is optional and does not affect SMTP delivery. Configure
+it to a frontend address reachable from the device reading the email; each fact
+item then includes the existing `?topic=&event=&view=contrast` workbench link.
+When it is absent, the digest keeps the relative path and does not invent a
+reachable mobile URL.
 
 Open a new PowerShell window after `setx`, then smoke test:
 

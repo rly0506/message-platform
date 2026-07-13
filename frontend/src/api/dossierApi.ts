@@ -10,6 +10,7 @@ import type {
   CountryCompare,
   CoverageSnapshot,
   CrossSynthesis,
+  DailyBriefing,
   DiscoveryReport,
   DiscoveryReportMeta,
   DiscoveryTimelineTree,
@@ -310,6 +311,11 @@ export async function fetchSearchJob(jobId: string) {
 
 export async function fetchLatestDiscovery() {
   const res = await axios.get<DiscoveryReport>(`${API_BASE}/api/discovery/latest`)
+  return res.data
+}
+
+export async function fetchLatestBriefing() {
+  const res = await axios.get<DailyBriefing>(`${API_BASE}/api/briefing/latest`)
   return res.data
 }
 

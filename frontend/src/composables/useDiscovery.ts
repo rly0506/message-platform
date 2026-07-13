@@ -5,10 +5,11 @@ import {
   fetchDiscoveryReport,
   fetchDiscoveryReports,
   fetchDiscoveryTimelineTree,
+  fetchLatestBriefing,
   fetchLatestDiscovery,
   isNetworkError,
 } from '../api/dossierApi'
-import type { DiscoveryReport, DiscoveryReportMeta, DiscoveryResult, DiscoverySeed, DiscoveryTimelineTree, SearchJob } from '../types/dossier'
+import type { DailyBriefing, DiscoveryReport, DiscoveryReportMeta, DiscoveryResult, DiscoverySeed, DiscoveryTimelineTree, SearchJob } from '../types/dossier'
 import { renderMarkdown } from '../utils/markdown'
 import { stepStatusText, waitForJob, type StepState } from './jobPolling'
 import { readableError } from './useTopicData'
@@ -25,12 +26,17 @@ export function useDiscovery() {
   const reports = ref<DiscoveryReportMeta[]>([])
   const selectedRunId = ref('')
   const timelineTree = ref<DiscoveryTimelineTree>({ branches: [] })
+  const briefing = ref<DailyBriefing | null>(null)
+  const briefingLoading = ref(false)
+  const briefingError = ref('')
 
   const safeReportHtml = computed(() => renderMarkdown(report.value?.markdown))
   const hasReport = computed(() => Boolean(report.value?.markdown?.trim()))
   const seeds = computed<DiscoverySeed[]>(() => report.value?.seeds || [])
 
   async function loadLatest() {
+    // 事实早报是独立增强；失败或慢响应不能门控发现日报、队列或 deep-link。
+    void loadBriefing()
     loading.value = true
     error.value = ''
     try {
@@ -47,6 +53,20 @@ export function useDiscovery() {
       await Promise.all([loadReports(), loadTimelineTree()])
       loading.value = false
       loaded.value = true
+    }
+  }
+
+  async function loadBriefing() {
+    if (briefingLoading.value) return
+    briefingLoading.value = true
+    briefingError.value = ''
+    try {
+      briefing.value = await fetchLatestBriefing()
+    } catch (err) {
+      briefing.value = null
+      briefingError.value = readableError(err)
+    } finally {
+      briefingLoading.value = false
     }
   }
 
@@ -120,6 +140,7 @@ export function useDiscovery() {
       }
       selectedRunId.value = job.result.run_id
       await Promise.all([loadReports(), loadTimelineTree()])
+      void loadBriefing()
       message.value = `认知前沿日报已生成：${job.result.run_id}`
     } else {
       // 结果形状意外时回退到读最新文件，保证显示不空。
@@ -149,6 +170,9 @@ export function useDiscovery() {
     reports,
     selectedRunId,
     timelineTree,
+    briefing,
+    briefingLoading,
+    briefingError,
     seeds,
     safeReportHtml,
     hasReport,
@@ -156,6 +180,7 @@ export function useDiscovery() {
     loadReports,
     loadReport,
     loadTimelineTree,
+    loadBriefing,
     runDiscovery,
     distill,
     stepStatusText,

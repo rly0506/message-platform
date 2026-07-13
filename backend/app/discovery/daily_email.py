@@ -56,6 +56,9 @@ def build_daily_digest_body(report_payload: dict, *, headline_limit: int = MAX_H
     ]
     if path:
         lines.append(f"- 本地归档: {path}")
+    briefing = report_payload.get("briefing")
+    if isinstance(briefing, dict):
+        lines.extend(_render_briefing(briefing))
     lines.extend(["", f"## 今日最值得看的 {len(headline_seeds)} 条", ""])
 
     if headline_seeds:
@@ -223,4 +226,53 @@ def _render_seed(seed: dict, index: int) -> list[str]:
     if url:
         lines.append(f"   - 原文: {url}")
     lines.append("")
+    return lines
+
+
+def _render_briefing(briefing: dict) -> list[str]:
+    items = [item for item in briefing.get("items") or [] if isinstance(item, dict)]
+    lines = ["", "## 今日事实", ""]
+    if items:
+        for index, item in enumerate(items, start=1):
+            lines.extend(_render_briefing_item(item, index))
+    else:
+        lines.extend(["近 14 天没有可用的持久化事实条目，不用旧材料填满早报。", ""])
+
+    domain = briefing.get("domain_today")
+    if isinstance(domain, dict):
+        label = str(domain.get("domain_label") or domain.get("domain_key") or "未命名领域").strip()
+        lines.extend([f"## 今日一个领域 · {label}", ""])
+        for question in domain.get("questions") or []:
+            text = str(question or "").strip()
+            if text:
+                lines.append(f"- {text}")
+        note = str(domain.get("note") or "").strip()
+        if note:
+            lines.extend(["", f"> {note}"])
+        lines.append("")
+    return lines
+
+
+def _render_briefing_item(item: dict, index: int) -> list[str]:
+    title = str(item.get("title") or "未命名事实条目").strip()
+    summary = str(item.get("fact_summary") or "").strip()
+    source = str(item.get("source") or "来源未知").strip()
+    published_at = str(item.get("published_at") or "时间未知").strip()
+    evidence_url = str(item.get("evidence_url") or "").strip()
+    deep_link = str(item.get("deep_link_url") or item.get("deep_link_path") or "").strip()
+    coverage = item.get("coverage") if isinstance(item.get("coverage"), dict) else {}
+    coverage_label = str(coverage.get("label") or "覆盖未知").strip()
+
+    lines = [
+        f"{index}. **{title}**",
+        f"   - 事实摘要: {summary or '该条持久化记录目前只有标题；正文未落库。'}",
+        f"   - 证据范围: {coverage_label}",
+        f"   - 来源/时间: {source} · {published_at}",
+        "   - 摘要依据: 单篇持久化标题与站点摘要；正文未落库",
+    ]
+    if evidence_url:
+        lines.append(f"   - 原始证据: {evidence_url}")
+    if deep_link:
+        lines.append(f"   - 回到工作台: {deep_link}")
+    lines.extend(["   - 覆盖边界: 未采集到不等于来源未报道。", ""])
     return lines
