@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session, select
 
 from app import topic_ops
@@ -755,21 +757,49 @@ def distill_discovery_seed(payload: DiscoveryDistillRequest) -> dict[str, Any]:
 @app.put("/api/dig-queue")
 def upsert_dig_queue_item(payload: DigQueueItemRequest) -> dict[str, Any]:
     item_key = dig_queue_item_key(payload.topic_id, payload.event_id)
+    values = {
+        "item_key": item_key,
+        "topic_id": payload.topic_id,
+        "topic_name": payload.topic_name,
+        "event_id": payload.event_id,
+        "event_title": payload.event_title,
+        "view": payload.view,
+        "added_at": payload.added_at,
+    }
     with Session(engine) as session:
+        if payload.expected_revision is None:
+            session.execute(
+                sqlite_insert(DigQueueItem)
+                .values(**values, revision=1, deleted=False)
+                .on_conflict_do_nothing(index_elements=["item_key"])
+            )
+            session.commit()
+        else:
+            expected_revision = payload.expected_revision
+            result = session.execute(
+                update(DigQueueItem)
+                .where(DigQueueItem.item_key == item_key)
+                .where(DigQueueItem.revision == expected_revision)
+                .values(
+                    **values,
+                    revision=expected_revision + 1,
+                    deleted=False,
+                )
+            )
+            session.commit()
+            if result.rowcount == 1:
+                item = session.exec(
+                    select(DigQueueItem).where(DigQueueItem.item_key == item_key)
+                ).one()
+                return dig_queue_item_payload(item)
+
         item = session.exec(
             select(DigQueueItem).where(DigQueueItem.item_key == item_key)
         ).first()
-        if not item:
-            item = DigQueueItem(item_key=item_key, topic_id=payload.topic_id)
-        item.topic_name = payload.topic_name.strip()
-        item.event_id = payload.event_id
-        item.event_title = payload.event_title.strip()
-        item.view = payload.view
-        item.added_at = payload.added_at
-        session.add(item)
-        session.commit()
-        session.refresh(item)
-        return dig_queue_item_payload(item)
+        if item and dig_queue_item_matches(item, payload):
+            if payload.expected_revision is None or item.revision == payload.expected_revision + 1:
+                return dig_queue_item_payload(item)
+        raise_dig_queue_conflict(item)
 
 
 @app.get("/api/dig-queue")
@@ -780,16 +810,32 @@ def list_dig_queue_items() -> list[dict[str, Any]]:
 
 
 @app.delete("/api/dig-queue/{item_key}")
-def delete_dig_queue_item(item_key: str) -> dict[str, Any]:
+def delete_dig_queue_item(
+    item_key: str,
+    expected_revision: int = Query(ge=1),
+) -> dict[str, Any]:
     with Session(engine) as session:
+        result = session.execute(
+            update(DigQueueItem)
+            .where(DigQueueItem.item_key == item_key)
+            .where(DigQueueItem.revision == expected_revision)
+            .values(deleted=True, revision=expected_revision + 1)
+        )
+        session.commit()
         item = session.exec(
             select(DigQueueItem).where(DigQueueItem.item_key == item_key)
         ).first()
-        if not item:
-            return {"deleted": False, "item_key": item_key}
-        session.delete(item)
-        session.commit()
-        return {"deleted": True, "item_key": item_key}
+        if result.rowcount == 1 or (
+            item
+            and item.deleted
+            and item.revision == expected_revision + 1
+        ):
+            return {
+                "deleted": True,
+                "item_key": item_key,
+                "revision": item.revision,
+            }
+        raise_dig_queue_conflict(item)
 
 
 @app.put("/api/cognition/marks")
@@ -998,7 +1044,31 @@ def dig_queue_item_payload(item: DigQueueItem) -> dict[str, Any]:
         "event_title": item.event_title,
         "view": item.view,
         "added_at": payloads.iso(item.added_at),
+        "revision": item.revision,
+        "deleted": item.deleted,
     }
+
+
+def dig_queue_item_matches(item: DigQueueItem, payload: DigQueueItemRequest) -> bool:
+    return (
+        not item.deleted
+        and item.topic_id == payload.topic_id
+        and item.topic_name == payload.topic_name
+        and item.event_id == payload.event_id
+        and item.event_title == payload.event_title
+        and item.view == payload.view
+        and item.added_at == payload.added_at
+    )
+
+
+def raise_dig_queue_conflict(item: DigQueueItem | None) -> None:
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": "dig queue item changed on another device",
+            "current": dig_queue_item_payload(item) if item else None,
+        },
+    )
 
 
 def ensure_cognition_profile(session: Session) -> list[CognitionProfile]:

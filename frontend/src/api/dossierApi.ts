@@ -180,14 +180,16 @@ export async function saveDigQueueItem(payload: {
   event_title: string
   view: 'contrast' | 'analogue'
   added_at: string
+  expected_revision: number | null
 }) {
   const res = await axios.put<DigQueueRecord>(`${API_BASE}/api/dig-queue`, payload)
   return res.data
 }
 
-export async function deleteDigQueueItem(itemKey: string) {
-  const res = await axios.delete<{ deleted: boolean; item_key: string }>(
+export async function deleteDigQueueItem(itemKey: string, expectedRevision: number) {
+  const res = await axios.delete<{ deleted: boolean; item_key: string; revision: number }>(
     `${API_BASE}/api/dig-queue/${encodeURIComponent(itemKey)}`,
+    { params: { expected_revision: expectedRevision } },
   )
   return res.data
 }

@@ -4,6 +4,33 @@ import { openWorkbench, switchToWorkbench } from './helpers'
 let startedJobs: string[] = []
 let searchPayloads: Array<{ query: string }> = []
 let autoRefreshRuns = 0
+const DIG_QUEUE_STORAGE_KEY = 'message-platform:dig-queue:v1'
+const DIG_QUEUE_LEGACY_SYNC_KEY = 'message-platform:dig-queue-sync:v1'
+const DIG_QUEUE_OPERATION_PREFIX = 'message-platform:dig-queue-op:v1:'
+const DIG_QUEUE_STATE_PREFIX = 'message-platform:dig-queue-state:v1:'
+
+async function addTopicToDigQueue(page: Page) {
+  await page.evaluate(async ({ topicId, topicName }) => {
+    const moduleUrl = `${window.location.origin}/src/composables/useDigQueue.ts`
+    const digQueue = await import(moduleUrl)
+    digQueue.useDigQueue().addToDigQueue({
+      id: digQueue.digItemKey(topicId, null),
+      topicId,
+      topicName,
+      eventId: null,
+      eventTitle: topicName,
+      view: 'contrast',
+    })
+  }, { topicId: topic.id, topicName: topic.name })
+}
+
+async function removeTopicFromDigQueue(page: Page, topicId = topic.id) {
+  await page.evaluate(async ({ topicId }) => {
+    const moduleUrl = `${window.location.origin}/src/composables/useDigQueue.ts`
+    const digQueue = await import(moduleUrl)
+    digQueue.useDigQueue().removeFromDigQueue(digQueue.digItemKey(topicId, null))
+  }, { topicId })
+}
 
 const topic = {
   id: 101,
@@ -250,14 +277,27 @@ async function mockApi(page: Page) {
     const itemKey = body.event_id == null
       ? `t:${body.topic_id}`
       : `t:${body.topic_id}:e:${body.event_id}`
-    const record = { id: 1, item_key: itemKey, ...body }
+    const current = digQueueItems.find((item) => item.item_key === itemKey)
+    const { expected_revision: _expectedRevision, ...recordBody } = body
+    const record = {
+      id: current?.id ?? 1,
+      item_key: itemKey,
+      ...recordBody,
+      revision: typeof current?.revision === 'number' ? current.revision + 1 : 1,
+      deleted: false,
+    }
     digQueueItems = [record, ...digQueueItems.filter((item) => item.item_key !== itemKey)]
     await route.fulfill({ json: record })
   })
   await page.route('**/api/dig-queue/*', async (route) => {
-    const itemKey = decodeURIComponent(route.request().url().split('/').pop() || '')
-    digQueueItems = digQueueItems.filter((item) => item.item_key !== itemKey)
-    await route.fulfill({ json: { deleted: true, item_key: itemKey } })
+    const requestUrl = new URL(route.request().url())
+    const itemKey = decodeURIComponent(requestUrl.pathname.split('/').pop() || '')
+    const current = digQueueItems.find((item) => item.item_key === itemKey)
+    const revision = typeof current?.revision === 'number' ? current.revision + 1 : 1
+    digQueueItems = digQueueItems.map((item) => (
+      item.item_key === itemKey ? { ...item, deleted: true, revision } : item
+    ))
+    await route.fulfill({ json: { deleted: true, item_key: itemKey, revision } })
   })
   await page.route('**/api/topics', async (route) => {
     await route.fulfill({ json: [topic] })
@@ -1108,6 +1148,7 @@ test('digests a queued curiosity from the dig-queue band into the contrast lens'
 
   // 卡带出现，显示待深挖件数与话题名。
   const band = page.locator('.dig-queue-band')
+  await expect(band.locator('.dig-queue-item')).toHaveCount(1)
   await expect(band).toContainText('待深挖 1 件')
   await expect(band.locator('.dig-queue-topic')).toContainText('美伊战争')
 
@@ -1123,6 +1164,7 @@ test('digests a queued curiosity from the dig-queue band into the contrast lens'
 
 test('restores the dig queue from the backend on a fresh device and deletes remotely', async ({ page }) => {
   const deletedKeys: string[] = []
+  const expectedRevisions: string[] = []
   await page.route('**/api/dig-queue', async (route) => {
     await route.fulfill({
       json: [
@@ -1135,22 +1177,42 @@ test('restores the dig queue from the backend on a fresh device and deletes remo
           event_title: '美伊战争',
           view: 'contrast',
           added_at: '2026-07-13T08:00:00',
+          revision: 4,
+          deleted: false,
+        },
+        {
+          id: 92,
+          item_key: 't:999',
+          topic_id: 999,
+          topic_name: 'Deleted elsewhere',
+          event_id: null,
+          event_title: 'Deleted elsewhere',
+          view: 'contrast',
+          added_at: '2026-07-13T07:00:00',
+          revision: 2,
+          deleted: true,
         },
       ],
     })
   })
   await page.route('**/api/dig-queue/*', async (route) => {
-    deletedKeys.push(decodeURIComponent(route.request().url().split('/').pop() || ''))
-    await route.fulfill({ json: { deleted: true, item_key: deletedKeys.at(-1) } })
+    const requestUrl = new URL(route.request().url())
+    deletedKeys.push(decodeURIComponent(requestUrl.pathname.split('/').pop() || ''))
+    expectedRevisions.push(requestUrl.searchParams.get('expected_revision') || '')
+    await route.fulfill({
+      json: { deleted: true, item_key: deletedKeys.at(-1), revision: 5 },
+    })
   })
 
   await openWorkbench(page)
 
   const band = page.locator('.dig-queue-band')
+  await expect(band.locator('.dig-queue-item')).toHaveCount(1)
   await expect(band).toContainText('待深挖 1 件')
   await expect(band.locator('.dig-queue-topic')).toContainText('美伊战争')
   await band.locator('.dig-queue-remove').click()
   await expect.poll(() => deletedKeys).toEqual(['t:101'])
+  expect(expectedRevisions).toEqual(['4'])
 })
 
 test('keeps the local dig queue and reports degraded sync when the backend is unavailable', async ({ page }) => {
@@ -1177,6 +1239,764 @@ test('keeps the local dig queue and reports degraded sync when the backend is un
   await expect(page.locator('.dig-queue-band')).toContainText('待深挖 1 件')
   await expect(page.locator('.dig-queue-sync-notice')).toContainText('跨设备同步暂不可用')
   await expect(page.locator('.dig-queue-sync-notice')).toContainText('本机队列已保留')
+})
+
+test('preserves independent offline dig mutations created in two tabs', async ({ page }) => {
+  const secondPage = await page.context().newPage()
+  let online = false
+  const deletedKeys: string[] = []
+  const records = new Map<string, Record<string, unknown>>([
+    ['t:101', {
+      id: 101,
+      item_key: 't:101',
+      topic_id: 101,
+      topic_name: 'First tab topic',
+      event_id: null,
+      event_title: 'First tab topic',
+      view: 'contrast',
+      added_at: '2026-07-13T09:00:00',
+      revision: 1,
+      deleted: false,
+    }],
+    ['t:202', {
+      id: 202,
+      item_key: 't:202',
+      topic_id: 202,
+      topic_name: 'Second tab topic',
+      event_id: null,
+      event_title: 'Second tab topic',
+      view: 'contrast',
+      added_at: '2026-07-13T09:05:00',
+      revision: 1,
+      deleted: false,
+    }],
+  ])
+
+  const configureDigApi = async (target: Page) => {
+    await mockApi(target)
+    await target.unroute('**/api/dig-queue')
+    await target.unroute('**/api/dig-queue/*')
+    await target.route('**/api/dig-queue**', async (route) => {
+      if (!online) {
+        await route.abort('connectionfailed')
+        return
+      }
+      const request = route.request()
+      const requestUrl = new URL(request.url())
+      if (request.method() === 'GET') {
+        await route.fulfill({ json: [...records.values()] })
+        return
+      }
+      if (request.method() === 'DELETE') {
+        const itemKey = decodeURIComponent(requestUrl.pathname.split('/').pop() || '')
+        const current = records.get(itemKey)
+        const currentRevision = Number(current?.revision ?? 0)
+        const expectedRevision = Number(requestUrl.searchParams.get('expected_revision'))
+        if (current?.deleted === true && currentRevision === expectedRevision + 1) {
+          await route.fulfill({
+            json: { deleted: true, item_key: itemKey, revision: currentRevision },
+          })
+          return
+        }
+        expect(expectedRevision).toBe(currentRevision)
+        deletedKeys.push(itemKey)
+        records.set(itemKey, {
+          ...current,
+          revision: currentRevision + 1,
+          deleted: true,
+        })
+        await route.fulfill({
+          json: { deleted: true, item_key: itemKey, revision: currentRevision + 1 },
+        })
+        return
+      }
+      await route.fulfill({ status: 409, json: { detail: { current: null } } })
+    })
+  }
+
+  await configureDigApi(page)
+  await configureDigApi(secondPage)
+  await page.addInitScript(({ storageKey, legacyKey, item }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify([item]))
+    window.localStorage.removeItem(legacyKey)
+  }, {
+    storageKey: DIG_QUEUE_STORAGE_KEY,
+    legacyKey: DIG_QUEUE_LEGACY_SYNC_KEY,
+    item: {
+      id: 't:101', topicId: 101, topicName: 'First tab topic', eventId: null,
+      eventTitle: 'First tab topic', view: 'contrast',
+      addedAt: '2026-07-13T09:00:00.000Z', revision: 1,
+    },
+  })
+  await openWorkbench(page)
+
+  await secondPage.addInitScript(({ storageKey, legacyKey, item }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify([item]))
+    window.localStorage.removeItem(legacyKey)
+  }, {
+    storageKey: DIG_QUEUE_STORAGE_KEY,
+    legacyKey: DIG_QUEUE_LEGACY_SYNC_KEY,
+    item: {
+      id: 't:202', topicId: 202, topicName: 'Second tab topic', eventId: null,
+      eventTitle: 'Second tab topic', view: 'contrast',
+      addedAt: '2026-07-13T09:05:00.000Z', revision: 1,
+    },
+  })
+  await openWorkbench(secondPage)
+
+  await expect(page.locator('.dig-queue-topic')).toContainText('First tab topic')
+  await expect(secondPage.locator('.dig-queue-topic')).toContainText('Second tab topic')
+  await removeTopicFromDigQueue(page, 101)
+  await removeTopicFromDigQueue(secondPage, 202)
+  online = true
+  await page.reload()
+
+  await expect.poll(() => [...new Set(deletedKeys)].sort()).toEqual(['t:101', 't:202'])
+  await secondPage.close()
+})
+
+test('drops a malformed dig operation without blocking the valid operation behind it', async ({ page }) => {
+  const deletedKeys: string[] = []
+  let deleted = false
+  const validOperationKey = `${DIG_QUEUE_OPERATION_PREFIX}${encodeURIComponent('t:101')}`
+  const malformedOperationKey = `${DIG_QUEUE_OPERATION_PREFIX}malformed`
+  await page.route('**/api/dig-queue', async (route) => {
+    await route.fulfill({
+      json: deleted ? [] : [{
+        id: 101,
+        item_key: 't:101',
+        topic_id: 101,
+        topic_name: 'Valid operation',
+        event_id: null,
+        event_title: 'Valid operation',
+        view: 'contrast',
+        added_at: '2026-07-13T10:00:00',
+        revision: 1,
+        deleted: false,
+      }],
+    })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    const requestUrl = new URL(route.request().url())
+    deletedKeys.push(decodeURIComponent(requestUrl.pathname.split('/').pop() || ''))
+    deleted = true
+    await route.fulfill({ json: { deleted: true, item_key: 't:101', revision: 2 } })
+  })
+  await page.addInitScript(({ storageKey, validKey, malformedKey, operationPrefix }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify([{
+      id: 't:101', topicId: 101, topicName: 'Valid operation', eventId: null,
+      eventTitle: 'Valid operation', view: 'contrast',
+      addedAt: '2026-07-13T10:00:00.000Z', revision: 1,
+    }]))
+    window.localStorage.setItem(malformedKey, '{not-json')
+    window.localStorage.setItem(validKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'valid-delete',
+      kind: 'delete',
+      itemKey: 't:101',
+      expectedRevision: 1,
+      createdAt: '2026-07-13T10:05:00.000Z',
+      operationKey: `${operationPrefix}${encodeURIComponent('t:101')}`,
+    }))
+  }, {
+    storageKey: DIG_QUEUE_STORAGE_KEY,
+    validKey: validOperationKey,
+    malformedKey: malformedOperationKey,
+    operationPrefix: DIG_QUEUE_OPERATION_PREFIX,
+  })
+
+  await openWorkbench(page)
+
+  await expect.poll(() => deletedKeys).toEqual(['t:101'])
+  expect(await page.evaluate((key) => window.localStorage.getItem(key), malformedOperationKey)).toBeNull()
+})
+
+test('adopts newer server state when an offline dig mutation conflicts', async ({ page }) => {
+  const operationKey = `${DIG_QUEUE_OPERATION_PREFIX}${encodeURIComponent('t:101')}`
+  const current = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: 'Restored on another device',
+    event_id: null,
+    event_title: 'Restored on another device',
+    view: 'contrast',
+    added_at: '2026-07-13T11:00:00',
+    revision: 3,
+    deleted: false,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: [current] })
+      return
+    }
+    await route.fulfill({ status: 409, json: { detail: { current } } })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    await route.fulfill({ status: 409, json: { detail: { current } } })
+  })
+  await page.addInitScript(({ storageKey, pendingKey }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify([{
+      id: 't:101', topicId: 101, topicName: 'Old local state', eventId: null,
+      eventTitle: 'Old local state', view: 'contrast',
+      addedAt: '2026-07-13T10:00:00.000Z', revision: 1,
+    }]))
+    window.localStorage.setItem(pendingKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'stale-delete',
+      kind: 'delete',
+      itemKey: 't:101',
+      expectedRevision: 1,
+      createdAt: '2026-07-13T10:05:00.000Z',
+      operationKey: pendingKey,
+    }))
+  }, { storageKey: DIG_QUEUE_STORAGE_KEY, pendingKey: operationKey })
+
+  await openWorkbench(page)
+
+  await expect(page.locator('.dig-queue-topic')).toContainText('Restored on another device')
+  await expect(page.locator('.dig-queue-sync-notice')).toContainText('另一设备已更新')
+  expect(await page.evaluate((key) => window.localStorage.getItem(key), operationKey)).toBeNull()
+})
+
+test('re-adds a server tombstone with its latest revision', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  const expectedRevisions: Array<number | null> = []
+  let getCount = 0
+  let current: Record<string, unknown> = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: topic.name,
+    event_id: null,
+    event_title: topic.name,
+    view: 'contrast',
+    added_at: '2026-07-13T11:00:00',
+    revision: 2,
+    deleted: true,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      getCount += 1
+      await route.fulfill({ json: [current] })
+      return
+    }
+    const body = route.request().postDataJSON()
+    expectedRevisions.push(body.expected_revision ?? null)
+    if (body.expected_revision !== 2) {
+      await route.fulfill({ status: 409, json: { detail: { current } } })
+      return
+    }
+    const { expected_revision: _expectedRevision, ...payload } = body
+    current = { id: 101, item_key: 't:101', ...payload, revision: 3, deleted: false }
+    await route.fulfill({ json: current })
+  })
+
+  await page.goto('/')
+  await expect.poll(() => getCount).toBeGreaterThan(0)
+  await addTopicToDigQueue(page)
+
+  await expect.poll(() => expectedRevisions).toEqual([2])
+})
+
+test('keeps a delete queued behind an in-flight first upsert', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  let releasePut!: () => void
+  let reportPutStarted!: () => void
+  const putGate = new Promise<void>((resolve) => { releasePut = resolve })
+  const putStarted = new Promise<void>((resolve) => { reportPutStarted = resolve })
+  const deleteRevisions: number[] = []
+  let current: Record<string, unknown> | null = null
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: current ? [current] : [] })
+      return
+    }
+    const body = route.request().postDataJSON()
+    reportPutStarted()
+    await putGate
+    const { expected_revision: _expectedRevision, ...payload } = body
+    current = { id: 101, item_key: 't:101', ...payload, revision: 1, deleted: false }
+    await route.fulfill({ json: current })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    const requestUrl = new URL(route.request().url())
+    deleteRevisions.push(Number(requestUrl.searchParams.get('expected_revision')))
+    current = { ...current, revision: 2, deleted: true }
+    await route.fulfill({ json: { deleted: true, item_key: 't:101', revision: 2 } })
+  })
+
+  await page.goto('/')
+  await addTopicToDigQueue(page)
+  await putStarted
+  await removeTopicFromDigQueue(page)
+  releasePut()
+
+  await expect.poll(() => [...new Set(deleteRevisions)]).toEqual([1])
+  await expect.poll(() => page.evaluate((prefix) => (
+    Object.keys(window.localStorage).filter((key) => key.startsWith(prefix)).length
+  ), DIG_QUEUE_OPERATION_PREFIX)).toBe(0)
+  expect(current?.deleted).toBe(true)
+})
+
+test('re-bases a re-add queued behind an in-flight delete', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  let releaseDelete!: () => void
+  let reportDeleteStarted!: () => void
+  const deleteGate = new Promise<void>((resolve) => { releaseDelete = resolve })
+  const deleteStarted = new Promise<void>((resolve) => { reportDeleteStarted = resolve })
+  const upsertRevisions: Array<number | null> = []
+  let current: Record<string, unknown> = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: topic.name,
+    event_id: null,
+    event_title: topic.name,
+    view: 'contrast',
+    added_at: '2026-07-13T12:00:00',
+    revision: 1,
+    deleted: false,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: [current] })
+      return
+    }
+    const body = route.request().postDataJSON()
+    upsertRevisions.push(body.expected_revision ?? null)
+    if (body.expected_revision !== 2) {
+      await route.fulfill({ status: 409, json: { detail: { current } } })
+      return
+    }
+    const { expected_revision: _expectedRevision, ...payload } = body
+    current = { id: 101, item_key: 't:101', ...payload, revision: 3, deleted: false }
+    await route.fulfill({ json: current })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    reportDeleteStarted()
+    await deleteGate
+    current = { ...current, revision: 2, deleted: true }
+    await route.fulfill({ json: { deleted: true, item_key: 't:101', revision: 2 } })
+  })
+
+  await openWorkbench(page)
+  await page.locator('.dig-queue-remove').click()
+  await deleteStarted
+  await addTopicToDigQueue(page)
+  releaseDelete()
+
+  await expect.poll(() => [...new Set(upsertRevisions)]).toEqual([2])
+  await expect.poll(() => page.evaluate((prefix) => (
+    Object.keys(window.localStorage).filter((key) => key.startsWith(prefix)).length
+  ), DIG_QUEUE_OPERATION_PREFIX)).toBe(0)
+  expect(current.deleted).toBe(false)
+  expect(current.revision).toBe(3)
+})
+
+test('migrates a legacy pending delete after resolving its revision', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  const deleteRevisions: number[] = []
+  let deleted = false
+  const current = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: topic.name,
+    event_id: null,
+    event_title: topic.name,
+    view: 'contrast',
+    added_at: '2026-07-13T12:00:00',
+    revision: 1,
+    deleted: false,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    await route.fulfill({ json: deleted ? [{ ...current, revision: 2, deleted: true }] : [current] })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    const requestUrl = new URL(route.request().url())
+    deleteRevisions.push(Number(requestUrl.searchParams.get('expected_revision')))
+    deleted = true
+    await route.fulfill({ json: { deleted: true, item_key: 't:101', revision: 2 } })
+  })
+  await page.addInitScript(({ legacyKey }) => {
+    window.localStorage.setItem(legacyKey, JSON.stringify({
+      initialized: true,
+      nextVersion: 1,
+      pending: { 't:101': { kind: 'delete', id: 't:101', version: 1 } },
+    }))
+  }, { legacyKey: DIG_QUEUE_LEGACY_SYNC_KEY })
+
+  await page.goto('/')
+
+  await expect.poll(() => deleteRevisions).toEqual([1])
+})
+
+test('retains a pending dig mutation when the server rejects authentication', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  const operationKey = `${DIG_QUEUE_OPERATION_PREFIX}${encodeURIComponent('t:101')}`
+  let deleteAttempts = 0
+  await page.route('**/api/dig-queue', async (route) => {
+    await route.fulfill({ json: [] })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    deleteAttempts += 1
+    await route.fulfill({ status: 401, json: { detail: 'authentication required' } })
+  })
+  await page.addInitScript(({ storageKey, pendingKey }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify([{
+      id: 't:101', topicId: 101, topicName: 'Auth retry', eventId: null,
+      eventTitle: 'Auth retry', view: 'contrast',
+      addedAt: '2026-07-13T13:00:00.000Z', revision: 1,
+    }]))
+    window.localStorage.setItem(pendingKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'auth-delete',
+      kind: 'delete',
+      itemKey: 't:101',
+      expectedRevision: 1,
+      createdAt: '2026-07-13T13:05:00.000Z',
+      operationKey: pendingKey,
+    }))
+  }, { storageKey: DIG_QUEUE_STORAGE_KEY, pendingKey: operationKey })
+
+  await page.goto('/')
+
+  await expect.poll(() => deleteAttempts).toBeGreaterThan(0)
+  expect(await page.evaluate((key) => window.localStorage.getItem(key), operationKey)).not.toBeNull()
+})
+
+test('does not replay an unversioned legacy delete over newer server state', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  let deleteAttempts = 0
+  await page.route('**/api/dig-queue', async (route) => {
+    await route.fulfill({ json: [{
+      id: 101,
+      item_key: 't:101',
+      topic_id: 101,
+      topic_name: topic.name,
+      event_id: null,
+      event_title: topic.name,
+      view: 'contrast',
+      added_at: '2026-07-13T13:00:00',
+      revision: 3,
+      deleted: false,
+    }] })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    deleteAttempts += 1
+    await route.fulfill({ status: 500, json: { detail: 'must not be called' } })
+  })
+  await page.addInitScript(({ legacyKey }) => {
+    window.localStorage.setItem(legacyKey, JSON.stringify({
+      initialized: true,
+      nextVersion: 1,
+      pending: { 't:101': { kind: 'delete', id: 't:101', version: 1 } },
+    }))
+  }, { legacyKey: DIG_QUEUE_LEGACY_SYNC_KEY })
+
+  await page.goto('/')
+
+  await expect.poll(() => page.evaluate(({ legacyKey, operationPrefix }) => {
+    const operationCount = Object.keys(window.localStorage)
+      .filter((key) => key.startsWith(operationPrefix)).length
+    return { legacy: window.localStorage.getItem(legacyKey), operationCount }
+  }, {
+    legacyKey: DIG_QUEUE_LEGACY_SYNC_KEY,
+    operationPrefix: DIG_QUEUE_OPERATION_PREFIX,
+  })).toEqual({ legacy: null, operationCount: 0 })
+  expect(deleteAttempts).toBe(0)
+})
+
+test('reruns sync when a newer cross-tab revision arrives during a stale snapshot', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  let getCount = 0
+  let releaseFirstGet!: () => void
+  let reportFirstGet!: () => void
+  const firstGetGate = new Promise<void>((resolve) => { releaseFirstGet = resolve })
+  const firstGetStarted = new Promise<void>((resolve) => { reportFirstGet = resolve })
+  const stale = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: 'Stale tombstone',
+    event_id: null,
+    event_title: 'Stale tombstone',
+    view: 'contrast',
+    added_at: '2026-07-13T13:00:00',
+    revision: 2,
+    deleted: true,
+  }
+  const fresh = {
+    ...stale,
+    topic_name: 'Fresh cross-tab state',
+    event_title: 'Fresh cross-tab state',
+    revision: 3,
+    deleted: false,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    getCount += 1
+    if (getCount === 1) {
+      reportFirstGet()
+      await firstGetGate
+      await route.fulfill({ json: [stale] })
+      return
+    }
+    await route.fulfill({ json: [fresh] })
+  })
+
+  await page.goto('/')
+  await firstGetStarted
+  await page.evaluate(({ statePrefix, operationPrefix }) => {
+    const itemKey = 't:101'
+    window.localStorage.setItem(`${statePrefix}${encodeURIComponent(itemKey)}`, JSON.stringify({
+      schema: 1,
+      itemKey,
+      revision: 3,
+      deleted: false,
+    }))
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: `${operationPrefix}cross-tab-wakeup`,
+      newValue: null,
+    }))
+  }, { statePrefix: DIG_QUEUE_STATE_PREFIX, operationPrefix: DIG_QUEUE_OPERATION_PREFIX })
+  releaseFirstGet()
+
+  await expect.poll(() => getCount).toBeGreaterThanOrEqual(2)
+  await switchToWorkbench(page)
+  await expect(page.locator('.dig-queue-topic')).toContainText('Fresh cross-tab state')
+})
+
+test('removes rejected mutation descendants before their root operation', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  const baseKey = `${DIG_QUEUE_OPERATION_PREFIX}${encodeURIComponent('t:101')}`
+  const rootKey = `${baseKey}:${encodeURIComponent('root-delete')}`
+  const childKey = `${baseKey}:${encodeURIComponent('child-upsert')}`
+  const current = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: 'Newer server state',
+    event_id: null,
+    event_title: 'Newer server state',
+    view: 'contrast',
+    added_at: '2026-07-13T14:00:00',
+    revision: 3,
+    deleted: false,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    await route.fulfill({ json: [current] })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    await route.fulfill({ status: 409, json: { detail: { current } } })
+  })
+  await page.addInitScript(({ rootOperationKey, childOperationKey }) => {
+    const removed: string[] = []
+    const originalRemoveItem = Storage.prototype.removeItem
+    Storage.prototype.removeItem = function removeItem(key: string) {
+      if (key.startsWith('message-platform:dig-queue-op:v1:')) removed.push(key)
+      return originalRemoveItem.call(this, key)
+    }
+    ;(window as unknown as { __digRemovedKeys: string[] }).__digRemovedKeys = removed
+    window.localStorage.setItem(rootOperationKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'root-delete',
+      kind: 'delete',
+      itemKey: 't:101',
+      expectedRevision: 1,
+      createdAt: '2026-07-13T14:05:00.000Z',
+      operationKey: rootOperationKey,
+    }))
+    window.localStorage.setItem(childOperationKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'child-upsert',
+      kind: 'upsert',
+      itemKey: 't:101',
+      item: {
+        id: 't:101', topicId: 101, topicName: 'Rejected child', eventId: null,
+        eventTitle: 'Rejected child', view: 'contrast',
+        addedAt: '2026-07-13T14:06:00.000Z', revision: null,
+      },
+      expectedRevision: null,
+      createdAt: '2026-07-13T14:06:00.000Z',
+      operationKey: childOperationKey,
+      afterMutationId: 'root-delete',
+      afterResultRevision: 2,
+    }))
+  }, { rootOperationKey: rootKey, childOperationKey: childKey })
+
+  await page.goto('/')
+
+  await expect.poll(() => page.evaluate(() => (
+    (window as unknown as { __digRemovedKeys: string[] }).__digRemovedKeys
+  ))).toEqual([childKey, rootKey])
+})
+
+test('keeps tombstone revision in memory when state storage is unavailable', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  const expectedRevisions: Array<number | null> = []
+  let getCount = 0
+  const tombstone = {
+    id: 101,
+    item_key: 't:101',
+    topic_id: 101,
+    topic_name: topic.name,
+    event_id: null,
+    event_title: topic.name,
+    view: 'contrast',
+    added_at: '2026-07-13T15:00:00',
+    revision: 2,
+    deleted: true,
+  }
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      getCount += 1
+      await route.fulfill({ json: [tombstone] })
+      return
+    }
+    const body = route.request().postDataJSON()
+    expectedRevisions.push(body.expected_revision ?? null)
+    await route.fulfill({ status: 409, json: { detail: { current: tombstone } } })
+  })
+  await page.addInitScript(({ statePrefix }) => {
+    const originalSetItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key.startsWith(statePrefix)) throw new DOMException('quota exceeded', 'QuotaExceededError')
+      return originalSetItem.call(this, key, value)
+    }
+  }, { statePrefix: DIG_QUEUE_STATE_PREFIX })
+
+  await page.goto('/')
+  await expect.poll(() => getCount).toBeGreaterThan(0)
+  await addTopicToDigQueue(page)
+
+  await expect.poll(() => expectedRevisions).toEqual([2])
+})
+
+test('completes a memory-only outbox operation without a false degraded state', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  let current: Record<string, unknown> | null = null
+  let getCount = 0
+  let putCount = 0
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'GET') {
+      getCount += 1
+      await route.fulfill({ json: current ? [current] : [] })
+      return
+    }
+    putCount += 1
+    const body = route.request().postDataJSON()
+    const { expected_revision: _expectedRevision, ...payload } = body
+    current = { id: 101, item_key: 't:101', ...payload, revision: 1, deleted: false }
+    await route.fulfill({ json: current })
+  })
+  await page.addInitScript(({ operationPrefix }) => {
+    const originalGetItem = Storage.prototype.getItem
+    const originalSetItem = Storage.prototype.setItem
+    const originalRemoveItem = Storage.prototype.removeItem
+    Storage.prototype.getItem = function getItem(key: string) {
+      if (key.startsWith(operationPrefix)) throw new DOMException('storage unavailable')
+      return originalGetItem.call(this, key)
+    }
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key.startsWith(operationPrefix)) throw new DOMException('storage unavailable')
+      return originalSetItem.call(this, key, value)
+    }
+    Storage.prototype.removeItem = function removeItem(key: string) {
+      if (key.startsWith(operationPrefix)) throw new DOMException('storage unavailable')
+      return originalRemoveItem.call(this, key)
+    }
+  }, { operationPrefix: DIG_QUEUE_OPERATION_PREFIX })
+
+  await page.goto('/')
+  await expect.poll(() => getCount).toBeGreaterThan(0)
+  await addTopicToDigQueue(page)
+
+  await expect.poll(() => putCount).toBeGreaterThan(0)
+  await expect.poll(() => getCount).toBeGreaterThanOrEqual(2)
+  expect(await page.evaluate(() => (
+    (globalThis as typeof globalThis & {
+      __messagePlatformDigQueueMemory?: { operations: Map<string, unknown> }
+    }).__messagePlatformDigQueueMemory?.operations.size
+  ))).toBe(0)
+})
+
+test('persists a resolved successor before removing its successful predecessor', async ({ page }) => {
+  await page.unroute('**/api/dig-queue')
+  await page.unroute('**/api/dig-queue/*')
+  const baseKey = `${DIG_QUEUE_OPERATION_PREFIX}${encodeURIComponent('t:101')}`
+  const rootKey = `${baseKey}:${encodeURIComponent('ordered-root')}`
+  const childKey = `${baseKey}:${encodeURIComponent('ordered-child')}`
+  await page.route('**/api/dig-queue', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.abort('connectionfailed')
+      return
+    }
+    await route.fulfill({ json: [] })
+  })
+  await page.route('**/api/dig-queue/*', async (route) => {
+    await route.fulfill({ json: { deleted: true, item_key: 't:101', revision: 2 } })
+  })
+  await page.addInitScript(({ rootOperationKey, childOperationKey }) => {
+    const events: string[] = []
+    const originalSetItem = Storage.prototype.setItem
+    const originalRemoveItem = Storage.prototype.removeItem
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key === childOperationKey) {
+        const operation = JSON.parse(value)
+        if (operation.expectedRevision === 2 && !operation.afterMutationId) {
+          events.push('child-resolved')
+        }
+      }
+      return originalSetItem.call(this, key, value)
+    }
+    Storage.prototype.removeItem = function removeItem(key: string) {
+      if (key === rootOperationKey) events.push('root-removed')
+      return originalRemoveItem.call(this, key)
+    }
+    ;(window as unknown as { __digMutationEvents: string[] }).__digMutationEvents = events
+    window.localStorage.setItem(rootOperationKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'ordered-root',
+      kind: 'delete',
+      itemKey: 't:101',
+      expectedRevision: 1,
+      createdAt: '2026-07-13T16:00:00.000Z',
+      operationKey: rootOperationKey,
+    }))
+    window.localStorage.setItem(childOperationKey, JSON.stringify({
+      schema: 1,
+      mutationId: 'ordered-child',
+      kind: 'upsert',
+      itemKey: 't:101',
+      item: {
+        id: 't:101', topicId: 101, topicName: 'Ordered child', eventId: null,
+        eventTitle: 'Ordered child', view: 'contrast',
+        addedAt: '2026-07-13T16:01:00.000Z', revision: null,
+      },
+      expectedRevision: null,
+      createdAt: '2026-07-13T16:01:00.000Z',
+      operationKey: childOperationKey,
+      afterMutationId: 'ordered-root',
+      afterResultRevision: 2,
+    }))
+  }, { rootOperationKey: rootKey, childOperationKey: childKey })
+
+  await page.goto('/')
+
+  await expect.poll(() => page.evaluate(() => (
+    (window as unknown as { __digMutationEvents: string[] }).__digMutationEvents.slice(0, 2)
+  ))).toEqual(['child-resolved', 'root-removed'])
 })
 
 test('does not attach a slow contrast response to the event selected after the switch', async ({ page }) => {

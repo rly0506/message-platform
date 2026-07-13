@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -63,6 +63,22 @@ class DigQueueItemRequest(BaseModel):
     event_title: str = Field(min_length=1, max_length=300)
     view: Literal["contrast", "analogue"] = "contrast"
     added_at: datetime
+    expected_revision: int | None = Field(default=None, ge=1)
+
+    @field_validator("topic_name", "event_title")
+    @classmethod
+    def queue_names_must_not_be_blank(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("queue names must not be blank")
+        return text
+
+    @field_validator("added_at")
+    @classmethod
+    def normalize_added_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
 
 
 class SearchStep(BaseModel):

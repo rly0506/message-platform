@@ -377,6 +377,8 @@ export type DigQueueRecord = {
   event_title: string
   view: 'contrast' | 'analogue'
   added_at: string
+  revision: number
+  deleted: boolean
 }
 
 export type TimelineEvent = {

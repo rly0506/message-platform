@@ -371,7 +371,7 @@ def test_migrate_adds_analysis_sample_metadata_columns(tmp_path, monkeypatch):
     legacy_engine = create_engine(f'sqlite:///{legacy_path}')
     tables = (
         'topicarticle', 'article', 'sentimentpost', 'cognitionmark',
-        'cognitionprofile', 'paper', 'topic', 'sourceregistry',
+        'cognitionprofile', 'digqueueitem', 'paper', 'topic', 'sourceregistry',
     )
     with legacy_engine.connect() as conn:
         for table in tables:
@@ -388,5 +388,9 @@ def test_migrate_adds_analysis_sample_metadata_columns(tmp_path, monkeypatch):
 
     with legacy_engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql('PRAGMA table_info(analysis)')}
+        dig_queue_columns = {
+            row[1] for row in conn.exec_driver_sql('PRAGMA table_info(digqueueitem)')
+        }
 
     assert {'sample_article_count', 'sample_latest_published_at'} <= columns
+    assert {'revision', 'deleted'} <= dig_queue_columns

@@ -199,6 +199,8 @@ class DigQueueItem(SQLModel, table=True):
     event_title: str = ""
     view: str = "contrast"
     added_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    revision: int = Field(default=1)
+    deleted: bool = Field(default=False, index=True)
 
 
 # --- 本地规则事件图表: 无 LLM，边只表示可核查证据关系 ---
@@ -308,6 +310,10 @@ def _migrate() -> None:
             ("confidence", "INTEGER DEFAULT 50"),
             ("evidence", "VARCHAR DEFAULT ''"),
             ("recommended_seed_style", "VARCHAR DEFAULT 'mechanism'"),
+        ],
+        "digqueueitem": [
+            ("revision", "INTEGER DEFAULT 1"),
+            ("deleted", "INTEGER DEFAULT 0"),
         ],
         "paper": [
             ("doi", "VARCHAR DEFAULT ''"),
