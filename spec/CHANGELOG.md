@@ -2,6 +2,26 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-14 RM-055 Phase 3 Hypothesis-Layer Boundary
+
+- Added an accessible EventGraph-local hypothesis-layer switch that defaults
+  off on each fresh render and has no storage, API, DTO, backend, or LLM path.
+- Kept the enabled state deliberately empty: one neutral dashed sample, an
+  explicit `假设` badge, and copy stating that evidence edges do not become
+  causal judgments.
+- Added desktop/mobile checks for default-off behavior, honest empty state,
+  evidence text and SVG node/edge preservation, WCAG AA text contrast, and
+  horizontal overflow.
+- Independent review requested one contrast repair and two test-strength
+  improvements. The repaired text measures `5.835:1`; final review ended
+  `APPROVE` with no Critical, Important, or Minor findings.
+- Implementation commit: `5a53e41`. Verification: focused Playwright `2 passed`,
+  build 98 modules, full desktop/mobile E2E `180 passed`, and staged GitNexus
+  3 files / 7 symbols / 0 flows / `low`.
+- RM-055 now has no autonomous product phase before the 2026-07-27 source and
+  fulltext evidence gate; the authorized interim action is a correctness-focused
+  code audit.
+
 ## 2026-07-14 RM-055 M4' Fact-First Briefing
 
 - Added one read-only persisted-data briefing contract shared by

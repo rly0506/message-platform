@@ -337,7 +337,7 @@ Review record:
   (`2 passed`). Final confirmation then returned APPROVE with no Critical,
   Important, or Minor findings on the exact staged diff.
 
-- [ ] **Step 4: Commit implementation**
+- [x] **Step 4: Commit implementation**
 
 After final approval and fresh focused/full evidence:
 
@@ -346,6 +346,8 @@ git commit -m "feat: reserve hypothesis layer in event graph"
 ```
 
 Do not push or merge `master`.
+
+Committed as `5a53e41 feat: reserve hypothesis layer in event graph`.
 
 ### Task 4: Closeout And Claude Handoff
 
@@ -358,25 +360,25 @@ Do not push or merge `master`.
 - Modify locally only: `.agent-bridge/BOARD.md`
 - Modify locally only: `.agent-bridge/TO_CLAUDE.md`
 
-- [ ] **Step 1: Record final evidence in this plan**
+- [x] **Step 1: Record final evidence in this plan**
 
 Mark every completed step, add exact commit IDs, test counts, GitNexus scope,
 review result, residual boundaries, and deferred human decisions. Do not erase
 failed runs or review repairs.
 
-- [ ] **Step 2: Update current truth**
+- [x] **Step 2: Update current truth**
 
 Mark Phase 3 done while keeping the 2026-07-27 source/fulltext evidence gate
 open. If no other executable RM-055 item remains, state that the next autonomous
 action is a correctness-focused code audit rather than inventing a product
 feature.
 
-- [ ] **Step 3: Update Claude locally**
+- [x] **Step 3: Update Claude locally**
 
 Prepend one concise handoff with implementation commit, behavior, tests, review,
 and next action. Keep `.agent-bridge/` untracked and preserve older messages.
 
-- [ ] **Step 4: Run the documentation gate and commit separately**
+- [x] **Step 4: Run the documentation gate and commit separately**
 
 Run strict UTF-8/reference checks, `git diff --check`, secret/database status,
 and staged GitNexus on tracked documentation only. Then commit:
@@ -386,3 +388,23 @@ git commit -m "docs: close RM-055 Phase 3 gate"
 ```
 
 Do not push or merge `master`.
+
+## Closeout Evidence
+
+- Implementation commit: `5a53e41`.
+- Initial feature RED: the desktop/mobile scenario failed because the accessible
+  hypothesis switch did not exist. Initial focused GREEN: `2 passed`.
+- Review-repair RED: desktop and mobile both failed at the new WCAG assertion
+  with `3.8428017787704145 < 4.5`. The repaired text measures `5.835:1`.
+- Final focused browser gate: `2 passed`; production build: 98 modules; full
+  desktop/mobile E2E: `180 passed`.
+- Final review: `APPROVE`, with no Critical, Important, or Minor findings on the
+  exact staged implementation diff.
+- Final implementation GitNexus scope: 3 files, 7 symbols, 0 flows, `low`.
+- Detailed task report:
+  `docs/operations/rm055-phase3-task-report-2026-07-14.md`.
+- Residual boundary: no hypothesis generation, storage, API, DTO, backend, or
+  LLM path was added. Source expansion and fulltext scope remain at the existing
+  2026-07-27 human evidence gate.
+- No new human decision was discovered for Phase 3. The next authorized
+  autonomous action is a correctness-focused code audit.

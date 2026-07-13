@@ -7,11 +7,11 @@ This is the compact context reset point for future agents. It records current pr
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- Current implementation HEAD: `ff85f65` (M4' fact-first briefing plus review repairs).
+- Current implementation HEAD: `5a53e41` (Phase 3 default-off hypothesis-layer placeholder plus review repairs).
 - Current product roadmap: `RM-055`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
-- Coverage API/instrument, event analogue consumer, cross-device curiosity queue, and fact-first briefing loop are integrated on this branch.
+- Coverage API/instrument, event analogue consumer, cross-device curiosity queue, fact-first briefing loop, and the evidence/inference UI boundary are integrated on this branch.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
-- Next executable product stage: RM-055 Phase 3, a default-off hypothesis-layer UI placeholder that keeps evidence and inference visually separate.
+- No autonomous RM-055 product phase remains before the 2026-07-27 source/fulltext evidence gate; the next authorized action is a correctness-focused code audit.
 - Do not merge to `master` or push without explicit human approval.
 
 ## RM-055 Progress
@@ -23,17 +23,18 @@ This is the compact context reset point for future agents. It records current pr
 | M3': cross-device queue | Done | Dedicated persistence landed in `98efa59`; revision/tombstone concurrency, causal outbox recovery, and cross-tab hardening landed in `4723b0b`. |
 | M3': source expansion | Evidence gate | No batch is justified yet; collect two weeks of recurring gap evidence before selecting at most three feeds. |
 | M4': briefing loop | Done | Original persisted title/snippet facts, honest coverage labels, evidence/workbench links, scheduled-email fallback, and read-only one-domain questions landed in `2fd9155`, `8cb9f9b`, and `ff85f65`. |
+| Phase 3: hypothesis-layer boundary | Done | A fresh EventGraph defaults the local layer off; enabling it reveals only a neutral dashed sample, an explicit hypothesis badge, and honest no-data copy. No generated relation, persistence, API, DTO, backend, or LLM path was added (`5a53e41`). |
 
-The project is at the **RM-055 Phase 3 start point**, with source-gap observation running in parallel and no source batch justified before 2026-07-27.
+The project is at the **RM-055 audit and evidence-gate checkpoint**. Source-gap observation continues in parallel, no source batch is justified before 2026-07-27, and no replacement product feature should be invented merely to keep implementation moving.
 
 ## Latest Delivered Gate
 
-- `GET /api/briefing/latest`, the discovery front page, and scheduled email share one read-only persisted-data briefing contract; no LLM key is required.
-- Facts use original article title/snippet fields, never LLM-enriched translations. Unknown source/language/fulltext data and “未采集到 ≠ 未报道” remain visible.
-- Briefing loading or failure does not gate discovery reports, topic loading, or email/workbench deep links. Invalid app-base configuration falls back to relative links.
-- “今日一个领域” rotates deterministic questions from CognitionProfile without changing profile or mark rows.
-- Independent review ended `APPROVE` after two repair commits. Fresh verification: backend `327 passed, 1 warning`; frontend build passed (98 modules); full desktop/mobile E2E `180 passed`.
-- Initial staged GitNexus was 13 files / 35 symbols / 8 flows / `high`; reviewed repair scopes were `medium` and stayed inside briefing/test flows.
+- EventGraph now exposes one accessible, component-local hypothesis-layer switch that is off on every fresh render.
+- The enabled state contains no relation endpoints or causal claims: only a gray dashed sample, an explicit `假设` badge, and `尚无假设数据。证据边不会自动转成因果判断。`
+- Existing evidence rows, SVG nodes, and SVG evidence edges remain unchanged when the layer is toggled; the placeholder has no persistence, API, DTO, backend, or LLM dependency.
+- Independent review first requested a WCAG AA repair. The final text contrast is `5.835:1`; the evidence-preservation and mobile overflow checks were strengthened, and final review ended `APPROVE` with no findings.
+- Fresh verification: frontend build passed with 98 modules; full desktop/mobile Playwright passed (`180 passed`); the exact focused test passed in both projects (`2 passed`).
+- Final staged GitNexus scope was 3 files / 7 symbols / 0 flows / `low`.
 
 ## Implemented Product Capabilities
 
@@ -52,6 +53,7 @@ The project is at the **RM-055 Phase 3 start point**, with source-gap observatio
 - Deep links can open a topic, event, and contrast view.
 - A cross-device deep-dive queue connects low-friction reading to later analysis and retains offline mutations locally.
 - A fact-first daily briefing exposes source snippets, coverage micro-labels, original evidence, and auditable contrast deep links in UI and email.
+- The event graph reserves an explicit default-off hypothesis layer without turning evidence edges into inferred or causal relations.
 - Event contrasts can link differences back to supporting articles.
 - Sentiment and community layers are presented as signals rather than facts.
 
@@ -65,7 +67,7 @@ The project is at the **RM-055 Phase 3 start point**, with source-gap observatio
 ## Partial Or Missing Capabilities
 
 - The event graph is driven by local analysis results; LLM deep-analysis output does not currently update `Event` or `EventRelation`.
-- The Phase 3 hypothesis-layer placeholder remains unimplemented; evidence and inference must stay separate and the future hypothesis layer must default off.
+- Hypothesis generation, persistence, contradiction evidence, and causal relation contracts remain unimplemented by design; any future U3 work requires a separate evidence-backed roadmap decision.
 - Additional official and multilingual sources still require freshness testing and honest availability labels.
 - Static public publishing and zero-backend archive search are not current product capabilities.
 - Logical-form-guided graph reasoning and inspectable multi-hop answer paths are not current product capabilities.
@@ -107,7 +109,7 @@ The latest accepted release-quality evidence is:
 ```text
 cd backend
 ..\venv\Scripts\python.exe -m pytest -q
-327 passed, 1 warning
+# 327 passed, 1 warning at the unchanged M4' backend gate; Phase 3 touched no backend path
 
 cd ..\frontend
 npm run build
