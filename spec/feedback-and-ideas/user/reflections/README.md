@@ -26,6 +26,10 @@ Status: `REFLECTION`
 保持 REFLECTION，或链接到后来批准的候选项、路线图和决定。
 ```
 
+## 已有记录
+
+- 学术内容犹豫 + Markdown vs 图谱呈现：`2026-07-11-academic-content-and-representation.md`
+
 ## 已有相关材料
 
 - AI 协作、信息不对称与未来私有来源接入：`spec/ai-collaboration-and-source-boundary-2026-07-12.md`

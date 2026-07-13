@@ -9,6 +9,7 @@ Status: `REFERENCE INDEX`
 | `Mr-Salticidae/knowledge-base` | 将实践 insight 沉淀为 Obsidian/MOC 知识资产，并与公开展示层分离 | 借鉴知识治理、公开边界和内容入口设计 | `mr-salticidae-knowledge-base.md` |
 | `Mr-Salticidae/above-the-web` | Astro 静态展示、Pagefind 全文搜索、push 通知与定时构建兜底 | 未来公开/只读归档候选，不替代工作台 | `mr-salticidae-knowledge-base.md` |
 | `OpenSPG/KAG` | 结构化知识与原文互索引、逻辑形式引导的混合检索和多跳推理 | 借鉴证据模型；当前不集成平台 | `openspg-kag.md` |
+| 爬虫/采集 8 项（Firecrawl、Crawl4AI、browser-use、Crawlee、Scrapy、Scrapling、AutoScraper、curl-impersonate） | 网页发现与正文获取工具族 | 多数属"获取"层，与已装 trafilatura/已关的 Scrapling 重叠；缺口在"发现"与"验证"，先让覆盖率仪表指出真实缺口再精准补 | `data-mining-crawlers.md` |
 
 ## 收录检查表
 
