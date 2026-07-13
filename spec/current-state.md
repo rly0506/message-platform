@@ -1,13 +1,13 @@
 # Current State
 
-Last updated: 2026-07-13.
+Last updated: 2026-07-14.
 
 This is the compact context reset point for future agents. It records current product truth, not the full work log. The previous 410-line snapshot is preserved verbatim at `spec/archive/current-state/current-state-through-2026-07-12.md`.
 
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- Current implementation HEAD: `98efa59` (`dig_later` cross-device persistence).
+- Current implementation HEAD: `4723b0b` (`dig_later` concurrency hardening).
 - Current product roadmap: `RM-055`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
 - Coverage API, the coverage instrument, event analogue consumer, and cross-device curiosity queue are integrated on this branch.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
@@ -20,7 +20,7 @@ This is the compact context reset point for future agents. It records current pr
 |---|---|---|
 | M1': optional data-line validation + analogue consumer | Done | Phase 0 report is recorded; U1 analogue UI and audit fixes are in `69ca3aa` / `29f9cf8`. |
 | M2': auditable coverage | Done | Coverage API, evidence-linked distributions, honest unknowns, and the frontend instrument are live in `dfdb9c1` / `4532d02` / `29f9cf8`. |
-| M3': cross-device queue | Done | Dedicated queue persistence, offline outbox, fresh-device restore, and strict cognition isolation landed in `98efa59`. |
+| M3': cross-device queue | Done | Dedicated persistence landed in `98efa59`; revision/tombstone concurrency, causal outbox recovery, and cross-tab hardening landed in `4723b0b`. |
 | M3': source expansion | Evidence gate | No batch is justified yet; collect two weeks of recurring gap evidence before selecting at most three feeds. |
 | M4': briefing loop | Next | Fact-first summaries, coverage micro-labels, deep links, and one-domain-today remain to implement. |
 
@@ -29,10 +29,10 @@ The project is at the **RM-055 M4' start point**, with source-gap observation ru
 ## Latest Delivered Gate
 
 - `DigQueueItem` is a separate SQLite dataset and API; it never enters cognition summary or calibration code.
-- Frontend localStorage remains the offline cache. A persisted outbox replays add/delete operations, then reconciles with the server snapshot.
+- Frontend localStorage remains the offline cache. A per-operation outbox records causal successors, rejects stale snapshots, and reconciles against revisioned server tombstones.
 - Network failure leaves the queue usable and displays a truthful degraded state; queue sync does not gate topic loading or deep links.
-- Fresh verification: backend `315 passed, 1 warning`; frontend build passed (98 modules); full desktop/mobile E2E `146 passed`.
-- Staged GitNexus: 9 files, 46 symbols, 5 conservatively mapped cognition-adjacent flows, risk `medium`; exact scope reviewed before commit `98efa59`.
+- Fresh verification: backend `319 passed, 1 warning`; frontend build passed (98 modules); full desktop/mobile E2E `174 passed`.
+- Hardening staged GitNexus: 9 files, 67 symbols, 27 conservatively mapped flows, risk `critical`; expansion is through shared `_migrate`, and exact staged scope was reviewed before commit `4723b0b`.
 
 ## Implemented Product Capabilities
 
@@ -106,14 +106,14 @@ The latest accepted release-quality evidence is:
 ```text
 cd backend
 ..\venv\Scripts\python.exe -m pytest -q
-315 passed, 1 warning
+319 passed, 1 warning
 
 cd ..\frontend
 npm run build
 # 98 modules transformed
 
 playwright test
-# 146 passed (desktop + mobile)
+# 174 passed (desktop + mobile)
 ```
 
 This is recorded context, not permission to skip fresh verification after new code changes. Documentation-only work should at minimum pass link checks, UTF-8 validation, `git diff --check`, and staged GitNexus scope review.

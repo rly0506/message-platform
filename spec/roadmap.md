@@ -8,7 +8,7 @@ This roadmap records the current product direction after the July 2026 readabili
 
 可审计信息供应链 · C 先行。完整方案见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
-当前进度（2026-07-13）：Phase 0 真实验收、Phase 1 Coverage API、Phase 2 覆盖仪表与 Phase A 类比卡带均已闭环；`dig_later` 跨设备队列已由 `98efa59` 落地。源扩展因尚无两周纵向缺口数据进入证据闸，不伪造首批；下一可执行产品阶段是 M4' 事实优先早报升级。
+当前进度（2026-07-14）：Phase 0 真实验收、Phase 1 Coverage API、Phase 2 覆盖仪表与 Phase A 类比卡带均已闭环；`dig_later` 跨设备队列由 `98efa59` 落地，并由 `4723b0b` 完成 revision/tombstone、跨标签页与在途操作加固。源扩展因尚无两周纵向缺口数据进入证据闸，不伪造首批；下一可执行产品阶段是 M4' 事实优先早报升级。
 
 主线：**先让用户看见 AI 读了什么、漏了什么、有没有反证，再用真实缺口数据决定补哪些源、落哪些正文。** 手机标记好奇心、电脑消化好奇心；省力早报喂事实、硬核台增理解，两模式与认知画像不互相污染。
 

@@ -2,6 +2,26 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-14 RM-055 M3' Queue Concurrency Hardening
+
+- Added monotonic per-item revisions and durable tombstones so stale devices
+  cannot delete a restored item or resurrect a deleted one.
+- Replaced query-then-insert with atomic SQLite conflict handling; concurrent
+  identical first PUTs and lost-response retries are idempotent.
+- Reworked the frontend outbox into one durable record per operation, with
+  causal successor revisions, descendant-first rejection cleanup, stale
+  snapshot rejection, and a forced rerun when cross-tab state changes in flight.
+- Preserved tombstone revisions and outbox operations in memory when browser
+  storage is unavailable; retained authentication/version failures for retry and
+  isolated only explicit request-validation failures.
+- Migrated legacy pending deletes conservatively: revision-1 legacy records can
+  complete, while newer server revisions win instead of being overwritten.
+- Independent review completed four repair loops and ended with `APPROVE`.
+- Verification for `4723b0b`: backend `319 passed, 1 warning`; frontend build
+  passed with 98 modules; full desktop/mobile E2E `174 passed`; staged GitNexus
+  reported 9 files / 67 symbols / 27 flows / `critical`, conservatively expanded
+  through shared `_migrate`.
+
 ## 2026-07-13 RM-055 M3' Cross-Device Curiosity Queue
 
 - Added a dedicated `DigQueueItem` SQLite model and idempotent save/list/delete API.
