@@ -55,7 +55,7 @@ Status: `HISTORICAL SOURCE` + `PARTIALLY INCORPORATED`
 
 - 主要分诊记录：`.agent-bridge/archive/TO_CLAUDE-through-2026-07-09.md` 中“用户 10 点反馈分诊 + 下一轮优先级”。
 - 事件图承接文件：`spec/archive/roadmaps/roadmap-event-graph-2026-07-09.md`。
-- 长期方向反思：`spec/archive/direction-plan-2026-07-05.md`。
+- 长期方向反思：`spec/archive/roadmaps/direction-plan-2026-07-05.md`。
 
 ## 2026-07-12：意见、感悟与参考资料需要独立保存
 

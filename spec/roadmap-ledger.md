@@ -33,16 +33,17 @@
 | ID | 文档 | 状态 | 结论 |
 |---|---|---|---|
 | RM-000 | `spec/roadmap.md` | CURRENT INDEX | 当前方向摘要；必须与本总账和 BOARD 同步。 |
-| RM-010 | `spec/archive/direction-plan-2026-07-05.md` | SUPERSEDED | 季度方向提案，提供北极星和单主线原则，已被后续执行路线图接管。 |
-| RM-011 | `spec/archive/overnight-plan-2026-07-05.md` | SUPERSEDED | P0/P1 止血和夜间执行计划，相关修复已分批落地，不能继续按原任务表执行。 |
-| RM-012 | `spec/archive/gpt-roadmap-4h-2026-07-06.md` | COMPLETED | P1 证据链与 value-lens 生产者阶段已完成，后续问题进入新的审计批。 |
-| RM-013 | `spec/archive/oss-integration-roadmap-2026-07-07.md` | SUPERSEDED | SearXNG、Scrapling 和 URL 解码已形成默认关闭的数据线；其余项目仍是候选，不代表已集成。 |
-| RM-014 | `spec/archive/direction-plan-2026-07-07.md` | SUPERSEDED | Claude 方向草稿，已由第二版分工路线图修正。 |
-| RM-015 | `spec/archive/roadmap-claude-gpt-2026-07-07b.md` | COMPLETED | 可读性、认知校准、稳定性和默认关闭的数据线阶段已经执行。 |
-| RM-016 | `spec/archive/roadmap-2026-07-07b-execution-summary.md` | REFERENCE | RM-015 的收官证据和提交记录，不是新的路线图。 |
+| RM-010 | `spec/archive/roadmaps/direction-plan-2026-07-05.md` | SUPERSEDED | 季度方向提案，提供北极星和单主线原则，已被后续执行路线图接管。 |
+| RM-011 | `spec/archive/roadmaps/overnight-plan-2026-07-05.md` | SUPERSEDED | P0/P1 止血和夜间执行计划，相关修复已分批落地，不能继续按原任务表执行。 |
+| RM-012 | `spec/archive/roadmaps/gpt-roadmap-4h-2026-07-06.md` | COMPLETED | P1 证据链与 value-lens 生产者阶段已完成，后续问题进入新的审计批。 |
+| RM-013 | `spec/archive/roadmaps/oss-integration-roadmap-2026-07-07.md` | SUPERSEDED | SearXNG、Scrapling 和 URL 解码已形成默认关闭的数据线；其余项目仍是候选，不代表已集成。 |
+| RM-014 | `spec/archive/roadmaps/direction-plan-2026-07-07.md` | SUPERSEDED | Claude 方向草稿，已由第二版分工路线图修正。 |
+| RM-015 | `spec/archive/roadmaps/roadmap-claude-gpt-2026-07-07b.md` | COMPLETED | 可读性、认知校准、稳定性和默认关闭的数据线阶段已经执行。 |
+| RM-016 | `spec/archive/roadmaps/roadmap-2026-07-07b-execution-summary.md` | REFERENCE | RM-015 的收官证据和提交记录，不是新的路线图。 |
+| RM-017 | `spec/archive/roadmaps/gpt-next-iteration-2026-07-07.md` | SUPERSEDED | GPT 后续迭代草案，已由 RM-014/RM-015 校正并接管；本次补登记编号，不重开旧任务。 |
 | RM-030 | `spec/archive/roadmaps/roadmap-event-graph-2026-07-09.md` | COMPLETED | 事件图 V1 的 F1、B1-B3、F2 已提交；事件图仍有架构债务，但 V1 已收官。 |
 | RM-040 | `spec/archive/roadmaps/roadmap-understanding-layer-2026-07-09.md` | SUPERSEDED | U2 多源对照完成、U1 后端完成；未完成的前端消费和 U3 假设层已并入 RM-050 或继续延期。 |
-| RM-050 | `spec/roadmap-dual-mode-2026-07-09.md` | SUPERSEDED | 双模式入口 M1 已完成（`3327008`）；未完成的 M2/M3/M4 由 RM-055 完整承接。指向接替者 RM-055。 |
+| RM-050 | `spec/archive/roadmaps/roadmap-dual-mode-2026-07-09.md` | SUPERSEDED | 双模式入口 M1 已完成（`3327008`）；未完成的 M2/M3/M4 由 RM-055 完整承接。指向接替者 RM-055。 |
 | RM-055 | `spec/roadmap-supply-chain-2026-07-12.md` | CURRENT | 当前主线。可审计信息供应链 · C 先行；接替 RM-050 并承接其 M2/M3/M4。 |
 | RM-060 | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` | CANDIDATE | AI 可控性与博客/播客/视频/授权私域资料方向，只记录问题和边界，尚未立项。 |
 

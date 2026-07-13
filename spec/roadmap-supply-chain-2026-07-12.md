@@ -1,7 +1,7 @@
 # 路线图:可审计信息供应链 · C 先行(2026-07-12)
 
 > 路线图编号：`RM-055`。状态：`CURRENT`。**接替 `RM-050`**（非并列）——RM-050 转 `SUPERSEDED`，其未完成的 M2/M3/M4 由本图完整承接。
-> 承接文件：`spec/roadmap-dual-mode-2026-07-09.md`（RM-050，双模式入口 M1 已由 `3327008` 完成）。
+> 承接文件：`spec/archive/roadmaps/roadmap-dual-mode-2026-07-09.md`（RM-050，双模式入口 M1 已由 `3327008` 完成）。
 > 缘起：用户第 N 次反馈"信息源不够、不广、不权威"，几轮迭代仍无突破。核对代码/配置/只读库后的诊断——**症结不是"源不够多"，而是增强能力（SearXNG / gnews 解码 / Scrapling）默认全关、没有真实数据验收、界面也不显示本轮用了哪些能力**。"代码存在"被当成了"产品拥有能力"。详见 `spec/feedback-and-ideas/developer/development-observations.md`。
 
 ---

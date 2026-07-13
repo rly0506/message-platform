@@ -1,6 +1,6 @@
 # GPT 后续迭代路线图(2026-07-07)
 
-状态:**交 GPT 执行,人类审后接**。机制经两路源码探查核实(file:line 准确,反映 P1+value_lens 已上 master 后的现状)。承接 `spec/oss-integration-roadmap-2026-07-07.md` 的 P1/P2。
+状态:**交 GPT 执行,人类审后接**。机制经两路源码探查核实(file:line 准确,反映 P1+value_lens 已上 master 后的现状)。承接 `spec/archive/roadmaps/oss-integration-roadmap-2026-07-07.md` 的 P1/P2。
 
 **分工**:GPT 只碰 `backend/` + `docs/` + `spec/CHANGELOG`;Claude 做前端(校准闭环的前端半 + 继续重排)。按目录切死。
 **硬约束**:不合并 master/不推 origin(人类决定);不写真实库;每步独立提交+门禁;改符号前 GitNexus impact;降级留痕。

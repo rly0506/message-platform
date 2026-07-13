@@ -161,7 +161,7 @@
 
 ## 2026-07-06 GPT Backend Roadmap P1 + Value Lens
 
-- Continued `spec/gpt-roadmap-4h-2026-07-06.md` on `feature/academic-reading-signals`.
+- Continued `spec/archive/roadmaps/gpt-roadmap-4h-2026-07-06.md` on `feature/academic-reading-signals`.
 - Verified the existing P1 backend fixes in the current worktree:
   - OpenAlex now supports anonymous search and academic payloads expose source errors/status instead of silently pretending all sources contributed.
   - Local term matching uses a shared word-boundary helper for ASCII terms while preserving substring matching for CJK and hyphenated terms.
@@ -1423,7 +1423,7 @@ Give future agents a stable project map and reproducible acceptance standard bef
 
 ## 2026-07-05 过夜 · Claude 前端线（分工：Claude frontend / GPT backend）
 
-按 spec/overnight-plan-2026-07-05.md，Claude 独占 frontend/。四项完成，均门禁通过：
+按 spec/archive/roadmaps/overnight-plan-2026-07-05.md，Claude 独占 frontend/。四项完成，均门禁通过：
 
 - **阶段 4.1 设计 token**：style.css 引入 :root token（色阶/间距/字号/圆角），配色沿用项目 teal+灰、比例借 Open Props。核心选择器切 var()，视觉零差。
 - **阶段 4.2 可读性重排**：边界卡 .boundary-card-notes 从 7 字段等权 3 列 → 主信息(摘要/为什么现在重要)全宽可读 + 次要元信息紧凑两列；.stream-row 去掉标题 nowrap 一行截断，默认可读、note 两行 clamp。

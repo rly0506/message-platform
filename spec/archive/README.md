@@ -4,12 +4,12 @@ Completed sprint snapshots, superseded roadmaps, audit records, and historical b
 
 ## Structure
 
-- `roadmaps/` - completed or superseded detailed roadmaps, including RM-030 and RM-040.
+- `roadmaps/` - all completed, superseded, or reference roadmaps; `roadmaps/README.md` records their stable IDs.
 - `changelog/` - full historical changelog snapshots.
 - `plans/` - old implementation plans that are no longer executable.
 - `build-logs/` - historical backend construction logs.
 - `current-state/` - verbatim snapshots of the former live context reset file.
-- archive root - dated sprint ledgers, reviews, audits, and execution summaries created before the categorized directories.
+- archive root - dated sprint ledgers, reviews, audits, and other historical records that are not roadmaps.
 
 ## Rules
 

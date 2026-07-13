@@ -1,6 +1,6 @@
 # 路线图执行总结 —— roadmap-claude-gpt-2026-07-07b
 
-状态:**执行记录**。对账对象 `roadmap-claude-gpt-2026-07-07b.md`(Claude 拟、人类拍板的第二版分工路线图)。基线 commit `d61fece`(路线图写作时的 HEAD)。数据线一批已审 ACCEPT 并提交为 `ea233bd`,截止本总结时 `feature = ea233bd`(领先 `origin/master = 42ab615` 一个 commit,未 push/合并——等人类拍板)。**这份路线图已全部走完。**
+状态:**执行记录**。对账对象 `spec/archive/roadmaps/roadmap-claude-gpt-2026-07-07b.md`(Claude 拟、人类拍板的第二版分工路线图)。基线 commit `d61fece`(路线图写作时的 HEAD)。数据线一批已审 ACCEPT 并提交为 `ea233bd`,截止本总结时 `feature = ea233bd`(领先 `origin/master = 42ab615` 一个 commit,未 push/合并——等人类拍板)。**这份路线图已全部走完。**
 
 北极星(全程锚):反回音壁认知拓展(护城河)· 诚实有证据的数据 · 补打开欲 · 不做成瘾 feed。
 

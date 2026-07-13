@@ -1,6 +1,6 @@
 # Claude × GPT 分工路线图(2026-07-07 第二版)—— 待人类审
 
-状态:**Claude 拟,plan-mode 产出,待人类拍板**。基于本轮四路源码探查(file:line 核实),修正前两版路线图两处过时假设。承接 `direction-plan-2026-07-07.md`。
+状态:**Claude 拟,plan-mode 产出,待人类拍板**。基于本轮四路源码探查(file:line 核实),修正前两版路线图两处过时假设。承接 `spec/archive/roadmaps/direction-plan-2026-07-07.md`。
 
 **北极星(锚)**:反回音壁认知拓展(护城河)· 诚实有证据的数据 · 补打开欲 · 不做成瘾 feed。
 

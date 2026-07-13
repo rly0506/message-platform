@@ -2,6 +2,18 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-14 Historical Roadmap Consolidation
+
+- Consolidated all completed, superseded, and reference roadmaps under
+  `spec/archive/roadmaps/` without deleting their historical content.
+- Added a numbered archive index for RM-010 through RM-017, RM-030, RM-040,
+  and RM-050; registered the previously unnumbered GPT continuation as RM-017.
+- Updated tracked references to the new canonical paths and corrected the
+  startup router so the current sprint points to RM-055 rather than RM-050.
+- Kept RM-055 at the spec root as the sole current product roadmap and RM-060
+  at the root as a candidate; no roadmap status or historical conclusion was
+  rewritten as part of the move.
+
 ## 2026-07-14 RM-055 M3' Queue Concurrency Hardening
 
 - Added monotonic per-item revisions and durable tombstones so stale devices

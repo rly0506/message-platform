@@ -1,6 +1,6 @@
 # 双方方向草稿(2026-07-07)—— Claude 拟,待人类拍板
 
-状态:**Claude 起草,人类审后才进 `.agent-bridge/TO_CODEX.md` 交 GPT**。承接 `oss-integration-roadmap-2026-07-07.md` / `gpt-next-iteration-2026-07-07.md`,但按本轮两路源码探查(file:line 已核实)**修正两处路线图错误**、并**重排头号**。
+状态:**Claude 起草,人类审后才进 `.agent-bridge/TO_CODEX.md` 交 GPT**。承接 `spec/archive/roadmaps/oss-integration-roadmap-2026-07-07.md` / `spec/archive/roadmaps/gpt-next-iteration-2026-07-07.md`,但按本轮两路源码探查(file:line 已核实)**修正两处路线图错误**、并**重排头号**。
 
 **北极星(不许跑偏的锚)**:反回音壁的认知拓展(护城河)· 诚实、有证据链的数据(不造可信假象)· 补"打开欲"低意图入口 · **不做成瘾 feed**。任何一步偏离这四条,停下来问人。
 

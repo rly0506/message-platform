@@ -17,7 +17,7 @@ Do not load mail archives, the full changelog archive, completed roadmaps, build
 
 | Task | Read |
 |---|---|
-| Current product sprint | `spec/roadmap-dual-mode-2026-07-09.md` |
+| Current product sprint | `spec/roadmap-supply-chain-2026-07-12.md` |
 | Product goal and architecture | `spec/project.md` |
 | Development constraints | `spec/development.md` |
 | Completion claim or release review | `spec/acceptance.md` |
@@ -35,7 +35,7 @@ Do not load mail archives, the full changelog archive, completed roadmaps, build
 
 ## Historical Material
 
-- Completed and superseded roadmaps: `spec/archive/roadmaps/` and `spec/archive/`.
+- Completed and superseded roadmaps: `spec/archive/roadmaps/` (numbered index in its `README.md`).
 - Full changelog through 2026-07-12: `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 - Historical implementation plans: `spec/archive/plans/`.
 - Historical backend build logs: `spec/archive/build-logs/`.

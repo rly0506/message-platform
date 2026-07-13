@@ -33,4 +33,4 @@ Status: `REFLECTION`
 ## 已有相关材料
 
 - AI 协作、信息不对称与未来私有来源接入：`spec/ai-collaboration-and-source-boundary-2026-07-12.md`
-- 长期方向与反馈驱动开发的张力：`spec/archive/direction-plan-2026-07-05.md`
+- 长期方向与反馈驱动开发的张力：`spec/archive/roadmaps/direction-plan-2026-07-05.md`
