@@ -47,8 +47,8 @@ Push/merge policy: do not push; do not merge `master`.
   mailbox with actual commit and verification evidence.
 - [x] Prepare tracked documentation as a separate closeout batch.
 - [x] Complete requirement-by-requirement audit and approve M3' for closeout.
-- [ ] Complete the human-requested lossless roadmap archive/index cleanup, then
-  open the next RM-055 goal and continue M4'.
+- [x] Complete the human-requested lossless roadmap archive/index cleanup in
+  `36c2549`, then open the next RM-055 goal and continue M4'.
 
 ## Current Technical Decision
 
