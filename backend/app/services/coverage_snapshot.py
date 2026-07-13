@@ -75,6 +75,7 @@ def _snapshot_payload(
             'note': SAMPLE_NOTE,
         },
         'independent_source_count': len(source_names),
+        'source_distribution': _buckets(articles, lambda item: item.source),
         'collector_distribution': _buckets(articles, lambda item: item.collector),
         'language_distribution': _buckets(articles, lambda item: item.source_lang),
         'country_distribution': _buckets(articles, lambda item: item.source_country),

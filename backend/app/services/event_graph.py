@@ -300,6 +300,11 @@ def _node_payload(row: Event) -> dict[str, Any]:
         "summary_zh": row.summary_zh,
         "source_count": row.source_count,
         "article_count": row.article_count,
+        "article_ids": _unique([
+            int(value)
+            for value in (row.article_ids or [])
+            if _intable(value)
+        ]),
     }
 
 

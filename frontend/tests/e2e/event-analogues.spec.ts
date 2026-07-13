@@ -68,7 +68,15 @@ const localEvents = {
 
 const stableGraph = {
   nodes: [
-    { id: 51, date: '2026-06-20', title_zh: '美国与伊朗冲突进入关键节点', summary_zh: '摘要', source_count: 4, article_count: 6 },
+    {
+      id: 51,
+      date: '2026-06-20',
+      title_zh: '美国与伊朗冲突进入关键节点',
+      summary_zh: '摘要',
+      source_count: 4,
+      article_count: 6,
+      article_ids: [1, 2, 3, 4],
+    },
   ],
   edges: [],
   degraded: true,
@@ -98,6 +106,24 @@ async function mockCore(page: Page) {
   )
 }
 
+function analoguePayload(eventId: number, note = '类比不等于预测；请同时阅读差异提醒。') {
+  return {
+    target: { topic_id: 101, event_id: eventId, title_zh: '', entities: [], keywords: [] },
+    items: [],
+    scan: {
+      total_events: 2,
+      eligible_candidates: 1,
+      scanned_candidates: 1,
+      candidate_cap: 500,
+      truncated: false,
+      note: '实际扫描 1 个。',
+    },
+    degraded: false,
+    degraded_reason: '',
+    note,
+  }
+}
+
 test('renders analogue cards with per-item basis and mandatory difference reminders', async ({ page }) => {
   await mockCore(page)
   await page.route('**/api/topics/101/event-graph', async (route) => route.fulfill({ json: stableGraph }))
@@ -123,6 +149,22 @@ test('renders analogue cards with per-item basis and mandatory difference remind
               '对方 top 实体含沙特，本事件无。',
             ],
             evidence_article_ids: [301, 302],
+            evidence_articles: [
+              {
+                id: 301,
+                title: 'Reuters: Saudi oil facilities attacked',
+                url: 'https://reuters.example/saudi-oil',
+                source: 'Reuters',
+                published_at: '2019-09-14T08:00:00',
+              },
+              {
+                id: 302,
+                title: 'AP: Oil market reacts',
+                url: 'https://ap.example/oil-market',
+                source: 'AP News',
+                published_at: '2019-09-14T09:00:00',
+              },
+            ],
             note: '相似仅表示样本内结构信号重合，不代表同因、同果或会重演。',
           },
           {
@@ -136,6 +178,15 @@ test('renders analogue cards with per-item basis and mandatory difference remind
             basis: [{ kind: 'shared_keyword', items: ['制裁'], weight: 8 }],
             differences: ['目标事件为 2026-06-20，对方为 2020-01-03，时间相差 77 个月。'],
             evidence_article_ids: [305],
+            evidence_articles: [
+              {
+                id: 305,
+                title: 'BBC: Soleimani event',
+                url: 'https://bbc.example/soleimani',
+                source: 'BBC',
+                published_at: '2020-01-03T07:00:00',
+              },
+            ],
             note: '相似仅表示样本内结构信号重合，不代表同因、同果或会重演。',
           },
         ],
@@ -176,8 +227,12 @@ test('renders analogue cards with per-item basis and mandatory difference remind
   await expect(diff.getByText('差异提醒')).toBeVisible()
   await expect(diff).toContainText('时间相差 81 个月')
   await expect(diff).toContainText('对方 top 实体含沙特')
-  // 样本证据数诚实展示（不伪造原文链接，只给篇数）
+  // 样本证据既显示数量，也能点回后端返回的真实原文。
   await expect(strong.locator('.analogue-evidence')).toContainText('样本证据 2 篇')
+  await expect(strong.getByRole('link', { name: 'Reuters: Saudi oil facilities attacked' })).toHaveAttribute(
+    'href',
+    'https://reuters.example/saudi-oil',
+  )
   await expect(strong.locator('.analogue-item-note')).toContainText('不代表同因、同果或会重演')
 
   // 有限相似卡：弱化色调，但依据/差异同样完整可见
@@ -267,4 +322,115 @@ test('disables the analogue scan when no stable backend event id is available', 
   const panel = page.locator('.event-analogues-panel')
   await expect(panel.getByRole('button', { name: '扫描先例' })).toBeDisabled()
   await expect(panel).toContainText('需先切到后端事件图')
+})
+
+test('matches the selected LLM timeline event to its stable graph id instead of reusing the array index', async ({ page }) => {
+  await mockCore(page)
+  await page.route('**/api/topics/101', async (route) =>
+    route.fulfill({
+      json: {
+        ...topic,
+        timeline: [
+          {
+            date: '2026-06-20',
+            title_zh: '时间线事件 A',
+            summary_zh: 'A',
+            article_ids: [1, 2],
+          },
+          {
+            date: '2026-06-21',
+            title_zh: '时间线事件 B',
+            summary_zh: 'B',
+            article_ids: [3, 4],
+          },
+        ],
+        framing: [],
+        analysis: {
+          content_md: '<!-- analysis-source: llm -->\nLLM 分析',
+          generated_at: '2026-06-21T00:00:00',
+        },
+      },
+    }),
+  )
+  await page.route('**/api/topics/101/event-graph', async (route) =>
+    route.fulfill({
+      json: {
+        nodes: [
+          { id: 52, date: '2026-06-21', title_zh: '图事件 B', summary_zh: 'B', source_count: 1, article_count: 2, article_ids: [3, 4] },
+          { id: 51, date: '2026-06-20', title_zh: '图事件 A', summary_zh: 'A', source_count: 1, article_count: 2, article_ids: [1, 2] },
+        ],
+        edges: [],
+        degraded: false,
+        note: '',
+      },
+    }),
+  )
+  let requestedEventId: number | null = null
+  await page.route('**/api/topics/101/events/*/analogues', async (route) => {
+    const match = new URL(route.request().url()).pathname.match(/\/events\/(\d+)\/analogues$/)
+    requestedEventId = match ? Number(match[1]) : null
+    await route.fulfill({ json: analoguePayload(requestedEventId ?? 0) })
+  })
+
+  await openWorkbench(page)
+  await page.locator('.timeline-node').filter({ hasText: '时间线事件 A' }).click()
+  await page.locator('.event-analogues-panel').getByRole('button', { name: '扫描先例' }).click()
+
+  await expect.poll(() => requestedEventId).toBe(51)
+})
+
+test('allows the newly selected event to load while an older analogue request later fails', async ({ page }) => {
+  const secondEvent = {
+    ...localEvents.events[0],
+    date: '2026-06-21',
+    title_zh: '第二事件',
+    summary_zh: '第二事件摘要',
+    article_ids: [5, 6],
+    article_count: 2,
+  }
+  await mockCore(page)
+  await page.route('**/api/topics/101/local-events', async (route) =>
+    route.fulfill({ json: { ...localEvents, events: [localEvents.events[0], secondEvent] } }),
+  )
+  await page.route('**/api/topics/101/event-graph', async (route) =>
+    route.fulfill({
+      json: {
+        nodes: [
+          stableGraph.nodes[0],
+          { id: 52, date: '2026-06-21', title_zh: '第二事件', summary_zh: '第二事件摘要', source_count: 1, article_count: 2, article_ids: [5, 6] },
+        ],
+        edges: [],
+        degraded: false,
+        note: '',
+      },
+    }),
+  )
+
+  let firstStarted = false
+  let releaseFirst!: () => void
+  const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('**/api/topics/101/events/51/analogues', async (route) => {
+    firstStarted = true
+    await firstRelease
+    await route.fulfill({ status: 500, json: { detail: '旧事件失败' } })
+  })
+  await page.route('**/api/topics/101/events/52/analogues', async (route) =>
+    route.fulfill({ json: analoguePayload(52, '第二事件类比已加载') }),
+  )
+
+  await openWorkbench(page)
+  await page.locator('.timeline-node').filter({ hasText: '美国与伊朗冲突进入关键节点' }).click()
+  await page.locator('.event-analogues-panel').getByRole('button', { name: '扫描先例' }).click()
+  await expect.poll(() => firstStarted).toBe(true)
+  await page.locator('.timeline-node').filter({ hasText: '第二事件' }).click()
+
+  const secondPanel = page.locator('.event-analogues-panel')
+  try {
+    await expect(secondPanel.getByRole('button', { name: '扫描先例' })).toBeEnabled()
+    await secondPanel.getByRole('button', { name: '扫描先例' }).click()
+    await expect(secondPanel).toContainText('第二事件类比已加载')
+  } finally {
+    releaseFirst()
+  }
+  await expect(secondPanel).not.toContainText('旧事件失败')
 })

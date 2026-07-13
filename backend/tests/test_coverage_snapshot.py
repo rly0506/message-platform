@@ -19,6 +19,11 @@ def test_topic_coverage_reports_evidence_linked_distributions():
     assert payload['sample']['article_ids'] == sorted(article_ids)
     assert 'not proof' in payload['sample']['note']
     assert payload['independent_source_count'] == 2
+    assert _bucket_map(payload['source_distribution']) == {
+        'RM055 Wire topic': (2, sorted(article_ids[:2])),
+        'RM055 Unmatched topic': (1, [article_ids[2]]),
+        'unknown': (1, [article_ids[3]]),
+    }
 
     assert _bucket_map(payload['collector_distribution']) == {
         'gnews': (2, sorted(article_ids[:2])),

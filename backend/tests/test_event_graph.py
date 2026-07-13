@@ -82,6 +82,9 @@ def test_event_graph_uses_stable_event_ids_and_builds_four_relation_types():
     assert response.status_code == 200
     payload = response.json()
     assert {node["id"] for node in payload["nodes"]} == expected_ids
+    articles_by_id = {node["id"]: node["article_ids"] for node in payload["nodes"]}
+    assert articles_by_id[first.id] == [101, 102]
+    assert articles_by_id[second.id] == [102, 103]
     assert payload["degraded"] is False
     edge_types = {edge["relation_type"] for edge in payload["edges"]}
     assert {

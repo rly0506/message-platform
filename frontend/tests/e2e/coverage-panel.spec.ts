@@ -44,6 +44,11 @@ const coverage = {
     note: 'Counts describe persisted articles collected for this scope; absence is not proof that a source did not report.',
   },
   independent_source_count: 2,
+  source_distribution: [
+    { key: 'Reuters', count: 2, article_ids: [1, 2] },
+    { key: 'BBC', count: 1, article_ids: [3] },
+    { key: 'unknown', count: 1, article_ids: [4] },
+  ],
   collector_distribution: [
     { key: 'gnews', count: 2, article_ids: [1, 2] },
     { key: 'rss', count: 1, article_ids: [3] },
@@ -153,6 +158,12 @@ test('renders coverage overview and states uncollected is not unreported', async
   await gotoCoverage(page)
 
   const panel = page.locator('.coverage-panel')
+  // 证据边界必须先于分析正文出现，让用户先看样本边界、再读结论。
+  const appearsBeforeAnalysis = await panel.evaluate((element) => {
+    const analysis = document.querySelector('.llm-panel')
+    return Boolean(analysis && (element.compareDocumentPosition(analysis) & Node.DOCUMENT_POSITION_FOLLOWING))
+  })
+  expect(appearsBeforeAnalysis).toBe(true)
   // 红线：认识论区分——「未采集到」≠「来源没报道」
   await expect(panel.locator('.coverage-note')).toContainText('不代表来源没有报道')
   await expect(panel.locator('.coverage-note')).toContainText('没抓到 ≠ 源没发')
@@ -169,6 +180,7 @@ test('renders coverage overview and states uncollected is not unreported', async
   await expect(fresh).toContainText('LLM 分析')
   await expect(fresh).toContainText('已有更新证据')
   await expect(fresh).toContainText('分析样本 3 篇 · 当前 4 篇')
+  await expect(fresh).toContainText('历史样本明细未保存')
 })
 
 test('makes every count clickable back to its evidence articles', async ({ page }) => {
@@ -190,6 +202,28 @@ test('makes every count clickable back to its evidence articles', async ({ page 
   // 采集渠道桶也能点回证据
   await panel.locator('.dist-chip', { hasText: 'gnews · 2' }).click()
   await expect(panel.locator('.coverage-evidence.inline')).toContainText('路透：美伊冲突升级风险')
+
+  // 三个概览计数也必须是可展开命令，不能只是看起来像指标的静态文字。
+  await panel.getByRole('button', { name: '2 个独立来源' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('#2（不在当前页）')
+  await panel.getByRole('button', { name: '2 种语言' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('路透：美伊冲突升级风险')
+  await panel.getByRole('button', { name: '1 个国家/地区' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('路透：美伊冲突升级风险')
+
+  // 独立来源明细、来源类型、来源分层、未分层与解码计数同样带证据列表。
+  await panel.getByRole('button', { name: 'Reuters · 2' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('路透：美伊冲突升级风险')
+  await panel.getByRole('button', { name: 'news_agency · 1' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('路透：美伊冲突升级风险')
+  await panel.getByRole('button', { name: 'tier_1 · 1' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('路透：美伊冲突升级风险')
+  await panel.getByRole('button', { name: '未分层 · 3' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('#2（不在当前页）')
+  await panel.getByRole('button', { name: '已解码 · 1' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('路透：美伊冲突升级风险')
+  await panel.getByRole('button', { name: '未解码 · 1' }).click()
+  await expect(panel.locator('.coverage-evidence')).toContainText('#2（不在当前页）')
 })
 
 test('marks fulltext and unclassified sources honestly instead of faking them', async ({ page }) => {
@@ -266,4 +300,57 @@ test('states analysis freshness unknown for legacy analyses without a snapshot b
   await expect(fresh).toContainText('本地分析')
   // 红线：不猜过时——旧行无基线诚实说「未知」
   await expect(fresh).toContainText('未记录基线')
+})
+
+test('loads coverage for the newly selected topic while the previous request is still pending', async ({ page }) => {
+  await mockCore(page, null)
+  const secondTopic = {
+    ...topic,
+    id: 102,
+    name: '第二专题',
+    queries: ['第二专题'],
+    article_count: 7,
+  }
+  await page.route('**/api/topics', async (route) => route.fulfill({ json: [topic, secondTopic] }))
+  await page.route('**/api/topics/102', async (route) =>
+    route.fulfill({ json: { ...topicDetail(null), ...secondTopic } }),
+  )
+  await page.route('**/api/topics/102/articles**', async (route) =>
+    route.fulfill({ json: { total: 0, items: [] } }),
+  )
+  await page.route('**/api/topics/102/local-events', async (route) => route.fulfill({ json: localEvents }))
+  await page.route('**/api/topics/102/event-graph', async (route) =>
+    route.fulfill({ json: { nodes: [], edges: [], degraded: true, note: '' } }),
+  )
+
+  let firstStarted = false
+  let releaseFirst!: () => void
+  const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('**/api/topics/101/coverage**', async (route) => {
+    firstStarted = true
+    await firstRelease
+    await route.fulfill({ json: coverage })
+  })
+  let secondStarted = false
+  await page.route('**/api/topics/102/coverage**', async (route) => {
+    secondStarted = true
+    await route.fulfill({
+      json: {
+        ...coverage,
+        topic_id: 102,
+        sample: { ...coverage.sample, article_count: 7, article_ids: [11, 12, 13, 14, 15, 16, 17] },
+      },
+    })
+  })
+
+  await openWorkbench(page)
+  await expect.poll(() => firstStarted).toBe(true)
+  await page.locator('select.topic-select').selectOption('102')
+  try {
+    await expect.poll(() => secondStarted).toBe(true)
+  } finally {
+    releaseFirst()
+  }
+  await page.getByLabel('专题视图导航').getByRole('button', { name: 'LLM 深度分析' }).click()
+  await expect(page.locator('.coverage-panel').getByRole('button', { name: '7 篇报道' })).toBeVisible()
 })

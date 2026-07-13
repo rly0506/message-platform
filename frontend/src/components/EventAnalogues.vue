@@ -84,9 +84,16 @@ const scan = computed(() => props.payload?.scan ?? null)
             </div>
 
             <footer class="analogue-card-foot">
-              <span v-if="item.evidence_article_ids.length" class="analogue-evidence">
-                样本证据 {{ item.evidence_article_ids.length }} 篇
-              </span>
+              <div v-if="item.evidence_article_ids.length" class="analogue-evidence">
+                <span>样本证据 {{ item.evidence_article_ids.length }} 篇</span>
+                <a
+                  v-for="article in item.evidence_articles"
+                  :key="article.id"
+                  :href="article.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ article.title }}</a>
+              </div>
               <span class="analogue-item-note">{{ item.note }}</span>
             </footer>
           </article>
@@ -246,9 +253,17 @@ const scan = computed(() => props.payload?.scan ?? null)
 }
 
 .analogue-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--font-size-0);
   font-weight: 700;
+}
+
+.analogue-evidence a {
+  color: var(--link);
+  font-weight: 600;
 }
 
 .analogue-item-note {

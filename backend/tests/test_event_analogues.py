@@ -36,6 +36,9 @@ def test_event_analogues_returns_cross_topic_evidence_and_named_differences():
     assert "时间阶段不同" not in strong["differences"]
     assert "参与方不同" not in strong["differences"]
     assert strong["evidence_article_ids"]
+    assert [article["id"] for article in strong["evidence_articles"]] == strong["evidence_article_ids"]
+    assert all(article["title"] and article["url"].startswith("https://example.com/") for article in strong["evidence_articles"])
+    assert all(article["source"] and article["published_at"] for article in strong["evidence_articles"])
     assert strong["note"] == "相似仅表示样本内结构信号重合，不代表同因、同果或会重演。"
 
 

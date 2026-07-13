@@ -63,13 +63,14 @@ const eventAnaloguesLoading = ref(false)
 const eventAnalogues = ref<EventAnaloguesPayload | null>(null)
 const eventAnaloguesError = ref('')
 const eventAnaloguesEventKey = ref('')
+let eventAnaloguesRequestId = 0
 // RM-055 Phase 2 覆盖仪表：话题级覆盖快照（本次分析基于什么样本）。
-// 契约来自 GPT Phase 1（GET /api/topics/{id}/coverage），当前在隔离分支未合入本分支，
-// 故本分支上此接口会 404 —— 组件按 degraded 诚实降级，合入后自然亮真数据。
+// 消费已合流的 GET /api/topics/{id}/coverage；接口异常时组件仍诚实降级。
 const coverageLoading = ref(false)
 const coverage = ref<CoverageSnapshot | null>(null)
 const coverageError = ref('')
 const coverageTopicId = ref<number | null>(null)
+let coverageRequestId = 0
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
@@ -774,10 +775,29 @@ function resetCountryCompare() {
 // 后端图缺席（本地兜底）时无稳定 id → null，按钮据此禁用并诚实提示，不伪造 id。
 const selectedEventId = computed<number | null>(() => {
   const nodes = eventGraph.value?.nodes
-  if (!nodes || !nodes.length) return null
-  const node = nodes[selectedEventIndex.value]
-  return node ? node.id : null
+  const event = selectedEvent.value
+  if (!nodes?.length || !event) return null
+
+  const eventArticleIds = normalizedArticleIds(event.article_ids)
+  const articleMatches = eventArticleIds.length
+    ? nodes.filter((node) => sameArticleIds(eventArticleIds, normalizedArticleIds(node.article_ids)))
+    : []
+  if (articleMatches.length === 1) return articleMatches[0].id
+
+  // Compatibility for older graph payloads: only accept an unambiguous exact date+title match.
+  const identityMatches = nodes.filter((node) =>
+    node.date === event.date && node.title_zh.trim() === event.title_zh.trim(),
+  )
+  return identityMatches.length === 1 ? identityMatches[0].id : null
 })
+
+function normalizedArticleIds(values: number[] | undefined): number[] {
+  return [...new Set(values ?? [])].sort((left, right) => left - right)
+}
+
+function sameArticleIds(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
 
 async function loadContrastForSelectedEvent() {
   const topicId = selectedTopicId.value
@@ -812,50 +832,58 @@ async function loadAnaloguesForSelectedEvent() {
   const eventId = selectedEventId.value
   const requestedKey = selectedEventKey.value
   if (!topicId || eventId === null || eventAnaloguesLoading.value) return
+  const requestId = ++eventAnaloguesRequestId
   eventAnaloguesLoading.value = true
   eventAnaloguesError.value = ''
   try {
     const payload = await fetchEventAnalogues(topicId, eventId)
     // 迟到响应：已切到别的事件则丢弃，不把 A 事件的类比贴到 B 事件上。
-    if (selectedEventKey.value !== requestedKey) return
+    if (requestId !== eventAnaloguesRequestId || selectedEventKey.value !== requestedKey) return
     eventAnalogues.value = payload
     eventAnaloguesEventKey.value = requestedKey
   } catch (err) {
+    if (requestId !== eventAnaloguesRequestId || selectedEventKey.value !== requestedKey) return
     eventAnaloguesError.value = readableError(err)
   } finally {
-    eventAnaloguesLoading.value = false
+    if (requestId === eventAnaloguesRequestId) eventAnaloguesLoading.value = false
   }
 }
 
 function resetEventAnalogues() {
+  eventAnaloguesRequestId += 1
+  eventAnaloguesLoading.value = false
   eventAnalogues.value = null
   eventAnaloguesError.value = ''
   eventAnaloguesEventKey.value = ''
 }
 
+watch(selectedEventKey, resetEventAnalogues)
+
 // RM-055 Phase 2 覆盖仪表：话题级"本次分析基于什么"。按 topicId 取数，
 // await 期间用户切走则丢弃迟到响应（不把 A 话题的覆盖贴到 B 话题）。
-// 后端 /coverage 契约在 GPT 隔离分支，本分支未合并前会 404——按缺口诚实降级，不崩。
 async function loadCoverageForTopic() {
   const topicId = selectedTopicId.value
   if (!topicId || coverageLoading.value) return
+  const requestId = ++coverageRequestId
   coverageLoading.value = true
   coverageError.value = ''
   try {
     const payload = await fetchCoverage(topicId)
     // 迟到响应：已切到别的话题则丢弃。
-    if (selectedTopicId.value !== topicId) return
+    if (requestId !== coverageRequestId || selectedTopicId.value !== topicId) return
     coverage.value = payload
     coverageTopicId.value = topicId
   } catch (err) {
-    if (selectedTopicId.value !== topicId) return
+    if (requestId !== coverageRequestId || selectedTopicId.value !== topicId) return
     coverageError.value = readableError(err)
   } finally {
-    coverageLoading.value = false
+    if (requestId === coverageRequestId) coverageLoading.value = false
   }
 }
 
 function resetCoverage() {
+  coverageRequestId += 1
+  coverageLoading.value = false
   coverage.value = null
   coverageError.value = ''
   coverageTopicId.value = null
@@ -1848,6 +1876,13 @@ function countryCoverageNote(country: CountryCompareCountry) {
           @run-sentiment-analysis="runSentimentAnalysis"
         />
         <template v-else-if="activeWorkspaceTab === 'llm'">
+          <CoveragePanel
+            :payload="visibleCoverage"
+            :loading="coverageLoading"
+            :error="coverageError"
+            :analysis-meta="detail?.analysis_meta ?? null"
+            :articles="articles"
+          />
           <LlmPanel
             :has-llm-analysis="hasLlmAnalysis"
             :deep-analyzing="deepAnalyzing"
@@ -1860,13 +1895,6 @@ function countryCoverageNote(country: CountryCompareCountry) {
             :display-analysis-text="displayAnalysisText"
             :step-status-text="stepStatusText"
             @run-deep-analysis="runLlmAnalysisBundle"
-          />
-          <CoveragePanel
-            :payload="visibleCoverage"
-            :loading="coverageLoading"
-            :error="coverageError"
-            :analysis-meta="detail?.analysis_meta ?? null"
-            :articles="articles"
           />
         </template>
       </section>

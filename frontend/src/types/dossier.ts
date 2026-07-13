@@ -526,6 +526,7 @@ export type EventGraphNodeDTO = {
   summary_zh: string
   source_count: number
   article_count: number
+  article_ids: number[]
 }
 
 export type EventGraphEdgeDTO = {
@@ -622,7 +623,16 @@ export type EventAnalogueItem = {
   basis: EventAnalogueBasis[]
   differences: string[] // 差异提醒必显（类比不预言）——后端保证非空
   evidence_article_ids: number[]
+  evidence_articles: EventAnalogueEvidenceArticle[]
   note: string
+}
+
+export type EventAnalogueEvidenceArticle = {
+  id: number
+  title: string
+  url: string
+  source: string
+  published_at: string | null
 }
 
 export type EventAnalogueScan = {
@@ -681,6 +691,7 @@ export type CoverageSnapshot = {
     note: string // "缺席不证明来源未报道"——后端英文原文，前端不改写其语义
   }
   independent_source_count: number
+  source_distribution: CoverageBucket[]
   collector_distribution: CoverageBucket[]
   language_distribution: CoverageBucket[]
   country_distribution: CoverageBucket[]

@@ -28,12 +28,19 @@ class EventNotFoundInTopic(LookupError):
 class EventFeatures:
     event: Event
     rows: list[local_analyze.ArticleRow]
+    evidence_articles: list[dict[str, Any]]
     entities: dict[str, str]
     keywords: dict[str, dict[str, Any]]
     narratives: dict[str, str]
     source_tiers: set[str]
     tier_counts: Counter[str]
     article_ids: list[int]
+
+
+@dataclass(frozen=True)
+class EventArticle:
+    row: local_analyze.ArticleRow
+    article: Article
 
 
 def event_analogues_payload(session: Session, topic: Topic, event_id: int) -> dict[str, Any]:
@@ -74,6 +81,7 @@ def event_analogues_payload(session: Session, topic: Topic, event_id: int) -> di
             "basis": basis,
             "differences": _differences(target_features, features),
             "evidence_article_ids": features.article_ids,
+            "evidence_articles": features.evidence_articles,
             "note": ITEM_NOTE,
         })
 
@@ -100,7 +108,7 @@ def _degraded_payload(topic: Topic, event_id: int, total_events: int) -> dict[st
     }
 
 
-def _rows_by_event(events: list[Event], session: Session) -> dict[int, list[local_analyze.ArticleRow]]:
+def _rows_by_event(events: list[Event], session: Session) -> dict[int, list[EventArticle]]:
     article_ids = _unique_ints([article_id for event in events for article_id in (event.article_ids or [])])
     if not article_ids:
         return {event.id: [] for event in events if event.id is not None}
@@ -110,9 +118,9 @@ def _rows_by_event(events: list[Event], session: Session) -> dict[int, list[loca
         .where(Article.id.in_(article_ids))
     ).all()
     pair_lookup = {(link.topic_id, article.id): (link, article) for link, article in pairs if article.id is not None}
-    result: dict[int, list[local_analyze.ArticleRow]] = {}
+    result: dict[int, list[EventArticle]] = {}
     for event in events:
-        rows = []
+        rows: list[EventArticle] = []
         for article_id in _unique_ints(event.article_ids or []):
             pair = pair_lookup.get((event.topic_id, article_id))
             if not pair:
@@ -120,21 +128,25 @@ def _rows_by_event(events: list[Event], session: Session) -> dict[int, list[loca
             link, article = pair
             title = article.title_zh or article.title
             snippet = article.snippet_zh or article.snippet
-            rows.append(local_analyze.ArticleRow(
-                id=article.id or 0,
-                title=title,
-                source=article.source,
-                published_at=article.published_at,
-                snippet=snippet,
-                relevance=link.relevance,
-                stance=link.stance or local_analyze.infer_stance(title, snippet),
+            rows.append(EventArticle(
+                row=local_analyze.ArticleRow(
+                    id=article.id or 0,
+                    title=title,
+                    source=article.source,
+                    published_at=article.published_at,
+                    snippet=snippet,
+                    relevance=link.relevance,
+                    stance=link.stance or local_analyze.infer_stance(title, snippet),
+                ),
+                article=article,
             ))
         if event.id is not None:
             result[event.id] = rows
     return result
 
 
-def _features(event: Event, rows: list[local_analyze.ArticleRow]) -> EventFeatures:
+def _features(event: Event, event_articles: list[EventArticle]) -> EventFeatures:
+    rows = [item.row for item in event_articles]
     entities = _named_terms(event.entities or [])
     keyword_items = local_analyze._keywords_for_rows(rows, limit=KEYWORD_LIMIT)
     keywords = {_normalize(item.get("term")): item for item in keyword_items if _normalize(item.get("term"))}
@@ -146,6 +158,7 @@ def _features(event: Event, rows: list[local_analyze.ArticleRow]) -> EventFeatur
     return EventFeatures(
         event=event,
         rows=rows,
+        evidence_articles=[_evidence_article_payload(item.article) for item in event_articles],
         entities=entities,
         keywords=keywords,
         narratives=narratives,
@@ -153,6 +166,16 @@ def _features(event: Event, rows: list[local_analyze.ArticleRow]) -> EventFeatur
         tier_counts=tier_counts,
         article_ids=article_ids,
     )
+
+
+def _evidence_article_payload(article: Article) -> dict[str, Any]:
+    return {
+        "id": article.id,
+        "title": article.title_zh or article.title or f"#{article.id}",
+        "url": article.url,
+        "source": article.source,
+        "published_at": article.published_at.isoformat() if article.published_at else None,
+    }
 
 
 def _similarity(target: EventFeatures, candidate: EventFeatures) -> tuple[int, list[dict[str, Any]]]:
