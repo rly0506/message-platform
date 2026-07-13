@@ -35,7 +35,7 @@ tokens. No dependency, backend, storage, or LLM change.
 
 - Modify: `frontend/tests/e2e/source-matrix.spec.ts:831`
 
-- [ ] **Step 1: Run GitNexus impact before editing**
+- [x] **Step 1: Run GitNexus impact before editing**
 
 Run:
 
@@ -47,7 +47,7 @@ node .gitnexus/run.cjs impact eventNetwork --direction upstream --repo message-p
 These symbols cover the graph renderer and its only parent data adapter. Stop and
 warn before editing if either result is HIGH or CRITICAL.
 
-- [ ] **Step 2: Add the expected hypothesis-layer assertions**
+- [x] **Step 2: Add the expected hypothesis-layer assertions**
 
 In `renders local evidence edges between events in the event network`, after the
 three evidence-row assertions, add:
@@ -77,7 +77,7 @@ three evidence-row assertions, add:
 The scenario already runs in both Playwright projects, so these assertions cover
 desktop and Pixel 5 without a duplicate test.
 
-- [ ] **Step 3: Run the focused test and verify RED**
+- [x] **Step 3: Run the focused test and verify RED**
 
 Run:
 
@@ -96,7 +96,7 @@ before continuing.
 
 - Modify: `frontend/src/components/EventGraph.vue:68,268-289,292-479`
 
-- [ ] **Step 1: Add component-local, non-persisted state**
+- [x] **Step 1: Add component-local, non-persisted state**
 
 Beside `hoveredEdgeKey`, add:
 
@@ -106,7 +106,7 @@ const hypothesisVisible = ref(false)
 
 Do not add props, emits, watchers, storage, or API calls.
 
-- [ ] **Step 2: Render the switch and honest empty layer**
+- [x] **Step 2: Render the switch and honest empty layer**
 
 After the evidence list and before the existing no-edge message, add:
 
@@ -141,7 +141,7 @@ After the evidence list and before the existing no-edge message, add:
 The placeholder must not render relation endpoints, event numbers, or claim
 text.
 
-- [ ] **Step 3: Add stable neutral styles**
+- [x] **Step 3: Add stable neutral styles**
 
 Append scoped styles using existing tokens:
 
@@ -259,7 +259,7 @@ Add the mobile wrapping rule with the other scoped styles:
 }
 ```
 
-- [ ] **Step 4: Run focused GREEN and production build**
+- [x] **Step 4: Run focused GREEN and production build**
 
 Run:
 
@@ -278,7 +278,7 @@ build exit 0 with 98 modules unless the module count legitimately changes.
 
 - Modify: `docs/superpowers/plans/2026-07-14-rm055-phase3-hypothesis-placeholder.md`
 
-- [ ] **Step 1: Run the full frontend gate**
+- [x] **Step 1: Run the full frontend gate**
 
 Run:
 
@@ -293,7 +293,7 @@ Expected: all existing plus modified desktop/mobile tests pass; diff check exits
 0. No backend suite is required because no backend, API, DTO, or shared contract
 changes.
 
-- [ ] **Step 2: Stage only the implementation and plan report**
+- [x] **Step 2: Stage only the implementation and plan report**
 
 Run:
 
@@ -307,11 +307,35 @@ node .gitnexus/run.cjs detect-changes --scope staged --repo message-platform --b
 Expected staged paths: exactly the three listed above. Explain any HIGH/CRITICAL
 risk before proceeding.
 
-- [ ] **Step 3: Obtain independent review**
+- [x] **Step 3: Obtain independent review**
 
 Review from design base `cbb62a4`. Require findings first and exact file/line
 references. Fix every Critical/Important finding with a new RED test; assess
 Minor findings explicitly.
+
+Review record:
+
+- The first reviewer attempt failed before producing a code conclusion with
+  `account_share_mode_unbound`; it was replaced rather than treated as approval.
+- The replacement review requested changes for the essential no-data copy's
+  WCAG AA contrast. It also noted that the evidence-preservation and overflow
+  assertions were too weak.
+- The repair test failed on both projects at the intended contrast assertion
+  (`3.8428017787704145 < 4.5`). The production repair moved status and disclaimer
+  copy to `--text-muted-2` while keeping the decorative sample faint. The focused
+  desktop/mobile rerun then passed (`2 passed`).
+- Both Minor suggestions were incorporated: the test now compares evidence-row
+  content plus SVG node/edge counts before and after enabling the layer, and
+  checks the placeholder's `scrollWidth <= clientWidth`.
+- Fresh post-repair evidence: production build passed with 98 modules and the
+  full Playwright matrix passed (`180 passed`). Final reviewer approval remains
+  required after the refreshed staged-scope check.
+- The repair re-review approved the product change and raised one new
+  non-blocking test-helper Minor: opaque three-component `rgb(...)` values were
+  treated as transparent when alpha was absent. The fallback was corrected from
+  `0` to the CSS default `1`, and the focused desktop/mobile test remained green
+  (`2 passed`). Final confirmation then returned APPROVE with no Critical,
+  Important, or Minor findings on the exact staged diff.
 
 - [ ] **Step 4: Commit implementation**
 

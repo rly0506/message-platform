@@ -877,6 +877,64 @@ test('renders local evidence edges between events in the event network', async (
   await expect(sourceRow).toContainText('#1 ↔ #2')
   await expect(entityRow.locator('.evidence-item', { hasText: /^伊朗$/ })).toBeVisible()
   await expect(sourceRow.locator('.evidence-item', { hasText: /^Reuters$/ })).toBeVisible()
+
+  const hypothesisSwitch = network.getByRole('switch', { name: '显示假设层' })
+  await expect(hypothesisSwitch).toHaveAttribute('aria-checked', 'false')
+  await expect(network.locator('.event-graph-hypothesis-placeholder')).toHaveCount(0)
+
+  const evidenceRows = network.locator('.event-graph-evidence-row')
+  const evidenceBefore = await evidenceRows.allTextContents()
+  const nodeCountBefore = await network.locator('.event-graph-node').count()
+  const edgeCountBefore = await network.locator('.event-graph-edge').count()
+  await hypothesisSwitch.click()
+
+  await expect(hypothesisSwitch).toHaveAttribute('aria-checked', 'true')
+  const hypothesis = network.locator('.event-graph-hypothesis-placeholder')
+  await expect(hypothesis).toBeVisible()
+  await expect(hypothesis.getByText('假设', { exact: true })).toBeVisible()
+  await expect(hypothesis).toContainText('尚无假设数据。证据边不会自动转成因果判断。')
+  expect(await evidenceRows.allTextContents()).toEqual(evidenceBefore)
+  await expect(network.locator('.event-graph-node')).toHaveCount(nodeCountBefore)
+  await expect(network.locator('.event-graph-edge')).toHaveCount(edgeCountBefore)
+
+  const disclaimer = hypothesis.getByText('尚无假设数据。证据边不会自动转成因果判断。')
+  const contrastRatio = await disclaimer.evaluate((element) => {
+    const rgba = (value: string) =>
+      (value.match(/[\d.]+/g) || []).map(Number)
+    const luminance = ([red, green, blue]: number[]) => {
+      const channels = [red, green, blue].map((channel) => {
+        const normalized = channel / 255
+        return normalized <= 0.03928
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4
+      })
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+    }
+
+    const foreground = rgba(getComputedStyle(element).color)
+    let backgroundElement: Element | null = element
+    let background = [255, 255, 255, 0]
+    while (backgroundElement && (background[3] ?? 1) === 0) {
+      background = rgba(getComputedStyle(backgroundElement).backgroundColor)
+      backgroundElement = backgroundElement.parentElement
+    }
+    const lighter = Math.max(luminance(foreground), luminance(background))
+    const darker = Math.min(luminance(foreground), luminance(background))
+    return (lighter + 0.05) / (darker + 0.05)
+  })
+  expect(contrastRatio).toBeGreaterThanOrEqual(4.5)
+
+  const placeholderWidth = await hypothesis.evaluate((element) => ({
+    client: element.clientWidth,
+    scroll: element.scrollWidth,
+  }))
+  expect(placeholderWidth.scroll).toBeLessThanOrEqual(placeholderWidth.client)
+
+  const box = await network.locator('.event-graph-hypothesis').boundingBox()
+  const viewport = page.viewportSize()
+  expect(box).not.toBeNull()
+  expect(viewport).not.toBeNull()
+  expect((box?.x || 0) + (box?.width || 0)).toBeLessThanOrEqual(viewport?.width || 0)
 })
 
 test('prefers the backend event graph and maps node ids to display order', async ({ page }) => {

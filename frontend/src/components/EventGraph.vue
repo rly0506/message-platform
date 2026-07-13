@@ -66,6 +66,7 @@ function truncate(text: string, max = 8) {
 }
 
 const hoveredEdgeKey = ref<string | null>(null)
+const hypothesisVisible = ref(false)
 
 const layout = computed(() => {
   const nodes = props.nodes
@@ -285,6 +286,32 @@ function connector(direction: 'directed' | 'symmetric') {
       </li>
     </ul>
 
+    <section class="event-graph-hypothesis" aria-label="假设层">
+      <div class="hypothesis-layer-head">
+        <div>
+          <strong>假设层</strong>
+          <span>{{ hypothesisVisible ? '已显示' : '默认关闭' }}</span>
+        </div>
+        <button
+          type="button"
+          class="hypothesis-switch"
+          role="switch"
+          :aria-checked="hypothesisVisible"
+          aria-label="显示假设层"
+          @click="hypothesisVisible = !hypothesisVisible"
+        >
+          <span aria-hidden="true" />
+        </button>
+      </div>
+      <div v-if="hypothesisVisible" class="event-graph-hypothesis-placeholder">
+        <div class="hypothesis-sample" aria-hidden="true">
+          <i />
+          <span>假设</span>
+        </div>
+        <p>尚无假设数据。证据边不会自动转成因果判断。</p>
+      </div>
+    </section>
+
     <p v-if="!layout.edges.length" class="source-matrix-empty">暂无可连接的事件边。</p>
   </div>
 </template>
@@ -475,5 +502,113 @@ function connector(direction: 'directed' | 'symmetric') {
   color: var(--text-muted);
   font-size: var(--font-size-0);
   font-weight: 700;
+}
+
+.event-graph-hypothesis {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border-strong);
+}
+
+.hypothesis-layer-head,
+.hypothesis-layer-head > div,
+.hypothesis-sample {
+  display: flex;
+  align-items: center;
+}
+
+.hypothesis-layer-head {
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.hypothesis-layer-head > div {
+  min-width: 0;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.hypothesis-layer-head strong {
+  color: var(--text-heading);
+  font-size: var(--font-size-1);
+}
+
+.hypothesis-layer-head > div > span,
+.event-graph-hypothesis-placeholder p {
+  color: var(--text-muted-2);
+  font-size: var(--font-size-0);
+}
+
+.hypothesis-switch {
+  position: relative;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-tint);
+  cursor: pointer;
+}
+
+.hypothesis-switch > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition: transform 0.1s ease;
+}
+
+.hypothesis-switch[aria-checked='true'] > span {
+  transform: translateX(18px);
+}
+
+.hypothesis-switch:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+.event-graph-hypothesis-placeholder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  color: var(--text-faint);
+}
+
+.event-graph-hypothesis-placeholder p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hypothesis-sample {
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+
+.hypothesis-sample i {
+  width: 24px;
+  border-top: 2px dashed var(--text-faint);
+}
+
+.hypothesis-sample span {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-faint);
+  font-size: var(--font-size-0);
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .event-graph-hypothesis-placeholder {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>
