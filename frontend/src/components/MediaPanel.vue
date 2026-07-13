@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import EventGraph from './EventGraph.vue'
 import EventContrast from './EventContrast.vue'
+import EventAnalogues from './EventAnalogues.vue'
 import type {
   Article,
   ArticlePerspective,
@@ -11,6 +12,7 @@ import type {
   Criterion,
   EntityGroup,
   EventContrastPayload,
+  EventAnaloguesPayload,
   EventGraphPayload,
   EvidenceArticle,
   Keyword,
@@ -115,6 +117,10 @@ const props = defineProps<{
   eventContrastError: string
   visibleEventContrast: EventContrastPayload | null
   loadEventContrastForSelectedEvent: () => void
+  eventAnaloguesLoading: boolean
+  eventAnaloguesError: string
+  visibleEventAnalogues: EventAnaloguesPayload | null
+  loadEventAnaloguesForSelectedEvent: () => void
   showAuthoritySources: () => void
   showEarliestSources: () => void
   showMostCoveredSources: () => void
@@ -722,6 +728,33 @@ function emotionClass(score: number) {
                 :payload="visibleEventContrast"
                 :loading="eventContrastLoading"
                 :error="eventContrastError"
+              />
+            </section>
+            <section class="event-analogues-panel">
+              <div class="evidence-header">
+                <div>
+                  <strong>相似先例</strong>
+                  <span v-if="visibleEventAnalogues && !visibleEventAnalogues.degraded">
+                    {{ visibleEventAnalogues.items.length || 0 }} 个达到相似阈值 · 每张卡片附差异提醒
+                  </span>
+                  <span v-else-if="visibleEventAnalogues && visibleEventAnalogues.degraded">该话题暂无持久化事件，无法类比</span>
+                  <span v-else-if="selectedEventId !== null">扫描全库其它话题，找结构信号相近的先例——相似≠会重演，务必读差异</span>
+                  <span v-else>需先切到后端事件图（稳定事件 id）才能扫描相似先例</span>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button"
+                  :disabled="eventAnaloguesLoading || selectedEventId === null"
+                  @click="loadEventAnaloguesForSelectedEvent"
+                >
+                  {{ visibleEventAnalogues ? '重新扫描' : '扫描先例' }}
+                </button>
+              </div>
+              <EventAnalogues
+                v-if="eventAnaloguesError || eventAnaloguesLoading || visibleEventAnalogues"
+                :payload="visibleEventAnalogues"
+                :loading="eventAnaloguesLoading"
+                :error="eventAnaloguesError"
               />
             </section>
             <div class="breakdown-grid">

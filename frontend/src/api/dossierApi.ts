@@ -14,6 +14,7 @@ import type {
   DiscoveryTimelineTree,
   EventContrastPayload,
   EventGraphPayload,
+  EventAnaloguesPayload,
   LocalEventsPayload,
   OpenCliDiagnostics,
   ProjectSummary,
@@ -178,6 +179,13 @@ export async function fetchEventGraph(topicId: number) {
 export async function fetchEventContrast(topicId: number, eventId: number) {
   const res = await axios.get<EventContrastPayload>(
     `${API_BASE}/api/topics/${topicId}/events/${eventId}/contrast`,
+  )
+  return res.data
+}
+
+export async function fetchEventAnalogues(topicId: number, eventId: number) {
+  const res = await axios.get<EventAnaloguesPayload>(
+    `${API_BASE}/api/topics/${topicId}/events/${eventId}/analogues`,
   )
   return res.data
 }

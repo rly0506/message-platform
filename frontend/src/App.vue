@@ -7,6 +7,7 @@ import {
   fetchCognitionProfile,
   fetchCountryCompare,
   fetchEventContrast,
+  fetchEventAnalogues,
   fetchSources,
   createSource,
   importSources,
@@ -38,6 +39,7 @@ import type {
   CountryCompareCountry,
   DiscoverySeed,
   EventContrastPayload,
+  EventAnaloguesPayload,
   EvidenceArticle,
   Keyword,
   LocalEvent,
@@ -54,6 +56,10 @@ const eventContrastLoading = ref(false)
 const eventContrast = ref<EventContrastPayload | null>(null)
 const eventContrastError = ref('')
 const eventContrastEventKey = ref('')
+const eventAnaloguesLoading = ref(false)
+const eventAnalogues = ref<EventAnaloguesPayload | null>(null)
+const eventAnaloguesError = ref('')
+const eventAnaloguesEventKey = ref('')
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
@@ -705,6 +711,7 @@ watch(selectedTopicId, async (id) => {
     eventGraph.value = null
     resetCountryCompare()
     resetEventContrast()
+    resetEventAnalogues()
     resetCrossSynthesisState()
     resetAcademicState()
     resetSentimentState()
@@ -784,6 +791,40 @@ function resetEventContrast() {
   eventContrastError.value = ''
   eventContrastEventKey.value = ''
 }
+
+// U1 类比卡带：与对照台同构——按 event_id 取数、await 期间切事件则丢弃结果（证据归属红线）。
+async function loadAnaloguesForSelectedEvent() {
+  const topicId = selectedTopicId.value
+  const eventId = selectedEventId.value
+  const requestedKey = selectedEventKey.value
+  if (!topicId || eventId === null || eventAnaloguesLoading.value) return
+  eventAnaloguesLoading.value = true
+  eventAnaloguesError.value = ''
+  try {
+    const payload = await fetchEventAnalogues(topicId, eventId)
+    // 迟到响应：已切到别的事件则丢弃，不把 A 事件的类比贴到 B 事件上。
+    if (selectedEventKey.value !== requestedKey) return
+    eventAnalogues.value = payload
+    eventAnaloguesEventKey.value = requestedKey
+  } catch (err) {
+    eventAnaloguesError.value = readableError(err)
+  } finally {
+    eventAnaloguesLoading.value = false
+  }
+}
+
+function resetEventAnalogues() {
+  eventAnalogues.value = null
+  eventAnaloguesError.value = ''
+  eventAnaloguesEventKey.value = ''
+}
+
+// 只在类比数据属于当前选中事件时才显示，切换事件后旧类比不串台。
+const visibleEventAnalogues = computed<EventAnaloguesPayload | null>(() =>
+  eventAnalogues.value && eventAnaloguesEventKey.value === selectedEventKey.value
+    ? eventAnalogues.value
+    : null,
+)
 
 // 只在对照数据属于当前选中事件时才显示，切换事件后旧对照不串台。
 const visibleEventContrast = computed<EventContrastPayload | null>(() =>
@@ -1685,6 +1726,10 @@ function countryCoverageNote(country: CountryCompareCountry) {
           :event-contrast-error="eventContrastError"
           :visible-event-contrast="visibleEventContrast"
           :load-event-contrast-for-selected-event="loadContrastForSelectedEvent"
+          :event-analogues-loading="eventAnaloguesLoading"
+          :event-analogues-error="eventAnaloguesError"
+          :visible-event-analogues="visibleEventAnalogues"
+          :load-event-analogues-for-selected-event="loadAnaloguesForSelectedEvent"
           :show-authority-sources="showAuthoritySources"
           :show-earliest-sources="showEarliestSources"
           :show-most-covered-sources="showMostCoveredSources"

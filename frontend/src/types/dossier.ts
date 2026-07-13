@@ -603,6 +603,51 @@ export type EventContrastPayload = {
   note: string
 }
 
+// U1 类比卡带（消费 /events/{id}/analogues）。只读、样本内结构信号，不建事件、不预言。
+export type EventAnalogueBasis = {
+  kind: string // shared_entity / shared_keyword / shared_narrative_signal / shared_source_tier / similar_sample_shape
+  items: string[]
+  weight: number
+}
+
+export type EventAnalogueItem = {
+  topic_id: number
+  topic_name: string
+  event_id: number
+  date: string | null
+  title_zh: string
+  similarity_score: number
+  score_label: string // 较强相似 / 有限相似（后端阈值判定）
+  basis: EventAnalogueBasis[]
+  differences: string[] // 差异提醒必显（类比不预言）——后端保证非空
+  evidence_article_ids: number[]
+  note: string
+}
+
+export type EventAnalogueScan = {
+  total_events: number
+  eligible_candidates: number
+  scanned_candidates: number
+  candidate_cap: number
+  truncated: boolean
+  note: string
+}
+
+export type EventAnaloguesPayload = {
+  target: {
+    topic_id: number
+    event_id: number
+    title_zh: string
+    entities: string[]
+    keywords: unknown[]
+  }
+  items: EventAnalogueItem[]
+  scan: EventAnalogueScan
+  degraded: boolean
+  degraded_reason: string
+  note: string
+}
+
 export type SearchResponse = LocalEventsPayload & {
   topic: TopicSummary
   collect: {
