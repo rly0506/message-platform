@@ -2,6 +2,24 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-14 Correctness Audit: Backend Test Database Isolation
+
+- Replaced shared process-global pytest SQLite paths with unique file-backed
+  session directories and function-scoped DiscoveryStore `tmp_path` databases.
+- Prevented local `backend/.env` from redirecting test writes by installing a
+  version-independent, process-local dotenv no-op before any `app.*` import.
+- Disposed the shared engine before session-directory cleanup and made cleanup
+  failures visible; added cross-platform order and Windows handle regressions.
+- Added real child-pytest coverage for concurrent path uniqueness, TMPDIR and
+  DB_PATH containment, first-write dotenv safety, normal cleanup, and failure
+  propagation.
+- Three review rounds found environment-containment, lifecycle-proof, dotenv
+  pre-write, and dependency-version gaps. A fresh final reviewer returned
+  `APPROVE` with no Critical or Important findings.
+- Implementation: `f83f2f3`. Final verification: focused `8 passed`, backend
+  `335 passed, 1 warning`, GitNexus 5 files / 32 symbols / 0 flows / `low`, and
+  unchanged real environment/database files.
+
 ## 2026-07-14 RM-055 Phase 3 Hypothesis-Layer Boundary
 
 - Added an accessible EventGraph-local hypothesis-layer switch that defaults

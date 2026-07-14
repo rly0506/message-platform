@@ -7,11 +7,11 @@ This is the compact context reset point for future agents. It records current pr
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- Current implementation HEAD: `5a53e41` (Phase 3 default-off hypothesis-layer placeholder plus review repairs).
+- Current implementation HEAD: `f83f2f3` (test-database isolation audit); latest product implementation remains Phase 3 at `5a53e41`.
 - Current product roadmap: `RM-055`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
 - Coverage API/instrument, event analogue consumer, cross-device curiosity queue, fact-first briefing loop, and the evidence/inference UI boundary are integrated on this branch.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
-- No autonomous RM-055 product phase remains before the 2026-07-27 source/fulltext evidence gate; the next authorized action is a correctness-focused code audit.
+- No autonomous RM-055 product phase remains before the 2026-07-27 source/fulltext evidence gate; correctness-focused audit work continues in independent batches, with test-database isolation completed in `f83f2f3`.
 - Do not merge to `master` or push without explicit human approval.
 
 ## RM-055 Progress
@@ -26,6 +26,18 @@ This is the compact context reset point for future agents. It records current pr
 | Phase 3: hypothesis-layer boundary | Done | A fresh EventGraph defaults the local layer off; enabling it reveals only a neutral dashed sample, an explicit hypothesis badge, and honest no-data copy. No generated relation, persistence, API, DTO, backend, or LLM path was added (`5a53e41`). |
 
 The project is at the **RM-055 audit and evidence-gate checkpoint**. Source-gap observation continues in parallel, no source batch is justified before 2026-07-27, and no replacement product feature should be invented merely to keep implementation moving.
+
+## Latest Correctness Audit
+
+- Backend pytest sessions now use unique file-backed SQLite directories; the
+  shared `C:\TEMP\dossier_test.db` path and swallowed startup deletion are gone.
+- Test processes ignore local `backend/.env` through a version-independent,
+  process-local dotenv no-op installed before any `app.*` import.
+- Session finish disposes the shared engine before cleanup, and cleanup failure
+  is a visible non-zero gate result. DiscoveryStore fixtures use `tmp_path`.
+- Review required three repair rounds and ended `APPROVE`. Final evidence:
+  focused `8 passed`, full backend `335 passed, 1 warning`, GitNexus 5 files / 32
+  symbols / 0 flows / `low`, and no real environment or database changes.
 
 ## Latest Delivered Gate
 
@@ -74,12 +86,13 @@ The project is at the **RM-055 audit and evidence-gate checkpoint**. Source-gap 
 
 ## Known Debts
 
-1. Test database cleanup is session-scoped and may swallow `OSError`; improve isolation or fail visibly in a separate batch.
-2. Define the source of truth between local event extraction and optional LLM deep analysis before synchronizing graph rows.
-3. Keep source freshness and disabled/limited-source semantics explicit; never silently fall back to unavailable sources.
-4. Keep hypotheses and inferred relations separate from observed evidence relations.
+1. Define the source of truth between local event extraction and optional LLM deep analysis before synchronizing graph rows.
+2. Keep source freshness and disabled/limited-source semantics explicit; never silently fall back to unavailable sources.
+3. Keep hypotheses and inferred relations separate from observed evidence relations.
 
-These debts are real but are not regressions introduced by the cross-device queue batch.
+The former shared test-database cleanup debt was resolved in `f83f2f3`; the
+remaining debts are product or architecture boundaries and should not be mixed
+into test-infrastructure batches.
 
 ## External Architecture Inputs
 
@@ -109,7 +122,7 @@ The latest accepted release-quality evidence is:
 ```text
 cd backend
 ..\venv\Scripts\python.exe -m pytest -q
-# 327 passed, 1 warning at the unchanged M4' backend gate; Phase 3 touched no backend path
+# 335 passed, 1 warning after the test-database isolation audit
 
 cd ..\frontend
 npm run build

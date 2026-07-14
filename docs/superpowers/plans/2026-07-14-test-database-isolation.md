@@ -433,7 +433,7 @@ corrected before commit. Reviewer verification independently reproduced focused
 `8 passed`, full backend `335 passed, 1 warning`, unchanged real database/config
 files, zero fixed/session residue, cached diff hygiene, and GitNexus LOW.
 
-- [ ] **Step 5: Commit implementation independently**
+- [x] **Step 5: Commit implementation independently**
 
 After final approval:
 
@@ -443,9 +443,16 @@ git commit -m "test: isolate backend sqlite sessions"
 
 Do not push or merge `master`.
 
-- [ ] **Step 6: Close audit records and Claude handoff**
+Committed as `f83f2f3 test: isolate backend sqlite sessions`.
+
+- [x] **Step 6: Close audit records and Claude handoff**
 
 Append exact RED/GREEN output, final test count, GitNexus scope, review result,
 commit ID, and residual risks to the operation report. Update BOARD and prepend
 TO_CLAUDE without deleting prior messages. Stage tracked documentation only,
 run the documentation gate, and commit closeout separately.
+
+Closeout gate: 6 tracked documentation files, 18 symbols, 0 affected flows,
+`low`; strict UTF-8, references, stale-state scan, diff hygiene, and real
+environment/database status all passed. BOARD and TO_CLAUDE were updated
+locally and remain outside git.
