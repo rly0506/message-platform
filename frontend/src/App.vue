@@ -55,6 +55,7 @@ const countryCompareLoading = ref(false)
 const countryCompare = ref<CountryCompare | null>(null)
 const countryCompareError = ref('')
 const countryCompareEventKey = ref('')
+let countryCompareRequestId = 0
 const eventContrastLoading = ref(false)
 const eventContrast = ref<EventContrastPayload | null>(null)
 const eventContrastError = ref('')
@@ -758,20 +759,31 @@ watch(selectedTopicId, async (id) => {
 async function loadCountryCompareForSelectedEvent() {
   const topicId = selectedTopicId.value
   const event = selectedEvent.value
-  if (!topicId || !event || countryCompareLoading.value) return
+  // 请求发起时的事件身份 + request token：await 期间切走则丢弃 success/error/loading（证据归属红线）。
+  const requestedKey = selectedEventKey.value
+  if (!topicId || !event || !requestedKey || countryCompareLoading.value) return
+  const requestId = ++countryCompareRequestId
+  const articleIds = [...event.article_ids]
   countryCompareLoading.value = true
   countryCompareError.value = ''
   try {
-    countryCompare.value = await fetchCountryCompare(topicId, event.article_ids)
-    countryCompareEventKey.value = selectedEventKey.value
+    const payload = await fetchCountryCompare(topicId, articleIds)
+    // 迟到成功：已切到别的事件或被更新请求取代则丢弃，不把 A 的多国对照贴到 B。
+    if (requestId !== countryCompareRequestId || selectedEventKey.value !== requestedKey) return
+    countryCompare.value = payload
+    countryCompareEventKey.value = requestedKey
   } catch (err) {
+    // 迟到失败同样隔离：A 的错误不得贴到 B 上。
+    if (requestId !== countryCompareRequestId || selectedEventKey.value !== requestedKey) return
     countryCompareError.value = readableError(err)
   } finally {
-    countryCompareLoading.value = false
+    if (requestId === countryCompareRequestId) countryCompareLoading.value = false
   }
 }
 
 function resetCountryCompare() {
+  countryCompareRequestId += 1
+  countryCompareLoading.value = false
   countryCompare.value = null
   countryCompareError.value = ''
   countryCompareEventKey.value = ''
@@ -871,6 +883,7 @@ function resetEventAnalogues() {
 watch(selectedEventKey, () => {
   resetEventContrast()
   resetEventAnalogues()
+  resetCountryCompare()
 })
 
 // RM-055 Phase 2 覆盖仪表：话题级"本次分析基于什么"。按 topicId 取数，

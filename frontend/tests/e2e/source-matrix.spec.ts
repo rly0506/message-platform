@@ -2219,6 +2219,74 @@ test('allows the newly selected event to load contrast while an older request la
   await expect(panel).toContainText('FRESH-B-SOURCE')
 })
 
+test('allows the newly selected event to load country compare while an older request later fails', async ({ page }) => {
+  // 国家对照竞态：A pending 时切 B 必须释放 loading；A 迟到失败不得贴到 B。
+  const twoEvents = {
+    ...localEvents,
+    events: [
+      { ...localEvents.events[0], title_zh: '事件A · 关键节点', article_ids: [1, 2] },
+      { ...localEvents.events[0], title_zh: '事件B · 后续节点', article_ids: [3, 4] },
+    ],
+  }
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({ json: twoEvents })
+  })
+
+  let firstStarted = false
+  let releaseFirst!: () => void
+  const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('**/api/topics/101/country-compare**', async (route) => {
+    const url = route.request().url()
+    if (url.includes('article_ids=1') || url.includes('article_ids=2')) {
+      firstStarted = true
+      await firstRelease
+      await route.fulfill({ status: 500, json: { detail: '旧事件国家对照失败' } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        topic_id: 101,
+        topic_name: '美伊战争',
+        article_scope_count: 2,
+        anchor_countries: [],
+        countries: [
+          {
+            code: 'GB',
+            name: '英国',
+            is_g20: true,
+            is_party: false,
+            party_mention_count: 0,
+            article_count: 1,
+            stance_distribution: { '中性观察': 1 },
+            outlets: ['FRESH-B-OUTLET'],
+            first_report: null,
+            sample_titles: ['B country headline'],
+          },
+        ],
+        first_reporters: [],
+        unmapped_count: 0,
+      },
+    })
+  })
+
+  await openWorkbench(page)
+  await page.locator('.timeline-node').filter({ hasText: '事件A' }).click()
+  const panel = page.locator('.country-compare-panel')
+  await panel.getByRole('button', { name: '生成对比' }).click()
+  await expect.poll(() => firstStarted).toBe(true)
+
+  await page.locator('.timeline-node').filter({ hasText: '事件B' }).click()
+  try {
+    await expect(panel.getByRole('button', { name: '生成对比' })).toBeEnabled()
+    await panel.getByRole('button', { name: '生成对比' }).click()
+    await expect(panel).toContainText('FRESH-B-OUTLET')
+  } finally {
+    releaseFirst()
+  }
+  await expect(panel).not.toContainText('旧事件国家对照失败')
+  await expect(panel).toContainText('FRESH-B-OUTLET')
+})
+
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {
   await openWorkbench(page)
 
