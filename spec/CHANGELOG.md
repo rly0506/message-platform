@@ -2,6 +2,17 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-14 Codex Takeover Work Summary
+
+- Added `docs/operations/codex-takeover-work-summary-2026-07-14.md` as the
+  consolidated navigation record for backend P1, RM-055 coverage, M3, M4,
+  Phase 3, documentation governance, and the first correctness-audit batch.
+- Linked the detailed task reports and recorded the final accepted backend,
+  frontend, browser, and independent-review evidence without changing roadmap
+  status or reopening completed phases.
+- Explicitly excluded personal model-provider, API-key, Grok, Claude Code, and
+  OpenCode configuration from the project record.
+
 ## 2026-07-14 Correctness Audit: Backend Test Database Isolation
 
 - Replaced shared process-global pytest SQLite paths with unique file-backed

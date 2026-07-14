@@ -102,6 +102,14 @@ npm run build
 npm run test:e2e
 ```
 
+## Delivery Reports
+
+The consolidated Codex takeover summary is recorded at
+`docs/operations/codex-takeover-work-summary-2026-07-14.md`. It links the
+detailed RM-055 M3, roadmap consolidation, M4, Phase 3, and first correctness
+audit reports. Personal model-provider and API-key setup is intentionally
+outside the project report.
+
 ## GitNexus
 
 ```powershell
