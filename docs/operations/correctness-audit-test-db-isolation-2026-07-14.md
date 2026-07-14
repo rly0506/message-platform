@@ -1,6 +1,6 @@
 # Correctness Audit: Test Database Isolation
 
-Status: **CONFIRMED FINDING - REMEDIATION NOT STARTED**
+Status: **CONFIRMED FINDING - DESIGN APPROVED**
 
 Date: 2026-07-14
 
@@ -59,6 +59,8 @@ separate dependency-maintenance concern.
 
 ## Decision Gate
 
-No remediation code has been written. The next step is to present bounded
-alternatives for per-session isolation and visible teardown failure, obtain the
-required design approval, then use TDD before changing either fixture.
+The user approved per-session file-backed SQLite isolation with explicit
+teardown (option 1). The authoritative design is
+`docs/superpowers/specs/2026-07-14-test-database-isolation-design.md`.
+No remediation code had been written when this status changed; implementation
+must begin with the documented RED tests.
