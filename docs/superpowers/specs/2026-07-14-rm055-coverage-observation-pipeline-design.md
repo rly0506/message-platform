@@ -2,25 +2,27 @@
 
 Date: 2026-07-14
 
-Status: Approved direction; written specification awaiting human review
+Status: Awaiting human spec approval after M1-M5 revision
 
 Roadmap: RM-055
 
 ## Goal
 
-Retain real, auditable, post-collection Coverage observations until the
-2026-07-27 RM-055 source/fulltext review can make an evidence-based GO, NO-GO,
-or continued-HOLD decision.
+Retain real, auditable, post-collection Coverage observations until a gate-ready
+RM-055 source/fulltext review, no earlier than 2026-07-27, can make an
+evidence-based GO, NO-GO, or continued-HOLD decision.
 
 The pipeline must prove which topic collection transaction committed before a
 Coverage snapshot was recorded. It must never infer that a source did not
 publish merely because collection did not retrieve it, and it must never turn
 `unknown` or `unclassified` metadata into a reason to expand sources.
 
-The user approved one daily invocation of the existing no-LLM auto-refresh
-path. That invocation may perform the normal writes to the real
-`backend/dossier.db`. This approval does not authorize LLM calls, source
-expansion, schema-heavy infrastructure, pushing, or merging `master`.
+The user approved the direction and authorized this specification revision and
+reviewer communication. That authorization does not approve the revised text,
+implementation, or the first real daily invocation. A later explicit
+authorization is required before any runner writes the real
+`backend/dossier.db`. No stage authorizes LLM calls, source expansion,
+schema-heavy infrastructure, pushing, or merging `master`.
 
 ## Why The Existing Endpoint Is Insufficient
 
@@ -36,11 +38,35 @@ or that a collector failure was not being mistaken for a coverage gap.
 
 ## Decision And Alternatives
 
-Use a post-commit observation hook plus a once-daily Windows runner.
+Use an auto-refresh-only post-commit observation hook plus a once-daily Windows
+runner. This deliberately chooses review option M1-B.
 
 The hook records Coverage immediately after a topic's auto-refresh transaction
-commits. The runner guarantees that the existing no-LLM refresh path gets one
-opportunity to run each day even when the backend is not already open.
+commits. The runner gives the existing no-LLM refresh path one opportunity to
+run each day even when the backend is not already open.
+
+The observation scope is exact:
+
+- only `_refresh_due_news` can produce a retained observation;
+- manual CLI collection, search jobs, API-triggered search, and frontier
+  discovery do not produce or count as Coverage observations;
+- an eligible topic must be active, have existing articles, be stale by
+  `AUTO_REFRESH_NEWS_INTERVAL_HOURS` (currently 6 hours), and not be protected
+  by an active job or topic lock;
+- each refresh cycle keeps the existing
+  `AUTO_REFRESH_MAX_TOPICS_PER_CYCLE` limit (currently 3);
+- the runner invokes `refresh_once` through the existing POST endpoint even
+  when the temporary process sets `AUTO_REFRESH_ENABLED=0`; that setting and
+  `AUTO_REFRESH_INITIAL_DELAY_SECONDS` control only the background scheduler,
+  not the explicit once-daily invocation;
+- a scheduled invocation with no due topic produces an empty manifest and no
+  successful observation day.
+
+This narrow scope avoids changing the heterogeneous commit boundaries in
+`backend/cli.py`, `search_service.py`, and `collect_topic()` itself. The cost is
+explicit: the pipeline may not reach 10 successful dates or three topics with
+three dates by 2026-07-27. That outcome is continued HOLD, not an implementation
+failure and never a reason to count manual or point-in-time snapshots.
 
 Rejected alternatives:
 
@@ -79,7 +105,12 @@ unknown metadata, or write the database.
 
 `_refresh_due_news` will preserve structured outcomes for attempted topics.
 After `collect_topic()`, local analysis, and `session.commit()` succeed, it will
-build and retain the observation before advancing to the next topic.
+retain the returned `collect_topic()` result, close the topic's write Session,
+and open a new short-lived read Session against the same engine. The new
+Session calls `build_coverage_snapshot()` for the committed topic ID, closes,
+and passes the serializable snapshot to the filesystem recorder. An
+uncommitted snapshot, a reused dirty write Session, or a Session shared across
+topics is invalid by contract.
 
 Observation-file failure is fail-soft for collection: it must not roll back or
 pretend that the already committed collection failed. The refresh result and
@@ -93,8 +124,32 @@ The existing constraints remain unchanged:
 - queued/running topic jobs and topic write guards still cause skips;
 - GNews plus curated feeds and local analysis remain the only news path;
 - LLM, academic, sentiment, OpenCLI, and cross-synthesis paths remain excluded.
+- frontier refresh never produces a Coverage observation.
 
-### 3. Status CLI
+### 3. API compatibility
+
+The existing auto-refresh response fields and meanings remain unchanged:
+`enabled`, `running`, `last_started_at`, `last_finished_at`, `last_error`,
+`news_refreshed`, `news_errors`, `frontier_refreshed`, and `skipped_active`.
+
+Observation integration may add only these optional top-level fields:
+
+- `observation_run_id`;
+- `observation_status` with `complete`, `incomplete`, `empty`, or `not_run`;
+- `observation_error`, using an empty string when no recorder error exists.
+
+A successful database commit continues to increment `news_refreshed` even if
+filesystem capture later fails. Such a failure sets observation status to
+`incomplete`; it does not enter `news_errors`, whose existing collection/
+database meaning is preserved. Soft collector errors returned by
+`collect_topic()` remain in the local manifest and do not silently disappear.
+
+Per-topic structured outcomes remain in the ignored manifest and read-only CLI;
+they do not enlarge the HTTP payload. Frontend and API regressions must prove
+that all legacy keys retain their previous type and semantics and that clients
+which ignore the additive fields behave unchanged.
+
+### 4. Status CLI
 
 Expose two Typer commands through the existing `backend/cli.py` command
 surface:
@@ -109,12 +164,12 @@ Both commands require an explicit observation window. They do not modify raw
 files and do not automatically decide whether to add a source or persist
 fulltext.
 
-### 4. Daily Windows runner
+### 5. Daily Windows runner
 
 Add a PowerShell runner that follows existing scheduled-task conventions:
 
-1. Acquire an exclusive local run lock so overlapping manual/scheduled runs do
-   not create competing backend processes.
+1. Acquire `backend/coverage_observations/.runner.lock` exclusively so
+   overlapping manual/scheduled runs do not create competing backend processes.
 2. Reuse the backend only when its health and OpenAPI responses identify the
    expected app and expose both the auto-refresh and Coverage endpoints.
 3. If the backend is offline, start a temporary hidden Uvicorn process with its
@@ -138,13 +193,38 @@ Raw evidence lives under ignored local runtime storage:
 
 ```text
 backend/coverage_observations/
+  .runner.lock
   YYYY-MM-DD/
     <run-id>/
       topic-<topic-id>.json
       manifest.json
 ```
 
+Adding `backend/coverage_observations/` to the root `.gitignore` is a blocking
+implementation DoD and must land before any recorder or runner smoke test. The
+lock, temporary files, topic observations, and manifests all live beneath that
+single ignored root. Acceptance requires:
+
+- `git check-ignore -v backend/coverage_observations/.runner.lock` identifies
+  the new rule;
+- `git ls-files backend/coverage_observations` returns no tracked path;
+- the following command shows no runtime evidence or secret staged or tracked:
+
+  ```powershell
+  git status --short -- backend/coverage_observations backend/logs backend/dossier.db backend/.env
+  ```
+
 The observation date uses `Asia/Shanghai`; timestamps also retain UTC ISO-8601.
+For example:
+
+```json
+{
+  "observed_at_utc": "2026-07-14T01:00:00Z",
+  "observation_date": "2026-07-14",
+  "timezone": "Asia/Shanghai"
+}
+```
+
 Run IDs contain a UTC timestamp and a collision-resistant suffix. Run
 directories are never reused or overwritten.
 
@@ -174,6 +254,27 @@ A run directory without a valid final manifest is incomplete and never counts.
 ## Counting And Gate Semantics
 
 The status command reports evidence; the human gate review makes the decision.
+
+### Observation window and review date
+
+There is no backfill. The first window begins on the first successful Shanghai
+observation date produced by the implemented pipeline and spans that date plus
+the next 13 calendar dates. The review date is:
+
+```text
+max(2026-07-27, first_successful_observation_date + 13 days)
+```
+
+Therefore 2026-07-27 remains the earliest possible review, not a guaranteed
+decision date. If the window contains fewer than 10 successful observation
+dates, or fewer than three topics with three dates each, the only valid result
+is continued HOLD. The next review is moved to the earliest later date on which
+a trailing 14-date window can satisfy both thresholds. Empty/no-due runs,
+manual collection, old point-in-time Coverage responses, and collector errors
+cannot be relabelled or backfilled to make the arithmetic pass.
+
+If no successful observation date exists, no window or review date is inferred;
+the gate remains HOLD until a first valid date exists.
 
 ### Valid topic observation
 
@@ -224,7 +325,7 @@ threshold or candidate feed.
 
 ## Source And Fulltext Decisions
 
-The 2026-07-27 review must produce two separate human decisions:
+The first gate-ready review must produce two separate human decisions:
 
 1. Source expansion: `GO`, evidence-based `NO-GO`, or continued `HOLD`.
 2. Fulltext persistence scope: `GO`, evidence-based `NO-GO`, or `DEFER`.
@@ -237,7 +338,7 @@ wording remains unmet.
 Coverage currently reports fulltext as `unknown` because bodies are not
 persisted. This observation pipeline cannot turn that unknown into evidence for
 a fulltext GO. Without a separately approved, real fulltext probe, the honest
-2026-07-27 outcome for that dimension is `DEFER` or `NO-GO`, with the reason
+gate-review outcome for that dimension is `DEFER` or `NO-GO`, with the reason
 recorded.
 
 If source expansion is approved, the existing gate still limits the first
@@ -255,17 +356,24 @@ post-rollout comparison. The observation pipeline does not bypass those steps.
   repairs or rewrites raw evidence automatically.
 - Temporary backend startup never enables the background scheduler and never
   stops an unrelated process.
-- Tests continue to use the isolated temp database; only the explicitly
-  authorized real daily run may update `backend/dossier.db`.
+- Tests continue to use the isolated temp database. Passing the implementation
+  gates does not itself authorize a real run; the first invocation that may
+  update `backend/dossier.db` requires a separate explicit human authorization.
 - Raw observations, logs, `.env`, databases, and credentials remain ignored and
   uncommitted.
 - No source is added, enabled, or probed merely because the observer exists.
+- Before implementation begins, BOARD and `spec/current-state.md` must register
+  the observation pipeline as an `ACTIVE-GATE`, record its exact
+  auto-refresh-only scope, and retain RM-055 as the sole `CURRENT` product
+  roadmap.
 
 ## Testing And Acceptance
 
 Implementation follows TDD and includes the smallest tests that prove:
 
 - post-commit capture receives the exact topic and collection result;
+- capture opens a fresh read Session only after the topic write Session has
+  committed and closed;
 - a database failure produces no valid observation;
 - an observation write failure does not undo committed collection and makes the
   run incomplete;
@@ -276,14 +384,23 @@ Implementation follows TDD and includes the smallest tests that prove:
 - `unknown` and `unclassified` remain metadata debt;
 - status calculates the 10-day, three-topic/three-date, and recurrence gates
   without making a GO/NO-GO decision;
+- a first-success date after 2026-07-14 moves the earliest review date, and an
+  insufficient 14-date window remains HOLD;
+- manual CLI/search/API collection and frontier refresh do not create or count
+  observations under the selected M1-B scope;
+- legacy auto-refresh response keys preserve their types and meanings while
+  the three optional observation fields remain additive;
 - auto-refresh still excludes LLM/OpenCLI/academic/sentiment/cross paths;
 - the PowerShell runner reuses an expected backend, starts/stops only its own
   hidden temporary backend, and fails safely on an unexpected port owner.
+- the observation root and `.runner.lock` are ignored, and no observation,
+  `.env`, log, or database path is tracked.
 
 Verification for implementation uses targeted backend tests first, then the
 full backend suite, PowerShell syntax/smoke checks, `git diff --check`, GitNexus
 status and `detect-changes`, and secret/database ignore checks. The first real
-capture is run only after the implementation passes those gates.
+capture is run only after the implementation passes those gates and the human
+separately authorizes the real daily invocation.
 
 ## Operational Completion Evidence
 
