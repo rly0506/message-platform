@@ -2090,8 +2090,8 @@ test('does not attach a slow contrast response to the event selected after the s
     await route.fulfill({
       json: {
         nodes: [
-          { id: 51, date: '2026-06-20', title_zh: '事件A · 关键节点', summary_zh: '摘要', source_count: 2, article_count: 2 },
-          { id: 52, date: '2026-06-21', title_zh: '事件B · 后续节点', summary_zh: '摘要', source_count: 2, article_count: 2 },
+          { id: 51, date: '2026-06-20', title_zh: '事件A · 关键节点', summary_zh: '摘要', source_count: 2, article_count: 2, article_ids: [1, 2] },
+          { id: 52, date: '2026-06-21', title_zh: '事件B · 后续节点', summary_zh: '摘要', source_count: 2, article_count: 2, article_ids: [3, 4] },
         ],
         edges: [],
         degraded: true,
@@ -2140,6 +2140,83 @@ test('does not attach a slow contrast response to the event selected after the s
   // 迟到响应处理完后 loading 落地；面板恒在（上面已取 panel），断言它绝不含事件 A 的独特来源名。
   await expect(panel).not.toContainText('STALE-A-SOURCE')
   await expect(panel.locator('.contrast-col')).toHaveCount(0)
+})
+
+test('allows the newly selected event to load contrast while an older request later fails', async ({ page }) => {
+  // 对照台竞态补强：A 的失败迟到时不得贴到 B；且 A pending 时切到 B 后 B 仍可启动加载。
+  const twoEvents = {
+    ...localEvents,
+    events: [
+      { ...localEvents.events[0], title_zh: '事件A · 关键节点', article_ids: [1, 2] },
+      { ...localEvents.events[0], title_zh: '事件B · 后续节点', article_ids: [3, 4] },
+    ],
+  }
+  await page.route('**/api/topics/101/local-events', async (route) => {
+    await route.fulfill({ json: twoEvents })
+  })
+  await page.route('**/api/topics/101/event-graph', async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          { id: 51, date: '2026-06-20', title_zh: '事件A · 关键节点', summary_zh: '摘要', source_count: 2, article_count: 2, article_ids: [1, 2] },
+          { id: 52, date: '2026-06-21', title_zh: '事件B · 后续节点', summary_zh: '摘要', source_count: 2, article_count: 2, article_ids: [3, 4] },
+        ],
+        edges: [],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+
+  let firstStarted = false
+  let releaseFirst!: () => void
+  const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('**/api/topics/101/events/51/contrast', async (route) => {
+    firstStarted = true
+    await firstRelease
+    await route.fulfill({ status: 500, json: { detail: '旧事件对照失败' } })
+  })
+  await page.route('**/api/topics/101/events/52/contrast', async (route) => {
+    await route.fulfill({
+      json: {
+        event: { id: 52, date: '2026-06-21', title_zh: '事件B · 后续节点', summary_zh: '摘要', source_count: 1, article_count: 1 },
+        sources: [
+          {
+            source: 'FRESH-B-SOURCE', tier: 'wire', tier_label: '通讯社',
+            stance: '中性观察', stance_summary: '',
+            substance_score: 70, substance_note: '',
+            emotion_score: 10, emotion_note: '',
+            emphasized_entities: [], emphasized_keywords: [],
+            representative_title: 'B headline', url: 'https://example.com/b1',
+            article_ids: [3],
+            articles: [{ id: 3, title: 'B headline', url: 'https://example.com/b1', published_at: '2026-06-21T01:00:00' }],
+          },
+        ],
+        coverage_gaps: [],
+        degraded: false,
+        note: '',
+      },
+    })
+  })
+
+  await openWorkbench(page)
+  await page.locator('.timeline-node').filter({ hasText: '事件A' }).click()
+  const panel = page.locator('.event-contrast-panel')
+  await panel.getByRole('button', { name: '生成对照' }).click()
+  await expect.poll(() => firstStarted).toBe(true)
+
+  // A 仍 pending 时切到 B：loading 必须被 release，B 的「生成对照」可点。
+  await page.locator('.timeline-node').filter({ hasText: '事件B' }).click()
+  try {
+    await expect(panel.getByRole('button', { name: '生成对照' })).toBeEnabled()
+    await panel.getByRole('button', { name: '生成对照' }).click()
+    await expect(panel).toContainText('FRESH-B-SOURCE')
+  } finally {
+    releaseFirst()
+  }
+  // A 迟到失败不得串到 B。
+  await expect(panel).not.toContainText('旧事件对照失败')
+  await expect(panel).toContainText('FRESH-B-SOURCE')
 })
 
 test('starts academic, sentiment and reuse-voices cross-synthesis with LLM analysis', async ({ page }) => {

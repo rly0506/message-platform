@@ -59,6 +59,7 @@ const eventContrastLoading = ref(false)
 const eventContrast = ref<EventContrastPayload | null>(null)
 const eventContrastError = ref('')
 const eventContrastEventKey = ref('')
+let eventContrastRequestId = 0
 const eventAnaloguesLoading = ref(false)
 const eventAnalogues = ref<EventAnaloguesPayload | null>(null)
 const eventAnaloguesError = ref('')
@@ -807,25 +808,30 @@ function sameArticleIds(left: number[], right: number[]): boolean {
 async function loadContrastForSelectedEvent() {
   const topicId = selectedTopicId.value
   const eventId = selectedEventId.value
-  // 请求发起时的事件身份，await 期间用户若切走，结果不得贴到新事件上（证据归属红线）。
+  // 请求发起时的事件身份 + request token：await 期间切走则丢弃 success/error/loading（证据归属红线）。
   const requestedKey = selectedEventKey.value
   if (!topicId || eventId === null || eventContrastLoading.value) return
+  const requestId = ++eventContrastRequestId
   eventContrastLoading.value = true
   eventContrastError.value = ''
   try {
     const payload = await fetchEventContrast(topicId, eventId)
-    // 迟到的响应：已切到别的事件则丢弃，不污染当前事件的证据。
-    if (selectedEventKey.value !== requestedKey) return
+    // 迟到成功：已切到别的事件或被更新请求取代则丢弃，不污染当前事件的证据。
+    if (requestId !== eventContrastRequestId || selectedEventKey.value !== requestedKey) return
     eventContrast.value = payload
     eventContrastEventKey.value = requestedKey
   } catch (err) {
+    // 迟到失败同样隔离：A 的错误不得贴到 B 上。
+    if (requestId !== eventContrastRequestId || selectedEventKey.value !== requestedKey) return
     eventContrastError.value = readableError(err)
   } finally {
-    eventContrastLoading.value = false
+    if (requestId === eventContrastRequestId) eventContrastLoading.value = false
   }
 }
 
 function resetEventContrast() {
+  eventContrastRequestId += 1
+  eventContrastLoading.value = false
   eventContrast.value = null
   eventContrastError.value = ''
   eventContrastEventKey.value = ''
@@ -862,7 +868,10 @@ function resetEventAnalogues() {
   eventAnaloguesEventKey.value = ''
 }
 
-watch(selectedEventKey, resetEventAnalogues)
+watch(selectedEventKey, () => {
+  resetEventContrast()
+  resetEventAnalogues()
+})
 
 // RM-055 Phase 2 覆盖仪表：话题级"本次分析基于什么"。按 topicId 取数，
 // await 期间用户切走则丢弃迟到响应（不把 A 话题的覆盖贴到 B 话题）。
