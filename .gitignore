@@ -1,6 +1,7 @@
 # Python
 venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 backend/.env
 backend/dossier.db
@@ -14,6 +15,7 @@ node_modules/
 frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
+.playwright-mcp/
 
 # GitNexus local graph cache
 .gitnexus/lbug
@@ -30,3 +32,5 @@ frontend/playwright-report/
 # AI 协作临时通道 (Claude×GPT inbox，不入库；结论沉淀到 spec/)
 .agent-bridge/
 .agents/
+.claude/skills/fable-thinking/
+/dev/
