@@ -7,7 +7,7 @@
 """
 import json
 import os
-import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -17,17 +17,15 @@ from app.discovery import report
 
 
 @pytest.fixture()
-def store():
-    path = os.path.join(tempfile.gettempdir(), "discovery_test.db")
-    if os.path.exists(path):
-        os.remove(path)
-    s = DiscoveryStore(db_path=path)
-    yield s
-    s.close()
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+def store(tmp_path):
+    path = tmp_path / "discovery_test.db"
+    instance = DiscoveryStore(db_path=str(path))
+    yield instance
+    instance.close()
+
+
+def test_store_fixture_uses_per_test_database(store, tmp_path):
+    assert Path(store.db_path).parent == tmp_path
 
 
 def _hn(ext_id, title, points, comments=0):

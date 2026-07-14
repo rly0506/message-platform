@@ -48,7 +48,10 @@ At conftest import time, before any `app.*` import:
 
 1. Create one `tempfile.TemporaryDirectory` with a descriptive prefix.
 2. Set `DB_PATH` to `<unique-directory>/dossier_test.db`.
-3. Keep the `TemporaryDirectory` owner alive for the pytest process.
+3. Replace `dotenv.load_dotenv` with a process-local no-op before any `app.*`
+   import, so every supported python-dotenv version ignores `backend/.env` and
+   cannot override the test path before the first engine write.
+4. Keep the `TemporaryDirectory` owner alive for the pytest process.
 
 This preserves the existing import-order invariant while removing the shared
 global filename.
@@ -61,8 +64,10 @@ At `pytest_sessionfinish`:
    are closed.
 3. Call `TemporaryDirectory.cleanup()` without an exception-swallowing wrapper.
 
-If a test leaks another file handle, cleanup raises and pytest exits non-zero.
-That behavior is intentional: a green gate must prove isolation and teardown.
+On Windows, if a test leaks another file handle, cleanup raises and pytest exits
+non-zero. POSIX permits unlinking an open file, so a deterministic cross-platform
+call-order regression separately proves that engine disposal precedes cleanup.
+Both behaviors are intentional: a green gate must prove isolation and teardown.
 
 ### DiscoveryStore fixture
 
@@ -77,19 +82,26 @@ Add a small infrastructure regression module that runs child pytest sessions.
 Each child loads the repository conftest as a plugin and writes its effective
 `DB_PATH` to a marker outside the database directory.
 
-The child environment sets `TEMP` and `TMP` to the parent test's `tmp_path`.
-This keeps the RED run isolated: the old implementation may collide inside the
-test-owned directory but cannot remove or overwrite the parent's active test
-database.
+The child environment sets `TMPDIR`, `TEMP`, and `TMP` to the parent test's
+`tmp_path`, replaces inherited `DB_PATH` with a safe fallback in that same root,
+and asserts the effective path remains contained there. This keeps the RED run
+isolated: the old implementation may collide inside the test-owned directory
+but cannot remove or overwrite the parent's active test database.
 
 Required RED/GREEN cases:
 
 1. Two child sessions report different database paths.
 2. A normal child session creates and uses `app.db.engine`, exits 0, and leaves
    neither its database nor its session directory.
-3. A child deliberately keeps the database file open through session finish;
-   teardown must produce a non-zero result rather than silently succeeding.
-4. The DiscoveryStore fixture's database parent equals that test's `tmp_path`.
+3. A simulated local `.env DB_PATH` override cannot redirect the first engine
+   write outside the test root. The probe uses a real test-owned dotenv file and
+   removes version-specific disable flags before exercising the patched loader.
+4. A deterministic cross-platform probe proves engine disposal occurs before
+   directory cleanup.
+5. On Windows, a child deliberately keeps the database file open through
+   session finish; teardown must produce a non-zero result rather than silently
+   succeeding. POSIX records this test as skipped.
+6. The DiscoveryStore fixture's database parent equals that test's `tmp_path`.
 
 The child probe is local and network-free. It creates only a trivial SQLite
 table; it never imports or writes the real project databases.
@@ -100,8 +112,10 @@ table; it never imports or writes the real project databases.
   implementation changes.
 - Run the infrastructure regression module and Discovery tests to GREEN.
 - Run the complete backend suite and account for the exact new test count.
-- Confirm no shared `dossier_test.db` or `discovery_test.db` remains under the
-  process temp root after the full suite.
+- Confirm no process-level fixed `dossier_test.db`/`discovery_test.db` and no
+  session-owned `dossier-pytest-*` directory remains after the full suite.
+  Function-scoped Discovery databases may remain only inside pytest-owned,
+  per-test directories governed by pytest's rotating debug-retention policy.
 - Run diff hygiene, secret/database status, staged GitNexus detect-changes, and
   independent review before committing implementation.
 
