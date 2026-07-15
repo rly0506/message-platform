@@ -5,9 +5,12 @@ __pycache__/
 *.pyc
 backend/.env
 backend/dossier.db
+backend/dossier.db-*
 backend/dossier.db.bak-*
 backend/discovery.db
+backend/discovery.db-*
 backend/discovery_reports/
+backend/coverage_observations/
 backend/logs/
 
 # Node

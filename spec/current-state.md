@@ -1,18 +1,17 @@
 # Current State
 
-Last updated: 2026-07-14.
+Last updated: 2026-07-15.
 
 This is the compact context reset point for future agents. It records current product truth, not the full work log. The previous 410-line snapshot is preserved verbatim at `spec/archive/current-state/current-state-through-2026-07-12.md`.
 
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- Current implementation HEAD: `f83f2f3` (test-database isolation audit); latest product implementation remains Phase 3 at `5a53e41`.
-- Current product roadmap: `RM-055`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
+- The implemented product baseline includes the completed Phase 3 at `5a53e41` and the subsequent correctness-audit batches; the Coverage observation pipeline is not implemented yet.
+- Current product roadmap: `RM-055` remains the sole `CURRENT`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
 - Coverage API/instrument, event analogue consumer, cross-device curiosity queue, fact-first briefing loop, and the evidence/inference UI boundary are integrated on this branch.
+- The approved slim Coverage observation specification `1190aca` and implementation plan `a077937` define the pending `ACTIVE-GATE`.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
-- No autonomous RM-055 product phase remains before the 2026-07-27 source/fulltext evidence gate; correctness-focused audit work continues in independent batches, with test-database isolation completed in `f83f2f3`.
-- Do not merge to `master` or push without explicit human approval.
 
 ## RM-055 Progress
 
@@ -25,7 +24,7 @@ This is the compact context reset point for future agents. It records current pr
 | M4': briefing loop | Done | Original persisted title/snippet facts, honest coverage labels, evidence/workbench links, scheduled-email fallback, and read-only one-domain questions landed in `2fd9155`, `8cb9f9b`, and `ff85f65`. |
 | Phase 3: hypothesis-layer boundary | Done | A fresh EventGraph defaults the local layer off; enabling it reveals only a neutral dashed sample, an explicit hypothesis badge, and honest no-data copy. No generated relation, persistence, API, DTO, backend, or LLM path was added (`5a53e41`). |
 
-The project is at the **RM-055 audit and evidence-gate checkpoint**. Source-gap observation continues in parallel, no source batch is justified before 2026-07-27, and no replacement product feature should be invented merely to keep implementation moving.
+The project is at the **RM-055 Coverage observation `ACTIVE-GATE`**. The approved slim pipeline now advances the evidence checkpoint; source expansion remains HOLD, and no source batch is justified before the gate evidence is reviewed.
 
 ## Latest Correctness Audit
 

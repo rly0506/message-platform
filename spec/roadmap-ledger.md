@@ -13,7 +13,7 @@
 
 ## 当前定位
 
-截至 2026-07-14，当前唯一产品主线是 **RM-055 可审计信息供应链 · C 先行**，**接替 RM-050**（非并列）。RM-050 的双模式入口 M1 已完成，其未完成的 M2/M3/M4 由 RM-055 完整承接。
+截至 2026-07-15，当前唯一产品主线是 **RM-055 可审计信息供应链 · C 先行**，**接替 RM-050**（非并列）。RM-050 的双模式入口 M1 已完成，其未完成的 M2/M3/M4 由 RM-055 完整承接。
 
 为什么切换主线：用户几轮"扩源"迭代后仍反馈"信息源不够、不广、不权威"。诊断表明症结不是源不够多，而是增强能力（SearXNG / gnews 解码 / Scrapling）默认全关、无真实数据验收、界面不显示本轮用了什么——"代码存在"被当成了"产品拥有能力"。因此新主线先做 C（可审计覆盖仪表 + 证据反证可见），再用真实缺口数据决定补源（A）和落正文（B）。详见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
@@ -26,10 +26,10 @@
 5. RM-055 `M3'` 的 `dig_later` 跨设备落库由 `98efa59` 完成，`4723b0b` 进一步加入 revision/tombstone、原子并发写、逐操作 outbox、跨标签页与崩溃恢复加固；完整测试继续证明不改变任何 CognitionProfile/CognitionMark。源扩展首批因两周纵向 Coverage 数据尚未形成，进入 `docs/operations/rm055-source-expansion-gate-2026-07-13.md` 的证据闸；不得为完成里程碑而伪造扩源理由。
 6. RM-055 `M4'` 已完成：事实优先早报、覆盖标签、原始证据/工作台深链与只读“今日一个领域”由 `2fd9155` 落地，`8cb9f9b` / `ff85f65` 关闭事实来源、未知来源、未来时间与坏链接回退问题；独立复审最终 `APPROVE`。
 7. RM-055 Phase 3 已完成：`5a53e41` 在 EventGraph 中加入默认关闭、仅组件本地的假设层占位；开启后只有灰色虚线样例、明确“假设”标识和无数据说明，不新增生成关系、持久化、API、DTO、后端或 LLM 路径。独立审阅最终 `APPROVE`。
-8. RM-055 已无 2026-07-27 前可自动推进的产品阶段。源扩展/正文范围继续处于证据闸；等待期间按人类授权转入 correctness-focused code audit，审计修复必须作为独立、可验证的小批次推进。
+8. RM-055 仍是唯一 `CURRENT`；瘦身 Coverage observation 管线（规格 `1190aca`、计划 `a077937`）现为待实施的 `ACTIVE-GATE`，源扩展仍为 `HOLD`。
 9. Correctness audit 首批已由 `f83f2f3` 收口：后端 pytest 会话与 DiscoveryStore fixture 不再共享固定 SQLite 路径，本地 `.env` 不能在首次写入前劫持测试 DB，engine dispose/cleanup 顺序与失败可见性有跨平台/Windows 回归保护；最终 `335 passed, 1 warning`，独立复审 `APPROVE`。
 
-因此，项目目前处在 **RM-055 审计与证据闸检查点**：可审计覆盖、跨设备好奇心队列、事实早报与证据/推断 UI 边界均已落地；源扩展仍在数据闸中并行观察，不得为了继续开发而虚构新的产品阶段。
+因此，项目目前处在 **RM-055 Coverage observation `ACTIVE-GATE`**：可审计覆盖、跨设备好奇心队列、事实早报与证据/推断 UI 边界均已落地；观察管线进入获批实施，源扩展仍为 `HOLD`，没有创建第二条 `CURRENT`。
 
 ## 路线图编号
 
@@ -47,7 +47,7 @@
 | RM-030 | `spec/archive/roadmaps/roadmap-event-graph-2026-07-09.md` | COMPLETED | 事件图 V1 的 F1、B1-B3、F2 已提交；事件图仍有架构债务，但 V1 已收官。 |
 | RM-040 | `spec/archive/roadmaps/roadmap-understanding-layer-2026-07-09.md` | SUPERSEDED | U2 多源对照完成、U1 后端完成；未完成的前端消费和 U3 假设层已并入 RM-050 或继续延期。 |
 | RM-050 | `spec/archive/roadmaps/roadmap-dual-mode-2026-07-09.md` | SUPERSEDED | 双模式入口 M1 已完成（`3327008`）；未完成的 M2/M3/M4 由 RM-055 完整承接。指向接替者 RM-055。 |
-| RM-055 | `spec/roadmap-supply-chain-2026-07-12.md` | CURRENT | 当前主线。M1'-M4' 与 Phase 3 产品闭环已完成；2026-07-27 来源/正文证据闸仍在执行，期间转入 correctness-focused code audit。 |
+| RM-055 | `spec/roadmap-supply-chain-2026-07-12.md` | CURRENT | 当前唯一主线。M1'-M4' 与 Phase 3 产品闭环已完成；瘦身 Coverage observation 管线正处于 `ACTIVE-GATE`，源扩展仍为 `HOLD`。 |
 | RM-060 | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` | CANDIDATE | AI 可控性与博客/播客/视频/授权私域资料方向，只记录问题和边界，尚未立项。 |
 
 ## 非路线图但必须保留的历史轨道

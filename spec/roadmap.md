@@ -8,11 +8,11 @@ This roadmap records the current product direction after the July 2026 readabili
 
 可审计信息供应链 · C 先行。完整方案见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
-当前进度（2026-07-14）：Phase 0/1/2、Phase A、`dig_later` 跨设备队列、M4' 事实优先早报与 Phase 3 假设层边界均已闭环。Phase 3 由 `5a53e41` 落地：默认关闭，只显示无数据占位与明确“假设”标识，不生成、不保存因果关系；独立复审最终 `APPROVE`。源扩展因尚无两周纵向缺口数据继续处于证据闸。2026-07-27 前没有新的自动产品开发项，按人类授权转入 correctness-focused code audit；首批测试数据库隔离修复已由 `f83f2f3` 完成。
+当前进度（2026-07-15）：Phase 0/1/2、Phase A、`dig_later` 跨设备队列、M4' 事实优先早报与 Phase 3 假设层边界均已闭环。Phase 3 由 `5a53e41` 落地：默认关闭，只显示无数据占位与明确“假设”标识，不生成、不保存因果关系；独立复审最终 `APPROVE`。瘦身 Coverage observation 管线现为待实施的 `ACTIVE-GATE`（规格 `1190aca`、计划 `a077937`）；源扩展因尚无纵向缺口证据继续 `HOLD`。
 
 主线：**先让用户看见 AI 读了什么、漏了什么、有没有反证，再用真实缺口数据决定补哪些源、落哪些正文。** 手机标记好奇心、电脑消化好奇心；省力早报喂事实、硬核台增理解，两模式与认知画像不互相污染。
 
-当前执行：Claude 离线期间由 Codex 按人类授权接管跨层实现；交接仍写入 `.agent-bridge/BOARD.md` 与 `TO_CLAUDE.md`。不 push、不合并 `master`，人类保留最终发布权。
+当前执行：Claude 离线期间由 Codex 按人类授权接管跨层实现；交接仍写入 `.agent-bridge/BOARD.md` 与 `TO_CLAUDE.md`。不合并或修改 `master`，人类保留最终发布权。
 
 战略判据(2026-07-09 人类读书洞察,不变):区分**获取资讯 vs 增进理解**。新功能优先级先问"这是堆资讯还是增进理解",后者优先。新增红线:早报喂事实不喂结论;两模式不互相污染。
 
@@ -36,8 +36,9 @@ Implementation default:
 
 - RM-055 Phase 3：已完成（`5a53e41`）。事件图“假设层”默认关闭，以灰/虚线/“假设”角标定死证据与推断的视觉边界；V1 不接生成数据、持久化或后端契约。
 - RM-055 M4'：已完成。事实优先早报、覆盖微标签、可核查深链与“今日一个领域”见 `2fd9155` / `8cb9f9b` / `ff85f65`。
-- Source expansion observation gate：截至 2026-07-27 收集两周 Coverage 缺口数据；闸门见 `docs/operations/rm055-source-expansion-gate-2026-07-13.md`。
-- Autonomous next action：在等待证据闸期间继续 correctness-focused code audit；首批测试数据库隔离已完成（`f83f2f3`），后续发现仍进入独立小批次，不用未经批准的新功能填空。
+- Coverage observation `ACTIVE-GATE`：按 `1190aca` / `a077937` 实施 post-commit 观察管线并启动首个真实观察日；它不新增来源、不调用 LLM、不改变 HTTP/前端契约。
+- Source expansion observation gate：纵向数据满足门槛后再复核，最早不早于 2026-07-27；闸门见 `docs/operations/rm055-source-expansion-gate-2026-07-13.md`，当前仍为 `HOLD`。
+- Autonomous next action：完成 Coverage observation `ACTIVE-GATE`；correctness findings 仍须作为另行授权的独立小批次，不得混入本实施。
 - 下列条目是既有观察项或候选方向，不因 RM-055 产品阶段完成而自动开工。
 - Context cleanup: implemented in `spec/current-state.md`; keep it updated when a major iteration lands.
 - Cognition-profile calibration V1: implemented. Next step is to observe real recommendations and decide whether to add a small editable calibration UI.
