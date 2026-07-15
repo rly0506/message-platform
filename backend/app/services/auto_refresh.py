@@ -11,8 +11,10 @@
 """
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from sqlmodel import Session, select
@@ -24,6 +26,7 @@ from app.services.topic_locks import claim_topic
 _lock = threading.Lock()          # 只防调度器自身重入
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
+LOGGER = logging.getLogger(__name__)
 _state: dict[str, Any] = {
     "enabled": False,
     "running": False,
@@ -76,7 +79,7 @@ def _loop() -> None:
             return
 
 
-def refresh_once(now: datetime | None = None) -> dict[str, Any]:
+def refresh_once(now: datetime | None = None, *, observation_root: Path | None = None) -> dict[str, Any]:
     """跑一轮自动刷新。测试可直接调用, 不依赖真实 sleep。
 
     返回本轮统计。任何单项异常都被隔离, 不抛出。
@@ -92,7 +95,7 @@ def refresh_once(now: datetime | None = None) -> dict[str, Any]:
         skipped = 0
         news_errors: list[str] = []
         try:
-            news, skipped, news_errors = _refresh_due_news(now)
+            news, skipped, news_errors = _refresh_due_news(now, observation_root=observation_root)
         except Exception as exc:  # pragma: no cover - defensive
             _state["last_error"] = f"news: {type(exc).__name__}: {exc}"
         frontier = False
@@ -132,19 +135,33 @@ def _topic_latest_published(session: Session, topic_id: int) -> datetime | None:
     return max(dates) if dates else None
 
 
-def _refresh_due_news(now: datetime) -> tuple[int, int, list[str]]:
+def _refresh_due_news(
+    now: datetime, *, observation_root: Path | None = None
+) -> tuple[int, int, list[str]]:
     """重采过期活跃话题的新闻。返回 (刷新数, 因活跃任务跳过数, 单话题失败原因列表)。
 
     只刷: status=active + 已有文章 + latest_published_at 超过新闻间隔。
     空话题不碰(交用户首次手动/搜索创建, 不无限扫网)。每轮限 MAX。
+
+    RM-055: Post-commit coverage observation. After session.commit() for each topic,
+    capture coverage snapshot via short read-only Session to gitignored local evidence.
     """
     # 延迟导入, 避免顶层循环依赖。
     from app import topic_ops
+    from app.services import coverage_observation
 
     interval = timedelta(hours=config.AUTO_REFRESH_NEWS_INTERVAL_HOURS)
     refreshed = 0
     skipped = 0
     errors: list[str] = []
+    try:
+        observation_run = coverage_observation.begin_observation_run(
+            root=observation_root,
+            observed_at=now,
+        )
+    except Exception as exc:  # collision or unexpected setup error must not block a committed refresh
+        observation_run = None
+        LOGGER.error("RM-055 observation run setup failed: %s: %s", type(exc).__name__, exc)
     with Session(engine) as session:
         topics = session.exec(select(Topic).where(Topic.status == "active")).all()
         # 先算 stale 候选(有文章且过期), 按最旧优先。
@@ -157,22 +174,33 @@ def _refresh_due_news(now: datetime) -> tuple[int, int, list[str]]:
                 continue  # 还新鲜
             candidates.append((latest, topic.id, topic.name))
         candidates.sort(key=lambda t: t[0])  # 最旧的先刷
-    for _latest, topic_id, topic_name in candidates:
+    for candidate_index, (_latest, topic_id, topic_name) in enumerate(candidates):
         if refreshed >= config.AUTO_REFRESH_MAX_TOPICS_PER_CYCLE:
+            if observation_run is not None:
+                for _later_latest, later_id, _later_name in candidates[candidate_index:]:
+                    _record_observation_safely(observation_run.record_skipped, topic_id=later_id, reason="cycle topic limit")
             break
         with claim_topic(topic_id, blocking=False) as acquired:
             if not acquired:
                 skipped += 1
+                if observation_run is not None:
+                    _record_observation_safely(observation_run.record_skipped, topic_id=topic_id, reason="topic lock held")
                 continue
+            # Commit success retains the exact collection result for a new read Session.
+            committed_result: dict[str, Any] | None = None
             with Session(engine) as session:
                 topic = session.get(Topic, topic_id)
                 if not topic or topic.status != "active":
+                    if observation_run is not None:
+                        _record_observation_safely(observation_run.record_skipped, topic_id=topic_id, reason="topic is no longer active")
                     continue
                 if topic_id in _active_job_topic_ids(session):
                     skipped += 1
+                    if observation_run is not None:
+                        _record_observation_safely(observation_run.record_skipped, topic_id=topic_id, reason="active job guard")
                     continue
                 try:
-                    topic_ops.collect_topic(
+                    collection_result = topic_ops.collect_topic(
                         session,
                         topic,
                         gnews=True,
@@ -184,10 +212,35 @@ def _refresh_due_news(now: datetime) -> tuple[int, int, list[str]]:
                     topic_ops.analyze_topic(session, topic, persist=True, commit=False)
                     session.commit()
                     refreshed += 1
+                    committed_result = collection_result
                 except Exception as exc:  # 单话题失败隔离, 继续下一个, 但记录原因(失败可见)
                     session.rollback()
                     errors.append(f"{topic_name}: {type(exc).__name__}: {str(exc)[:80]}")
+                    if observation_run is not None:
+                        _record_observation_safely(
+                            observation_run.record_failed,
+                            topic_id=topic_id,
+                            error=f"{type(exc).__name__}: {str(exc)[:80]}",
+                        )
+
+            # The write Session is now closed. Capture failure is visible in the
+            # run manifest/log only; it never changes refresh success accounting.
+            if committed_result is not None and observation_run is not None:
+                _record_observation_safely(
+                    observation_run.record_committed,
+                    topic_id=topic_id,
+                    collection_result=committed_result,
+                )
+    if observation_run is not None:
+        _record_observation_safely(observation_run.finalize)
     return refreshed, skipped, errors
+
+
+def _record_observation_safely(callback: Any, **kwargs: Any) -> None:
+    try:
+        callback(**kwargs)
+    except Exception as exc:
+        LOGGER.error("RM-055 observation bookkeeping failed: %s: %s", type(exc).__name__, exc)
 
 
 def _refresh_due_frontier(now: datetime) -> bool:

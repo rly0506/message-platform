@@ -43,6 +43,12 @@ try {
         throw "discover failed with exit code $LASTEXITCODE"
     }
 
+    Write-Log "Running auto-refresh with coverage observation (RM-055)."
+    & $python 'cli.py' 'refresh-once' *>&1 | Tee-Object -FilePath $logPath -Append
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "WARNING: refresh-once failed with exit code $LASTEXITCODE (continuing)"
+    }
+
     Write-Log "Sending daily digest via SMTP."
     & $python 'cli.py' 'daily-email' '--send-smtp' *>&1 | Tee-Object -FilePath $logPath -Append
     if ($LASTEXITCODE -ne 0) {

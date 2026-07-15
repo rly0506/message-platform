@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from typer.testing import CliRunner
 
 from app.discovery import daily_email
@@ -371,3 +372,16 @@ def test_daily_email_cli_keeps_archived_report_when_briefing_build_fails(monkeyp
     assert captured["report"]["briefing"] is None
     assert captured["report"]["briefing_error"] == 'RuntimeError'
     assert '事实早报暂不可用' in result.stderr
+
+
+def test_daily_digest_script_orders_discover_refresh_once_before_email():
+    script = (Path(__file__).resolve().parents[2] / "scripts" / "send_daily_digest.ps1").read_text(encoding="utf-8")
+
+    discover_index = script.index("'discover'")
+    refresh_index = script.index("'refresh-once'")
+    email_index = script.index("'daily-email'")
+    warning_index = script.index("WARNING: refresh-once failed", refresh_index)
+
+    assert script.count("'refresh-once'") == 1
+    assert discover_index < refresh_index < email_index
+    assert refresh_index < warning_index < email_index

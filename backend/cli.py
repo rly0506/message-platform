@@ -6,9 +6,14 @@
   python cli.py collect 1 --gnews --gdelt --years 2
   python cli.py articles 1
 """
+import errno
+import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 # 让 `import app.*` 在从任意目录运行 cli.py 时都可用
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +34,23 @@ from app import config, llm, topic_ops
 from app.topic_seeds import TOPIC_SEEDS
 
 app = typer.Typer(add_completion=False, help="个人专题情报追踪工具")
+
+
+HEALTH_URL = "http://127.0.0.1:8000/api/health"
+REFRESH_URL = "http://127.0.0.1:8000/api/auto-refresh/run"
+HEALTH_TIMEOUT_SECONDS = 2
+REFRESH_TIMEOUT_SECONDS = 30
+AUTO_REFRESH_RESPONSE_KEYS = {
+    "enabled",
+    "running",
+    "last_started_at",
+    "last_finished_at",
+    "last_error",
+    "news_refreshed",
+    "news_errors",
+    "frontier_refreshed",
+    "skipped_active",
+}
 
 
 @app.command("llm-check")
@@ -440,6 +462,201 @@ def _parse_date(s: str):
         except (ValueError, TypeError):
             continue
     return None
+
+
+@app.command("coverage-status")
+def coverage_status(
+    start: str = typer.Option(..., "--start"),
+    end: str = typer.Option(..., "--end"),
+    root: str = typer.Option("", "--root"),
+):
+    """Summarize verified evidence without SQLite access or a source decision."""
+    from app.services import coverage_observation
+
+    start_date, end_date = _coverage_dates(start, end)
+    observations_root = Path(root) if root else Path(config.COVERAGE_OBSERVATIONS_DIR)
+    verification = coverage_observation.verify_observations(
+        root=observations_root, start_date=date.min, end_date=date.max
+    )
+    if not verification["valid"]:
+        typer.echo(json.dumps(verification, ensure_ascii=False, sort_keys=True))
+        raise typer.Exit(1)
+    typer.echo(json.dumps(
+        _coverage_status_payload(verification, observations_root, start_date, end_date),
+        ensure_ascii=False,
+        sort_keys=True,
+    ))
+
+
+@app.command("coverage-verify")
+def coverage_verify(
+    start: str = typer.Option(..., "--start"),
+    end: str = typer.Option(..., "--end"),
+    root: str = typer.Option("", "--root"),
+):
+    """Validate immutable evidence from the filesystem only."""
+    from app.services import coverage_observation
+
+    start_date, end_date = _coverage_dates(start, end)
+    observations_root = Path(root) if root else Path(config.COVERAGE_OBSERVATIONS_DIR)
+    verification = coverage_observation.verify_observations(
+        root=observations_root, start_date=start_date, end_date=end_date
+    )
+    typer.echo(json.dumps(verification, ensure_ascii=False, sort_keys=True))
+    if not verification["valid"]:
+        raise typer.Exit(1)
+
+
+def _coverage_dates(start: str, end: str) -> tuple[date, date]:
+    try:
+        start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError:
+        _command_error("--start and --end must be ISO dates")
+        raise AssertionError("unreachable")
+    if end_date < start_date:
+        _command_error("--end must not precede --start")
+    return start_date, end_date
+
+
+def _coverage_status_payload(
+    verification: dict[str, object], root: Path, requested_start: date, requested_end: date
+) -> dict[str, object]:
+    valid_runs = verification["runs"]
+    assert isinstance(valid_runs, list)
+    complete_runs = [
+        run for run in valid_runs
+        if isinstance(run, dict)
+        and bool(run["manifest"]["captured"])
+        and not run["manifest"]["observation_failed"]
+    ]
+    successful_dates = sorted({str(run["date"]) for run in complete_runs})
+    first_success = date.fromisoformat(successful_dates[0]) if successful_dates else None
+    window_end = first_success + timedelta(days=13) if first_success else None
+    in_window = [
+        item for item in successful_dates
+        if first_success is not None and date.fromisoformat(item) <= window_end
+    ]
+    representatives: dict[tuple[str, int], dict[str, object]] = {}
+    for run in complete_runs:
+        manifest = run["manifest"]
+        assert isinstance(manifest, dict)
+        if window_end is not None and date.fromisoformat(str(run["date"])) > window_end:
+            continue
+        for topic_id in manifest["captured"]:
+            key = (str(run["date"]), int(topic_id))
+            previous = representatives.get(key)
+            if previous is None or str(manifest["captured_at_utc"]) > str(previous["manifest"]["captured_at_utc"]):
+                representatives[key] = run
+    topic_dates: dict[int, set[str]] = {}
+    for observed_date, topic_id in representatives:
+        if first_success is not None and date.fromisoformat(observed_date) <= window_end:
+            topic_dates.setdefault(topic_id, set()).add(observed_date)
+    recurring_topics = sum(1 for dates in topic_dates.values() if len(dates) >= 3)
+    collector_degraded = 0
+    fulltext_metadata_debt = 0
+    unclassified_metadata_debt = 0
+    for (observed_date, topic_id), run in representatives.items():
+        manifest = run["manifest"]
+        assert isinstance(manifest, dict)
+        run_dir = root / str(run["date"]) / str(run["run_id"])
+        entry = next(entry for entry in manifest["topic_files"] if entry["topic_id"] == topic_id)
+        payload = json.loads((run_dir / entry["path"]).read_text(encoding="utf-8"))
+        if payload.get("collection_result", {}).get("errors"):
+            collector_degraded += 1
+        if payload.get("coverage_snapshot", {}).get("fulltext", {}).get("status") != "available":
+            fulltext_metadata_debt += 1
+        unclassified_metadata_debt += len(
+            payload.get("coverage_snapshot", {}).get("source_registry", {}).get("unclassified_article_ids", [])
+        )
+    review_earliest = max(date(2026, 7, 27), first_success + timedelta(days=13)) if first_success else None
+    evidence_sufficient = len(in_window) >= 10 and recurring_topics >= 3
+    return {
+        "first_successful_date": first_success.isoformat() if first_success else None,
+        "window_end": window_end.isoformat() if window_end else None,
+        "review_earliest": review_earliest.isoformat() if review_earliest else None,
+        "successful_dates": in_window,
+        "successful_date_count": len(in_window),
+        "topics_with_three_dates": recurring_topics,
+        "topic_distinct_shanghai_dates": {str(topic_id): sorted(dates) for topic_id, dates in sorted(topic_dates.items())},
+        "collector_degraded_observations": collector_degraded,
+        "fulltext_metadata_debt": fulltext_metadata_debt,
+        "unclassified_metadata_debt": unclassified_metadata_debt,
+        "review_state": "HUMAN_REVIEW_REQUIRED" if evidence_sufficient else "HOLD",
+        "requested_start": requested_start.isoformat(),
+        "requested_end": requested_end.isoformat(),
+    }
+
+
+@app.command("refresh-once")
+def refresh_once():
+    """Run one refresh through the live backend, or one refused-only offline call."""
+    try:
+        health = _request_json(HEALTH_URL, timeout=HEALTH_TIMEOUT_SECONDS)
+    except (ConnectionRefusedError, URLError) as exc:
+        if _is_connection_refused(exc):
+            _run_local_refresh_once()
+            return
+        _command_error(f"health transport failed: {type(exc).__name__}")
+    except (HTTPError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+        _command_error(f"health check failed: {type(exc).__name__}")
+
+    if health[0] != 200 or not isinstance(health[1], dict) or health[1].get("status") != "ok":
+        _command_error("health response was not the expected 200 {status: ok}")
+
+    try:
+        status, result = _request_json(
+            Request(REFRESH_URL, data=b"", method="POST"),
+            timeout=REFRESH_TIMEOUT_SECONDS,
+        )
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+        _command_error(f"refresh request failed: {type(exc).__name__}")
+
+    if status != 200 or not _is_valid_auto_refresh_result(result):
+        _command_error("refresh response did not match the auto-refresh contract")
+    typer.echo(json.dumps(result, ensure_ascii=False, sort_keys=True))
+
+
+def _request_json(request: str | Request, *, timeout: int) -> tuple[int, object]:
+    with urlopen(request, timeout=timeout) as response:
+        return int(response.status), json.loads(response.read().decode("utf-8"))
+
+
+def _is_connection_refused(exc: BaseException) -> bool:
+    reason = exc.reason if isinstance(exc, URLError) else exc
+    return isinstance(reason, ConnectionRefusedError) or (
+        isinstance(reason, OSError) and reason.errno in {errno.ECONNREFUSED, 10061}
+    )
+
+
+def _is_valid_auto_refresh_result(value: object) -> bool:
+    if not isinstance(value, dict) or set(value) != AUTO_REFRESH_RESPONSE_KEYS:
+        return False
+    timestamps = (value["last_started_at"], value["last_finished_at"])
+    return (
+        isinstance(value["enabled"], bool)
+        and isinstance(value["running"], bool)
+        and all(timestamp is None or isinstance(timestamp, str) for timestamp in timestamps)
+        and isinstance(value["last_error"], str)
+        and isinstance(value["news_refreshed"], int)
+        and not isinstance(value["news_refreshed"], bool)
+        and isinstance(value["news_errors"], list)
+        and all(isinstance(item, str) for item in value["news_errors"])
+        and isinstance(value["frontier_refreshed"], bool)
+        and isinstance(value["skipped_active"], int)
+        and not isinstance(value["skipped_active"], bool)
+    )
+
+
+def _run_local_refresh_once() -> None:
+    from app.services import auto_refresh
+
+    init_db()
+    typer.echo(json.dumps(auto_refresh.refresh_once(), ensure_ascii=False, sort_keys=True))
+
+
+def _command_error(message: str) -> None:
+    typer.echo(json.dumps({"error": message}, ensure_ascii=False, sort_keys=True))
+    raise typer.Exit(1)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,12 @@ load_dotenv(os.path.join(_BACKEND, ".env"), override=True)
 # 数据库
 DB_PATH = os.getenv("DB_PATH") or os.path.join(_BACKEND, "dossier.db")
 
+# RM-055 覆盖观察证据目录 (gitignored 本地证据, 绝不入库)。锚定到 backend/,
+# 与 DB_PATH 同源, 避免相对 CWD 在不同工作目录下写到 backend/backend/。
+COVERAGE_OBSERVATIONS_DIR = os.getenv("COVERAGE_OBSERVATIONS_DIR") or os.path.join(
+    _BACKEND, "coverage_observations"
+)
+
 # LLM (Phase 1 步骤 4-5 才会用到)
 # LLM_* 是新的通用配置；ANTHROPIC_* 保留兼容旧 .env。
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
