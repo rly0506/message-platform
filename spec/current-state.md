@@ -7,10 +7,10 @@ This is the compact context reset point for future agents. It records current pr
 ## Current Checkpoint
 
 - Branch: `feature/academic-reading-signals`.
-- The implemented product baseline includes the completed Phase 3 at `5a53e41` and the subsequent correctness-audit batches; the Coverage observation pipeline is not implemented yet.
+- The implemented product baseline includes the completed Phase 3 at `5a53e41`, the subsequent correctness-audit batches, and the Coverage observation pipeline at `e4a0a35`; pytest evidence isolation for that pipeline is in `6c3e316`.
 - Current product roadmap: `RM-055` remains the sole `CURRENT`, defined in `spec/roadmap-supply-chain-2026-07-12.md` and indexed by `spec/roadmap-ledger.md`.
 - Coverage API/instrument, event analogue consumer, cross-device curiosity queue, fact-first briefing loop, and the evidence/inference UI boundary are integrated on this branch.
-- The approved slim Coverage observation specification `1190aca` and implementation plan `a077937` define the pending `ACTIVE-GATE`.
+- The approved slim Coverage observation specification `1190aca` and implementation plan `a077937` now have an implemented, reviewed pipeline. Its authorized first real run failed closed because `127.0.0.1:8000` timed out; no successful observation date or window has been created.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
 
 ## RM-055 Progress
@@ -24,7 +24,7 @@ This is the compact context reset point for future agents. It records current pr
 | M4': briefing loop | Done | Original persisted title/snippet facts, honest coverage labels, evidence/workbench links, scheduled-email fallback, and read-only one-domain questions landed in `2fd9155`, `8cb9f9b`, and `ff85f65`. |
 | Phase 3: hypothesis-layer boundary | Done | A fresh EventGraph defaults the local layer off; enabling it reveals only a neutral dashed sample, an explicit hypothesis badge, and honest no-data copy. No generated relation, persistence, API, DTO, backend, or LLM path was added (`5a53e41`). |
 
-The project is at the **RM-055 Coverage observation `ACTIVE-GATE`**. The approved slim pipeline now advances the evidence checkpoint; source expansion remains HOLD, and no source batch is justified before the gate evidence is reviewed.
+The project is at the **RM-055 Coverage observation `ACTIVE-GATE`**. The pipeline is implemented and reviewed, but its first authorized real run failed closed on a loopback timeout. `first_successful_date`, `successful_date_count`, and `window_end` remain unset; source expansion remains HOLD, and no source batch is justified before the gate evidence is reviewed.
 
 ## Latest Correctness Audit
 
@@ -121,14 +121,14 @@ The latest accepted release-quality evidence is:
 ```text
 cd backend
 ..\venv\Scripts\python.exe -m pytest -q
-# 335 passed, 1 warning after the test-database isolation audit
+# 368 passed, 1 warning after the RM-055 observation test-isolation fix
 
 cd ..\frontend
 npm run build
 # 98 modules transformed
 
 playwright test
-# 180 passed (desktop + mobile)
+# 184 passed (controlled desktop + mobile gate)
 ```
 
 This is recorded context, not permission to skip fresh verification after new code changes. Documentation-only work should at minimum pass link checks, UTF-8 validation, `git diff --check`, and staged GitNexus scope review.

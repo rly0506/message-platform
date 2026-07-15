@@ -2,6 +2,26 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-15 RM-055 Coverage Observation Pipeline
+
+- Implemented the post-commit, immutable filesystem observation recorder,
+  verification/status CLI, strict HTTP-first one-shot refresh, and daily
+  discover -> refresh -> email order in `e4a0a35`.
+- Preserved unknown and unclassified evidence, isolated recorder failures from
+  collection results, retained the exact existing nine-field auto-refresh API,
+  and added no source, fulltext persistence, LLM path, or automatic decision.
+- Independent specification and quality reviews approved the implementation.
+  A final isolation review approved `6c3e316`, which keeps pytest observation
+  evidence below the existing temporary test database root before `app.*`
+  imports.
+- Fresh focused verification passed (`14 passed`); full backend verification
+  after the isolation fix passed (`368 passed, 1 warning`). The real authorized
+  `refresh-once` attempt failed closed on a loopback `URLError` timeout, so
+  `first_successful_date`, successful-day count, and window end remain unset.
+- Source expansion remains `HOLD`; no feed was enabled and no `master` merge or
+  push was performed. See
+  `docs/operations/rm055-coverage-observation-task-report-2026-07-15.md`.
+
 ## 2026-07-14 Codex Takeover Work Summary
 
 - Added `docs/operations/codex-takeover-work-summary-2026-07-14.md` as the
