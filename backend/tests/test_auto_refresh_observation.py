@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from sqlmodel import Session, select
 
+from app import config
 from app.db import Article, Topic, TopicArticle, engine, init_db
 from app.discovery import run as discovery_run
 from app.services import auto_refresh
@@ -37,6 +39,13 @@ def _seed_stale_topic(now: datetime, name: str = "stale") -> int:
         session.add(TopicArticle(topic_id=topic.id, article_id=article.id, relevance=0.8))
         session.commit()
         return topic.id
+
+
+def test_pytest_uses_an_isolated_coverage_observation_root():
+    observation_root = Path(config.COVERAGE_OBSERVATIONS_DIR).resolve()
+    test_database_root = Path(config.DB_PATH).resolve().parent
+
+    assert observation_root.is_relative_to(test_database_root)
 
 
 class _Recorder:

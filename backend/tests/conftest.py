@@ -25,8 +25,10 @@ dotenv.load_dotenv = _ignore_dotenv
 
 # 每个 pytest 进程拥有独立的文件型 SQLite；保留真实锁与连接池语义。
 _TEST_DB_DIR = tempfile.TemporaryDirectory(prefix="dossier-pytest-")
-_TEST_DB = str(Path(_TEST_DB_DIR.name) / "dossier_test.db")
+_TEST_ROOT = Path(_TEST_DB_DIR.name)
+_TEST_DB = str(_TEST_ROOT / "dossier_test.db")
 os.environ["DB_PATH"] = _TEST_DB
+os.environ["COVERAGE_OBSERVATIONS_DIR"] = str(_TEST_ROOT / "coverage_observations")
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
