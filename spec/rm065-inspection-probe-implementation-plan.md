@@ -18,6 +18,7 @@
 - Do not modify or call `fulltext.extract_url()`, `extract_url_proxied()`, `extract_url_scrapling()`, `topic_ops._fetch_bodies()`, or `article_perspective.analyze_article()`.
 - The only existing body helper R1 may call is `fulltext.extract_from_html(html, url)`. Its upstream impact is `LOW` (two direct callers, zero indexed processes), and R1 does not modify it.
 - Do not call `init_db()`: it creates tables, runs migrations, backfills projects, and seeds sources.
+- The probe service and standalone CLI must not import `app.db` or `app.config`. Importing `app.db` constructs its module-level engine from configured `DB_PATH`, which would give SQLAlchemy the application/real database path before the probe can enforce snapshot isolation. Declare only the required `topic`, `topicarticle`, and `article` columns locally with SQLAlchemy Core `table()` / `column()` projections, and bind every query exclusively to the disposable snapshot engine. Tests may use `app.db` only after `backend/tests/conftest.py` has redirected it to a pytest-temporary database; probe production modules may not.
 - Do not read `relevant`, translated fields, or LLM output to choose the sample. Core probe behavior must be identical without any LLM key.
 - Do not persist HTML or complete extracted text. Temporary `title`, stored source summary, `lead`, and `tail` are each capped at 600 characters. The disposable database snapshot is removed and its absence verified before DNS/network begins.
 - Never give SQLite or SQLAlchemy the real `--database` path. Filesystem copy operations may read the stopped source family; SQLite opens only the run-local snapshot, whose own SHM coordination writes are disposable.
@@ -157,7 +158,7 @@ The only production runtime root is the repository-relative canonical `backend/i
 | Create `backend/app/services/inspection_probe.py` | Data contracts, source-family snapshot isolation, deterministic selection, static/public URL validation, pinned direct transport, robots/manual redirects, bounded fetch, extraction, batch fan-out, audit/manifest/review, claim-journal cleanup, recovery, and residual scan. |
 | Create `backend/inspection_probe.py` | Standalone `argparse` CLI with a fixed production runtime root: `preflight`, `run`, `verify`, `install-review`, `finalize`, `recover`, `purge-unsealed`, `abandon-sealed`, `scan-residuals`. No import or call to `init_db()`. |
 | Create `backend/tests/test_inspection_probe.py` | Temporary DB, fake DNS/HTTP, extraction, terminal-record, evidence lifecycle, crash recovery, and CLI tests. No external network. |
-| Modify `.gitignore` | Add only `backend/inspection_probe_runs/`. |
+| Modify `.gitignore` | Add only `backend/inspection_probe_runs/` in the first implementation batch, before any production run helper exists. |
 | Modify `spec/CHANGELOG.md` | Record implementation after tests/reviews, without claiming a real run. |
 | Create later `docs/operations/rm065-inspection-probe-<date>.json` | Text-free durable report produced only by an authorized real run after Grok review and cleanup. Not part of code implementation. |
 
@@ -190,14 +191,16 @@ Use the repository's worktree workflow only after the H0/RM-065 documentation is
 ```powershell
 gitnexus impact 'Article' --repo message-platform --file 'backend/app/db.py' --kind Class --direction upstream --depth 2 --include-tests --summary-only
 gitnexus impact 'TopicArticle' --repo message-platform --file 'backend/app/db.py' --kind Class --direction upstream --depth 2 --include-tests --summary-only
+gitnexus impact 'init_db' --repo message-platform --file 'backend/app/db.py' --kind Function --direction upstream --depth 2 --include-tests --summary-only
 gitnexus impact 'extract_from_html' --repo message-platform --file 'backend/app/pipeline/fulltext.py' --kind Function --direction upstream --depth 3 --include-tests
 ```
 
-Expected: model impacts remain HIGH/CRITICAL and are read-only; `extract_from_html` remains LOW. Any plan to edit the models is a specification violation.
+Expected: model and `init_db` impacts remain HIGH/CRITICAL and are read-only; `extract_from_html` remains LOW. Any plan to edit/import the models from probe production code or call `init_db` is a specification violation.
 
 ### Task 1: Stable Snapshot And Deterministic Selection
 
 **Files:**
+- Modify: `.gitignore`
 - Create: `backend/app/services/inspection_probe.py`
 - Create: `backend/tests/test_inspection_probe.py`
 
@@ -233,22 +236,24 @@ Expected: collection/import failure because the probe module does not exist.
 
 - [ ] **Step 3: Implement immutable contracts, snapshot isolation, and two projection queries**
 
-Create frozen dataclasses for `DatabaseFileFingerprint`, `DatabaseFamilyFingerprint`, `TopicBand`, `ProbeSlot`, and `ProbeSelection`, plus `ProbeDeferred`. Use `func.count`, `case`, and projected columns exactly as defined in §3.1. Perform static URL validation/canonicalization in Python before slicing to 10; do not load full ORM Article rows and do not filter `TopicArticle.relevant`.
+Before creating a production run helper, add exactly `backend/inspection_probe_runs/` to `.gitignore` and verify it with `git check-ignore -v backend/inspection_probe_runs/example/audit.jsonl`.
+
+Create frozen dataclasses for `DatabaseFileFingerprint`, `DatabaseFamilyFingerprint`, `TopicBand`, `ProbeSlot`, and `ProbeSelection`, plus `ProbeDeferred`. Define local SQLAlchemy Core `table()` / `column()` clauses for only the required persisted columns; do not import `app.db`, `app.config`, or their SQLModel classes in either probe production module. Use `func.count`, `case`, and projected columns exactly as defined in §3.1. Perform static URL validation/canonicalization in Python before slicing to 10; do not load full ORM Article rows and do not filter `TopicArticle.relevant`.
 
 Expose exactly these typed interfaces: `allocate_run_id() -> str`, `acquire_run_owner(root: Path, run_id: str) -> AbstractContextManager[RunOwner]`, `create_probe_run(owner: RunOwner) -> Path`, `fingerprint_database_family(database: Path) -> DatabaseFamilyFingerprint`, `copy_database_snapshot(owner: RunOwner, database: Path) -> Path`, `create_snapshot_engine(owner: RunOwner, snapshot: Path) -> Engine`, `select_probe_sample(session: Session, *, per_topic: int = 10) -> ProbeSelection`, `select_probe_sample_from_source(owner: RunOwner, database: Path, *, per_topic: int = 10) -> ProbeSelection`, `static_public_url_error(url: str) -> str | None`, and `canonicalize_public_url(url: str) -> str`.
 
-`RunOwner` carries the live locked handle and canonical root/run id; run-mutating helpers validate it before each state transition. `select_probe_sample_from_source` owns the two source-family fingerprints, stable main/WAL copy, snapshot-only engine, `query_only`/memory-temp assertions, `quick_check`, explicit transaction, session closure, engine disposal, and verified snapshot removal. The CLI must not reimplement or weaken that boundary. No function may call `sqlite3.connect`, SQLAlchemy `create_engine`, or `Session` with the source path.
+`RunOwner` carries the live locked handle and canonical root/run id; run-mutating helpers validate it before each state transition. `select_probe_sample_from_source` owns the two source-family fingerprints, stable main/WAL copy, snapshot-only engine, `query_only`/memory-temp assertions, `quick_check`, explicit transaction, session closure, engine disposal, and verified snapshot removal. The CLI must not reimplement or weaken that boundary. No function may call `sqlite3.connect`, SQLAlchemy `create_engine`, or `Session` with the source path, and importing the application database module is forbidden because its module-level engine construction would bypass that proof.
 
 - [ ] **Step 4: Run selection tests and prove green**
 
-Use the focused command from Step 2. Expected: all selection/snapshot tests pass and no network mock is called. Tests must prove: clean DELETE-journal and WAL-mode sources both select correctly; an uncheckpointed WAL row is present in the snapshot result; non-empty rollback journal fails closed; zero-length journal and main/WAL/SHM fingerprints remain byte-for-byte stable; source-family/journal mutation during copy aborts; Windows-compatible paths containing spaces, `#`, `%`, and non-ASCII characters open without URI parsing; SQLite receives only `snapshot.db`; and no `snapshot*` file remains before the network sentinel is invoked.
+Use the focused command from Step 2. Expected: all selection/snapshot tests pass and no network mock is called. Tests must prove: clean DELETE-journal and WAL-mode sources both select correctly; an uncheckpointed WAL row is present in the snapshot result; non-empty rollback journal fails closed; zero-length journal and main/WAL/SHM fingerprints remain byte-for-byte stable; source-family/journal mutation during copy aborts; Windows-compatible paths containing spaces, `#`, `%`, and non-ASCII characters open without URI parsing; SQLite receives only `snapshot.db`; a clean subprocess plus a static source-import check prove that importing the service neither directly/lazily imports nor eagerly loads `app.db` or `app.config`; and no `snapshot*` file remains before the network sentinel is invoked. The CLI receives the same proof after it is created in Task 5.
 
 - [ ] **Step 5: Conditional checkpoint commit**
 
 Only with current human commit authorization:
 
 ```powershell
-git add backend/app/services/inspection_probe.py backend/tests/test_inspection_probe.py
+git add .gitignore backend/app/services/inspection_probe.py backend/tests/test_inspection_probe.py
 node .gitnexus/run.cjs detect-changes --scope compare --base-ref master --repo message-platform
 git commit -m "feat(rm065): add isolated deterministic probe sample"
 ```
@@ -341,11 +346,10 @@ Expected: all selection, network, extraction, and fan-out tests pass.
 **Files:**
 - Modify: `backend/app/services/inspection_probe.py`
 - Modify: `backend/tests/test_inspection_probe.py`
-- Modify: `.gitignore`
 
-- [ ] **Step 1: Add the ignored runtime root**
+- [ ] **Step 1: Re-verify the ignored runtime root**
 
-Add exactly:
+Task 1 already added exactly:
 
 ```gitignore
 backend/inspection_probe_runs/
@@ -407,7 +411,7 @@ Expected: no test leaves text outside `tmp_path`; cleanup failure is visible and
 
 - [ ] **Step 1: Write failing CLI tests**
 
-Use subprocess or direct `main(argv, runtime_root=tmp_runtime, report_root=tmp_reports)` tests. Assert that production parsing exposes no root override; `--database` is mandatory; `preflight` never calls network and cleans its snapshot/run; `run` requires `--ack-authorized-network-run`; no proxy option exists and proxy-related environment variables have no effect; `init_db` is never imported/called; shortfall exits 2 before network; invalid database/snapshot/cleanup exits 3; and `verify/finalize/recover/purge-unsealed/abandon-sealed` accept validated run/claim ids rather than arbitrary run paths. Report tests reject runtime/run/source targets, nested/non-JSON targets, symlink/reparse parents, and paths outside the injected report root.
+Use subprocess or direct `main(argv, runtime_root=tmp_runtime, report_root=tmp_reports)` tests. Assert that production parsing exposes no root override; `--database` is mandatory; `preflight` never calls network and cleans its snapshot/run; `run` requires `--ack-authorized-network-run`; no proxy option exists and proxy-related environment variables have no effect; clean-subprocess and static source-import checks cover both the service and CLI, proving neither has a direct/lazy `app.db` or `app.config` import and their normal import/help paths do not load either module; `init_db` is never imported/called; shortfall exits 2 before network; invalid database/snapshot/cleanup exits 3; and `verify/finalize/recover/purge-unsealed/abandon-sealed` accept validated run/claim ids rather than arbitrary run paths. Report tests reject runtime/run/source targets, nested/non-JSON targets, symlink/reparse parents, and paths outside the injected report root.
 
 - [ ] **Step 2: Run tests and prove red**
 
