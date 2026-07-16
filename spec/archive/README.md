@@ -9,6 +9,7 @@ Completed sprint snapshots, superseded roadmaps, audit records, and historical b
 - `plans/` - old implementation plans that are no longer executable.
 - `build-logs/` - historical backend construction logs.
 - `current-state/` - verbatim snapshots of the former live context reset file.
+- `bug-audit-2026-07-05.md` - verbatim Fable 5 audit; its named P0 items were later closed by `a4647f5`, so it is not a live repair queue.
 - archive root - dated sprint ledgers, reviews, audits, and other historical records that are not roadmaps.
 
 ## Rules

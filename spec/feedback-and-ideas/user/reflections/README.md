@@ -29,6 +29,7 @@ Status: `REFLECTION`
 ## 已有记录
 
 - 学术内容犹豫 + Markdown vs 图谱呈现：`2026-07-11-academic-content-and-representation.md`
+- 算法结构、检视阅读与下一次突破：`2026-07-15-algorithmic-efficiency-and-inspection-reading.md`（路线图候选，未立项）
 
 ## 已有相关材料
 

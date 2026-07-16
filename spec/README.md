@@ -21,13 +21,15 @@ Do not load mail archives, the full changelog archive, completed roadmaps, build
 | Product goal and architecture | `spec/project.md` |
 | Development constraints | `spec/development.md` |
 | Completion claim or release review | `spec/acceptance.md` |
-| Auto-refresh, persistence, narrative signals, cognition marks, search concurrency | `spec/bug-audit-2026-07-05.md` |
+| Current correctness debt or new regression work | `spec/current-state.md`, then `spec/development.md` |
 | No-LLM capability boundary | `spec/local-capability-boundary.md` |
 | Event/literature graph planning | `spec/event-tree-literature-graph-design.md` |
 | Academic filtering | `spec/academic-filtering-design.md` |
 | Discovery archive or cognition timeline | `spec/discovery-archive-cognition-timeline-design.md` |
 | Browser control and OpenCLI boundary | `spec/browser-control-decision-2026-07-10.md` |
 | AI controllability and multi-format source candidate | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` |
+| Inspection reading, measured performance, local analysis, and source-expansion candidate | `spec/roadmap-inspection-first-local-intelligence-2026-07-15.md` |
+| RM-065 R1 inspection-probe implementation and cleanup contract | `spec/rm065-inspection-probe-implementation-plan.md` |
 | User feedback, reflections, developer observations, and external references | `spec/feedback-and-ideas/README.md` |
 | Static knowledge publishing and inspectable reasoning references | `spec/feedback-and-ideas/references/knowledge-publishing-and-reasoning-reference-2026-07-12.md` |
 | Broader future priorities | `spec/roadmap.md` |
@@ -39,6 +41,7 @@ Do not load mail archives, the full changelog archive, completed roadmaps, build
 - Full changelog through 2026-07-12: `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 - Historical implementation plans: `spec/archive/plans/`.
 - Historical backend build logs: `spec/archive/build-logs/`.
+- Historical Fable 5 bug audit: `spec/archive/bug-audit-2026-07-05.md`; its five P0 findings were closed by `a4647f5`, while unitemized themes require fresh evidence.
 - External project references: `docs/references/`.
 - Agent coordination history: `.agent-bridge/archive/` (local only).
 - `backend/discovery_reports/` contains product data, not project documentation.
@@ -51,6 +54,7 @@ A completion report must include changed files, commands and results, GitNexus r
 
 - Give every executable roadmap a stable ID in `spec/roadmap-ledger.md`.
 - Keep only one `CURRENT` product roadmap.
+- When `CURRENT`, observation-gate, or candidate status changes, update the root `README.md` snapshot together with `spec/current-state.md`, `spec/roadmap-ledger.md`, and BOARD.
 - Keep BOARD and live mailboxes current; archive history instead of appending forever.
 - Keep `spec/CHANGELOG.md` as a short recent window and roll full history into `spec/archive/changelog/`.
 - Do not silently delete historical decisions.

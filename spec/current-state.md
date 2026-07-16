@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-16.
 
 This is the compact context reset point for future agents. It records current product truth, not the full work log. The previous 410-line snapshot is preserved verbatim at `spec/archive/current-state/current-state-through-2026-07-12.md`.
 
@@ -12,6 +12,7 @@ This is the compact context reset point for future agents. It records current pr
 - Coverage API/instrument, event analogue consumer, cross-device curiosity queue, fact-first briefing loop, and the evidence/inference UI boundary are integrated on this branch.
 - The approved slim Coverage observation specification `1190aca` and implementation plan `a077937` now have an implemented, reviewed pipeline. Its authorized first real run failed closed because `127.0.0.1:8000` timed out; no successful observation date or window has been created.
 - Source expansion is on evidence HOLD until the two-week gate in `docs/operations/rm055-source-expansion-gate-2026-07-13.md` is satisfied.
+- `RM-065` is a `CANDIDATE`, not a second current roadmap. Its H0 documentation closeout is complete; product and code stages remain governed by their own evidence gates and ownership.
 
 ## RM-055 Progress
 
@@ -24,7 +25,21 @@ This is the compact context reset point for future agents. It records current pr
 | M4': briefing loop | Done | Original persisted title/snippet facts, honest coverage labels, evidence/workbench links, scheduled-email fallback, and read-only one-domain questions landed in `2fd9155`, `8cb9f9b`, and `ff85f65`. |
 | Phase 3: hypothesis-layer boundary | Done | A fresh EventGraph defaults the local layer off; enabling it reveals only a neutral dashed sample, an explicit hypothesis badge, and honest no-data copy. No generated relation, persistence, API, DTO, backend, or LLM path was added (`5a53e41`). |
 
-The project is at the **RM-055 Coverage observation `ACTIVE-GATE`**. The pipeline is implemented and reviewed, but its first authorized real run failed closed on a loopback timeout. `first_successful_date`, `successful_date_count`, and `window_end` remain unset; source expansion remains HOLD, and no source batch is justified before the gate evidence is reviewed.
+The project is at the **RM-055 Coverage observation `ACTIVE-GATE`**. The pipeline is implemented and reviewed, but its first authorized real run failed closed on a loopback timeout. `successful_date_count` is `0`.
+`first_successful_date` and `window_end` remain unset. Source expansion remains HOLD, and no source batch is justified before the gate evidence is reviewed.
+
+## Historical Work Disposition
+
+| Item | Disposition | Current truth / next gate |
+| --- | --- | --- |
+| RM-055 Coverage observation | Keep active | Pipeline is complete; zero successful real days. A real refresh still needs explicit human authorization and a reachable backend. |
+| RM-055 source expansion | Keep on `HOLD` | Requires at least 10 successful observation days, three recurring topics, and named repeated gaps; first batch remains capped at three feeds. |
+| `topic-load-race` and duplicate post-job loads | Separate P0 | Owned by the Opus frontend lane; it must not be hidden inside a backend performance batch or change the API/DTO contract. |
+| 2026-07-05 Fable 5 bug audit | P0 closed; audit archived | All five named P0 findings and focused regressions landed in `a4647f5`. P1/P2 were broad themes, not a current executable queue; any surviving issue needs fresh evidence against current code. |
+| README, old architecture/direction prose, mailboxes, and Superpowers history | Completed 2026-07-16 | Root/docs indices now route current truth; old prose and mail are preserved in archives; historical plans no longer define the active workflow. |
+| Event graph local/LLM source of truth | Architecture debt | Inspection material must not update `Event` or `EventRelation` until a separate contract defines ownership. |
+| RM-050 M2/M3/M4 | Closed by succession | Analogue cards, `dig_later`, and the fact-first briefing are complete; only source expansion continues through RM-055's evidence gate. Do not reopen RM-050. |
+| RM-060 and other future directions | Keep as candidates | They compete through real use and human promotion; archive text and candidate status do not authorize implementation. |
 
 ## Latest Correctness Audit
 
@@ -135,10 +150,11 @@ This is recorded context, not permission to skip fresh verification after new co
 
 ## Read Next
 
-1. `AGENTS.md` for engineering rules and project map.
-2. `.agent-bridge/BOARD.md` for the live checkpoint and next gate.
-3. `spec/roadmap-ledger.md` for authoritative roadmap status.
-4. `spec/README.md` for task-specific routing.
-5. `spec/acceptance.md` before any completion or release claim.
+1. `README.md` for the human/machine routing index.
+2. `AGENTS.md` for engineering rules and project map.
+3. `.agent-bridge/BOARD.md` for the local live checkpoint and next gate.
+4. `spec/roadmap-ledger.md` for authoritative roadmap status.
+5. `spec/README.md` for task-specific routing.
+6. `spec/acceptance.md` before any completion or release claim.
 
 Historical sprint narration, old dirty-tree snapshots, and prior test runs belong in the archived snapshot, not in this live file.

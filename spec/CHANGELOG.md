@@ -2,6 +2,66 @@
 
 > Recent window only. The complete history through 2026-07-12 is preserved at `spec/archive/changelog/CHANGELOG-through-2026-07-12.md`.
 
+## 2026-07-16 RM-065 R1 Probe Implementation Plan
+
+- Added a P0-gated, TDD implementation plan for the inspection-reading evidence
+  probe. It specifies deterministic 3-topic/30-slot selection, a separate
+  disposable SQLite filesystem snapshot that never opens the source family,
+  pinned-IP public-page access, closed terminal states, per-field provenance,
+  and text-free durable evidence after Grok review.
+- Specification and security reviews approved the final contract with no open
+  findings. It fixes the production runtime/report roots, strips every query
+  value from durable URLs, uses a strict local robots matcher, and makes every
+  text/database cleanup state recoverable through owner locks, a no-replace
+  claim, tombstone cleanup, and bound pending/final metadata.
+- Recorded GitNexus `CRITICAL` impact for the shared `Article` and
+  `TopicArticle` models and avoids editing either model, schema, API, DTO, or
+  product flow. The plan reuses only the low-risk HTML extraction helper.
+- The plan authorizes no product code, real-database read, external network
+  probe, LLM call, source enablement, Coverage change, merge, or release.
+
+## 2026-07-16 RM-065 H0 Documentation Closeout
+
+- Added compact root and `docs/` routing indices for both humans and agents.
+- Classified historical unfinished work in `spec/current-state.md` without
+  reopening completed or superseded roadmaps; RM-055 remains the sole
+  `CURRENT`, RM-065 remains a `CANDIDATE`, and source expansion remains `HOLD`.
+- Archived superseded architecture/direction prose while retaining stable
+  redirect files for code comments and historical links.
+- Archived the stale 2026-07-05 Fable 5 audit and replaced its active route
+  with an explicit disposition: five named P0 findings closed in `a4647f5`;
+  broad P1/P2 themes require fresh evidence rather than automatic reopening.
+- Retired `docs/superpowers/` as an active workflow authority while preserving
+  its completed plans/specs as evidence; no user-level plugin cache was
+  removed or modified.
+- Rotated the ignored Agent Bridge board and three long mailboxes into dated
+  archives, then rebuilt small live checkpoints. No backend, frontend, source,
+  LLM, API, database, or real-observation behavior changed.
+
+## 2026-07-15 RM-065 Inspection-First Candidate Roadmap
+
+- Added RM-065 as a `CANDIDATE` without replacing RM-055: historical truth and
+  topic-load correctness precede inspection reading, measured performance,
+  local event clustering/deduplication, and evidence-gated source expansion.
+- Recorded the human decisions for temporary probe retention, a separate local
+  90-day inspection store, a three-article prefetch cap, event clustering as the
+  first local-analysis target, and replaceable analysis frameworks.
+- Corrected `spec/roadmap.md` from “observation pipeline pending” to the current
+  truth: implemented and reviewed, with no successful real observation day yet.
+- This documentation change authorizes no candidate implementation, source
+  enablement, real-database run, `master` merge, or release.
+
+## 2026-07-15 Agent Work Protocol
+
+- Added a durable, versioned task harness to `spec/development.md`: visible
+  todo first, bounded independent subagent before material change, parent
+  self-review, ordered verification, and honest checklist closure.
+- Defined the non-recursive review-child exception so the required independent
+  review does not become infinite delegation.
+- Linked the ignored Agent Bridge agreement and task-checklist template to this
+  canonical policy; the Bridge copy may add coordination detail but cannot
+  weaken the tracked rule.
+
 ## 2026-07-15 RM-055 Coverage Observation Pipeline
 
 - Implemented the post-commit, immutable filesystem observation recorder,
@@ -17,7 +77,8 @@
 - Fresh focused verification passed (`14 passed`); full backend verification
   after the isolation fix passed (`368 passed, 1 warning`). The real authorized
   `refresh-once` attempt failed closed on a loopback `URLError` timeout, so
-  `first_successful_date`, successful-day count, and window end remain unset.
+  successful-day count remains `0`; `first_successful_date` and window end
+  remain unset.
 - Source expansion remains `HOLD`; no feed was enabled and no `master` merge or
   push was performed. See
   `docs/operations/rm055-coverage-observation-task-report-2026-07-15.md`.

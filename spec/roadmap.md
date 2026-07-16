@@ -8,7 +8,7 @@ This roadmap records the current product direction after the July 2026 readabili
 
 可审计信息供应链 · C 先行。完整方案见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
-当前进度（2026-07-15）：Phase 0/1/2、Phase A、`dig_later` 跨设备队列、M4' 事实优先早报与 Phase 3 假设层边界均已闭环。Phase 3 由 `5a53e41` 落地：默认关闭，只显示无数据占位与明确“假设”标识，不生成、不保存因果关系；独立复审最终 `APPROVE`。瘦身 Coverage observation 管线现为待实施的 `ACTIVE-GATE`（规格 `1190aca`、计划 `a077937`）；源扩展因尚无纵向缺口证据继续 `HOLD`。
+当前进度（2026-07-16）：Phase 0/1/2、Phase A、`dig_later` 跨设备队列、M4' 事实优先早报与 Phase 3 假设层边界均已闭环。Phase 3 由 `5a53e41` 落地：默认关闭，只显示无数据占位与明确“假设”标识，不生成、不保存因果关系；独立复审最终 `APPROVE`。瘦身 Coverage observation 管线已由 `e4a0a35` 实现并经 `6c3e316` 完成测试证据隔离；首次获授权真实运行因回环超时 fail-closed，尚无成功观察日，源扩展继续 `HOLD`。
 
 主线：**先让用户看见 AI 读了什么、漏了什么、有没有反证，再用真实缺口数据决定补哪些源、落哪些正文。** 手机标记好奇心、电脑消化好奇心；省力早报喂事实、硬核台增理解，两模式与认知画像不互相污染。
 
@@ -36,9 +36,9 @@ Implementation default:
 
 - RM-055 Phase 3：已完成（`5a53e41`）。事件图“假设层”默认关闭，以灰/虚线/“假设”角标定死证据与推断的视觉边界；V1 不接生成数据、持久化或后端契约。
 - RM-055 M4'：已完成。事实优先早报、覆盖微标签、可核查深链与“今日一个领域”见 `2fd9155` / `8cb9f9b` / `ff85f65`。
-- Coverage observation `ACTIVE-GATE`：按 `1190aca` / `a077937` 实施 post-commit 观察管线并启动首个真实观察日；它不新增来源、不调用 LLM、不改变 HTTP/前端契约。
+- Coverage observation `ACTIVE-GATE`：post-commit 观察管线已经实现；下一出口是在另行授权且后端可达时形成首个真实成功观察日。它不新增来源、不调用 LLM、不改变 HTTP/前端契约。
 - Source expansion observation gate：纵向数据满足门槛后再复核，最早不早于 2026-07-27；闸门见 `docs/operations/rm055-source-expansion-gate-2026-07-13.md`，当前仍为 `HOLD`。
-- Autonomous next action：完成 Coverage observation `ACTIVE-GATE`；correctness findings 仍须作为另行授权的独立小批次，不得混入本实施。
+- Autonomous next action：维持 Coverage observation `ACTIVE-GATE`；correctness findings 仍须作为另行授权的独立小批次，不得混入真实观察运维。
 - 下列条目是既有观察项或候选方向，不因 RM-055 产品阶段完成而自动开工。
 - Context cleanup: implemented in `spec/current-state.md`; keep it updated when a major iteration lands.
 - Cognition-profile calibration V1: implemented. Next step is to observe real recommendations and decide whether to add a small editable calibration UI.
@@ -61,6 +61,13 @@ Implementation default:
 - Community readability: continue improving the sentiment layer as compact evidence cards, while keeping community sentiment clearly labeled as signal rather than fact.
 - Narrative convergence: V1 evidence cards are implemented; revisit only if real topics show unreadable or misleading clusters.
 
+## Candidate Next Roadmap
+
+- `RM-065`（`CANDIDATE`）：`spec/roadmap-inspection-first-local-intelligence-2026-07-15.md`。
+- H0 历史/文档收口已于 2026-07-16 完成；这只关闭文档卫生，不代表 RM-065 升级或后续代码自动获批。
+- 证据阶梯：历史真相与文档收口 → `topic-load-race` → 检视阅读探针 → 测量性能 → 本地短检视产品化 → 事件聚类/转载去重 → Coverage 闸后的信息源拓展。
+- 已锁定边界：探针短段审计后删除；产品本地短材料保留 90 天；每话题最多预取 3 篇；无 LLM 核心；不把检视写成全文；不写死理论镜头；不自动接任 `CURRENT`。
+
 ## Design-First
 
 - Product positioning: keep the narrative-calibration frame. The project should not say "people dislike truth"; it should say people use stories to understand the world, and the tool helps evidence-calibrate those stories.
@@ -77,5 +84,6 @@ Implementation default:
 ## Deferred
 
 - Sentence-level perspective / B: defer unless it becomes fulltext reading assistance or anti-manipulation annotation. Summary-only sentence labels are not currently valuable enough.
+- Career-demand image: keep the historical job-market-signal idea as a candidate only. Platform terms, login boundaries, duplicate/noisy listings, and provenance require a separate authorized roadmap; it is not an RM-055 feed-expansion shortcut.
 - Heavy infrastructure: no vector database, queue system, or new component library until the existing local approach fails by evidence.
 - Low-fit reference repos: Budibase, agents-radar, and codebase-memory-mcp stay out of the main plan unless the user names a concrete use.

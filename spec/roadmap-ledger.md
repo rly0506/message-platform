@@ -9,11 +9,11 @@
 - `COMPLETED`：完成了该路线图承诺的阶段目标，残余优化进入新路线图。
 - `SUPERSEDED`：历史方案或草稿，已被后续路线图替代，不再直接执行。
 - `REFERENCE`：成果或决策记录，不是待执行计划。
-- `CANDIDATE`：已记录但尚未经过人类拍板，不得自动插入当前主线。
+- `CANDIDATE`：已记录的候选方向，可以具有人类确认的边界，但尚未获准升级为 `CURRENT` 或自动实施；升级和实施仍需对应的人类决定与证据门。
 
 ## 当前定位
 
-截至 2026-07-15，当前唯一产品主线是 **RM-055 可审计信息供应链 · C 先行**，**接替 RM-050**（非并列）。RM-050 的双模式入口 M1 已完成，其未完成的 M2/M3/M4 由 RM-055 完整承接。
+截至 2026-07-16，当前唯一产品主线是 **RM-055 可审计信息供应链 · C 先行**，**接替 RM-050**（非并列）。RM-050 的双模式入口 M1 已完成，其未完成的 M2/M3/M4 由 RM-055 完整承接。
 
 为什么切换主线：用户几轮"扩源"迭代后仍反馈"信息源不够、不广、不权威"。诊断表明症结不是源不够多，而是增强能力（SearXNG / gnews 解码 / Scrapling）默认全关、无真实数据验收、界面不显示本轮用了什么——"代码存在"被当成了"产品拥有能力"。因此新主线先做 C（可审计覆盖仪表 + 证据反证可见），再用真实缺口数据决定补源（A）和落正文（B）。详见 `spec/roadmap-supply-chain-2026-07-12.md`。
 
@@ -30,6 +30,10 @@
 9. Correctness audit 首批已由 `f83f2f3` 收口：后端 pytest 会话与 DiscoveryStore fixture 不再共享固定 SQLite 路径，本地 `.env` 不能在首次写入前劫持测试 DB，engine dispose/cleanup 顺序与失败可见性有跨平台/Windows 回归保护；最终 `335 passed, 1 warning`，独立复审 `APPROVE`。
 
 因此，项目目前处在 **RM-055 Coverage observation `ACTIVE-GATE`**：可审计覆盖、跨设备好奇心队列、事实早报与证据/推断 UI 边界均已落地；观察管线已实现但尚未取得首个成功真实观测日，源扩展仍为 `HOLD`，没有创建第二条 `CURRENT`。
+
+人类已于 2026-07-15 审定 `RM-065` 的候选方向与证据阶梯：先收口历史真相和 `topic-load-race`，再依次评估检视阅读、性能、本地事件聚类/去重与证据驱动扩源。它保持 `CANDIDATE`，不取代 RM-055，也不因写入本总账而自动授权实现。
+
+RM-065 的 H0 文档收口于 2026-07-16 完成：未完成事项已在 `spec/current-state.md` 归类，根目录与 `docs/` 入口已补齐，旧架构/方向和 Agent Bridge 长历史已无损归档，Superpowers 文件只保留为历史证据。该收口不升级 RM-065，也不授权后续产品阶段。
 
 ## 路线图编号
 
@@ -49,11 +53,12 @@
 | RM-050 | `spec/archive/roadmaps/roadmap-dual-mode-2026-07-09.md` | SUPERSEDED | 双模式入口 M1 已完成（`3327008`）；未完成的 M2/M3/M4 由 RM-055 完整承接。指向接替者 RM-055。 |
 | RM-055 | `spec/roadmap-supply-chain-2026-07-12.md` | CURRENT | 当前唯一主线。M1'-M4' 与 Phase 3 产品闭环已完成；Coverage observation 管线已实现并处于 `ACTIVE-GATE`，首日因回环超时尚未形成，源扩展仍为 `HOLD`。 |
 | RM-060 | `spec/ai-collaboration-and-source-boundary-2026-07-12.md` | CANDIDATE | AI 可控性与博客/播客/视频/授权私域资料方向，只记录问题和边界，尚未立项。 |
+| RM-065 | `spec/roadmap-inspection-first-local-intelligence-2026-07-15.md` | CANDIDATE | H0 文档收口已完成；后续仍按话题加载正确性、检视探针/产品化、性能、本地聚类与证据驱动扩源逐关推进；未取代 RM-055。 |
 
 ## 非路线图但必须保留的历史轨道
 
 - 14 点意见修复：已经形成可用的阶段性基线，但不是“永不再优化”。后续残余问题按新审计批和新路线图处理，不重开原始 14 点清单。
-- Fable 5 bug audit：属于稳定性治理依据，详见 `spec/bug-audit-2026-07-05.md`，不是产品路线图。
+- Fable 5 bug audit：原始记录已归档至 `spec/archive/bug-audit-2026-07-05.md`；五个具名 P0 由 `a4647f5` 关闭，P1/P2 主题若重现必须基于当前代码另立小批次。它不是产品路线图或当前 backlog。
 - 浏览器控制与 OpenCLI：属于运行边界决策，详见 `spec/browser-control-decision-2026-07-10.md`，不等同于产品采集路线图。
 - Astro/Pagefind 与 OpenSPG/KAG：属于外部架构参考，详见 `spec/feedback-and-ideas/references/`；未经人类立项，不进入 RM-055，也不代表已集成。
 

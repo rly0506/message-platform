@@ -95,3 +95,25 @@ Status: `REFERENCE`
 - `spec/feedback-and-ideas/references/mr-salticidae-knowledge-base.md`
 - `spec/feedback-and-ideas/references/openspg-kag.md`
 - `spec/feedback-and-ideas/references/knowledge-publishing-and-reasoning-reference-2026-07-12.md`
+
+## 2026-07-15：算法结构优化与检视阅读
+
+Status: `REFLECTION` + `CANDIDATE`，已登记并由人类确认候选边界；未升级为 `CURRENT`。
+
+### 用户原始意图
+
+- 希望下一步路线图正面评估聚类、爬虫、机器学习、时间/空间复杂度和数据结构，提升信息抓取与本地分析能力。
+- 不希望默认抓取或保存全文；希望用原文链接、标题、摘要/纲要、首段和尾段等“检视阅读”材料辅助决定是否深挖。
+- 商业模式画布和前景理论只是分析框架示例，不构成既定的首批功能选择。
+- 检视阅读的目的来自《如何阅读一本书》：快速筛选与粗略了解，而不是声称已完整阅读。
+- 在选择下一条路线前，先向用户解释历史路线图中未完成、已承接、延期和不可重开的事项。
+
+### 当前处理
+
+- 已在隔离基准中确认收集去重、必要字段投影、逐条 ORM 往返和前端重复加载存在可测优化机会；不把“更先进算法”误写为已验证的收益。
+- 将检视阅读定位为独立、公开页面、默认不持久化完整正文的证据探针候选；首尾段只能来自瞬时读取，需遵守版权、条款、限速和访问边界。
+- 该方向已进入 RM-065 候选路线，但未获准取代 RM-055 或自动实施产品阶段；它不改变 RM-055 的 `HOLD`、正文 `unknown` 或源扩展门。
+
+### 详细记录
+
+- `spec/feedback-and-ideas/user/reflections/2026-07-15-algorithmic-efficiency-and-inspection-reading.md`
