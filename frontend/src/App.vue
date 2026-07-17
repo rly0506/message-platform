@@ -76,6 +76,9 @@ let coverageRequestId = 0
 const articlePerspectives = ref<Record<number, ArticlePerspective>>({})
 const articlePerspectiveLoading = ref<Record<number, boolean>>({})
 const articlePerspectiveErrors = ref<Record<number, string>>({})
+// 单调 epoch：每次切题递增。透视请求发起时捕获，await 后校验——解决 A→B→A 时
+// topic-id 又相等、旧 A 透视被误放行（ABA）。topic-id 相等已不足以判定归属。
+let articlePerspectiveEpoch = 0
 const seedCognitionMarks = ref<Record<string, CognitionMark>>({})
 const cognitionProfile = ref<CognitionProfileItem[]>([])
 const cognitionMarkError = ref('')
@@ -139,6 +142,7 @@ const {
   loadArticles,
   loadLocalEvents,
   loadEventGraph,
+  invalidateTopicLoads,
   saveProject,
   archiveProject,
   removeProject,
@@ -601,6 +605,7 @@ const {
   resetCrossSynthesisState,
   resetAcademicState,
   resetSentimentState,
+  cancelRunningJobs,
   runEventSearch,
   searchRelated,
   rerunTerminalJob,
@@ -608,6 +613,7 @@ const {
   runAcademicAnalysis,
   runSentimentAnalysis,
   runCrossSynthesis,
+  currentGeneration,
   canRerunJob,
   stepStatusText,
   sentimentPlatformLabel,
@@ -724,21 +730,33 @@ function trackTopic(topicId: number) {
 }
 
 watch(selectedTopicId, async (id) => {
+  // 拆解（含 A→null）必须无条件先跑：作废在途 job + 话题级加载 + 清各层，
+  // 否则切到空选题（id=null）会跳过 cancel/invalidate，list loading 可能永久 true、
+  // 旧 A 的 job/perspective/collectDiagnostics 残留（审计 finding #2）。
+  // 切题第一步：作废所有在途 job（递增 generation + 清同族 busy/active-id + 按落点判 search-owner）。
+  // 在途 job 的 poll 会因 generation 变更而静默短路，其迟到响应不再写 B 的面板；
+  // 同时释放 busy flag，让 B 能立即发起同族任务。必须早于下面的 reset 与整包加载。
+  // 传入 id（A→null 传 null）：非搜索预期落点则 bump search-owner token，作废在途搜索完成态。
+  cancelRunningJobs(id)
+  // 对称地作废在途话题级加载：迟到的 loadTopics(A)/loadArticles(A) 续体
+  // （如 finishSearchJob 的续体）既不改选题也不写数据到 B，并清 list loading（审计 #2）。
+  invalidateTopicLoads()
+  localData.value = null
+  eventGraph.value = null
+  resetCountryCompare()
+  resetEventContrast()
+  resetEventAnalogues()
+  resetCoverage()
+  resetCrossSynthesisState()
+  resetAcademicState()
+  resetSentimentState()
+  resetSelectedEvent()
+  articlePerspectiveEpoch += 1  // 作废在途透视请求，其迟到响应不再写入新话题
+  articlePerspectives.value = {}
+  articlePerspectiveLoading.value = {}
+  articlePerspectiveErrors.value = {}
+  cognitionMarkError.value = ''
   if (id) {
-    localData.value = null
-    eventGraph.value = null
-    resetCountryCompare()
-    resetEventContrast()
-    resetEventAnalogues()
-    resetCoverage()
-    resetCrossSynthesisState()
-    resetAcademicState()
-    resetSentimentState()
-    resetSelectedEvent()
-    articlePerspectives.value = {}
-    articlePerspectiveLoading.value = {}
-    articlePerspectiveErrors.value = {}
-    cognitionMarkError.value = ''
     await Promise.all([
       loadTopic(id),
       loadArticles(id),
@@ -1071,16 +1089,24 @@ function snippetFor(article: Article) {
 }
 
 async function loadArticlePerspective(article: Article) {
-  if (!selectedTopicId.value || articlePerspectiveLoading.value[article.id]) return
+  const requestedTopicId = selectedTopicId.value
+  if (!requestedTopicId || articlePerspectiveLoading.value[article.id]) return
+  // 捕获发起时的 epoch：切题后（watch 递增 epoch 并清空透视 map）旧请求的迟到响应
+  // 一律丢弃。单用 topic-id 相等无法防 A→B→A（epoch 变了但 topic-id 又相等）。
+  const epoch = articlePerspectiveEpoch
   articlePerspectiveLoading.value = { ...articlePerspectiveLoading.value, [article.id]: true }
   articlePerspectiveErrors.value = { ...articlePerspectiveErrors.value, [article.id]: '' }
   try {
-    const result = await fetchArticlePerspective(selectedTopicId.value, article.id)
+    const result = await fetchArticlePerspective(requestedTopicId, article.id)
+    if (epoch !== articlePerspectiveEpoch) return
     articlePerspectives.value = { ...articlePerspectives.value, [article.id]: result }
   } catch (err) {
+    if (epoch !== articlePerspectiveEpoch) return
     articlePerspectiveErrors.value = { ...articlePerspectiveErrors.value, [article.id]: readableError(err) }
   } finally {
-    articlePerspectiveLoading.value = { ...articlePerspectiveLoading.value, [article.id]: false }
+    if (epoch === articlePerspectiveEpoch) {
+      articlePerspectiveLoading.value = { ...articlePerspectiveLoading.value, [article.id]: false }
+    }
   }
 }
 
@@ -1111,12 +1137,16 @@ async function runLlmAnalysisBundle() {
   // 三级「深度分析」= 先并发跑三个一级声部(媒体/学界/民间), 全部落库后
   // 再跑二级「三方对照」——用 refreshVoices=false 走轻量路径, 只复用刚落库的声部,
   // 不重跑三声部(否则各跑两遍)。缺声部由后端 gather_voices 兜底照常合成。
+  // 归属守卫：捕获发起时的 generation（单调，切题即递增），三声部等待期间用户切走后
+  // generation 已非当代，续体的 runCrossSynthesis 收到 override 直接短路，不在 B 上起
+  // 二级三方对照。仅 topic-id 的 A→B→A 门闩不成立（ABA），故用 generation。
+  const generation = currentGeneration()
   await Promise.allSettled([
     runDeepAnalysis(),
     runAcademicAnalysis(),
     runSentimentAnalysis(),
   ])
-  await runCrossSynthesis(false)
+  await runCrossSynthesis(false, generation)
 }
 
 async function loadSeedCognitionState() {
